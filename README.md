@@ -3,6 +3,7 @@
 <img src='assets/index_icon.png' width="250"/>
 </div>
 
+<p>test</p>
 
 <h2><center>IndexTTS: An Industrial-Level Controllable and Efficient Zero-Shot Text-To-Speech System</h2>
 
