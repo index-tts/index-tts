@@ -4,6 +4,7 @@ tokenizers==0.15.0
 cn2an==0.5.22
 ffmpeg-python==0.2.0
 Cython==3.0.7
+deepseed
 g2p-en==2.1.0
 jieba==0.42.1
 keras==2.9.0
