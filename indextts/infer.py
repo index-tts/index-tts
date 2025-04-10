@@ -255,7 +255,10 @@ class IndexTTS:
                 wavs.append(wav)
 
         wav = torch.cat(wavs, dim=1)
-        torchaudio.save(output_path, wav.type(torch.int16), 24000)
+        if output_path:
+            torchaudio.save(output_path, wav.type(torch.int16), 24000)
+        else:
+            return wav.type(torch.int16)
 
 
 if __name__ == "__main__":
