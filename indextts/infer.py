@@ -268,10 +268,13 @@ class IndexTTS:
 
         wav = torch.cat(wavs, dim=1)
         if output_path:
+            # 需要保存 wav 的情况
             torchaudio.save(output_path, wav.type(torch.int16), 24000)
         else:
-            return wav.type(torch.int16)
-
+            # 返回以符合 Gradio 的格式要求
+            wav_data = wav.type(torch.int16)
+            wav_data = wav_data.numpy().T  
+            return (24000, wav_data)
 
 if __name__ == "__main__":
     prompt_wav="audio/christmas.mp3.wav"
