@@ -3,7 +3,7 @@ import functools
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import GPT2Config, GPT2PreTrainedModel, LogitsProcessorList
+from transformers import GPT2Config, GPT2PreTrainedModel, LogitsProcessorList, LogitsProcessor
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.utils.model_parallel_utils import (assert_device_map,
                                                      get_device_map)
@@ -589,8 +589,13 @@ class UnifiedVoice(nn.Module):
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
     def inference_speech(self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None, input_tokens=None, num_return_sequences=1,
-                         max_generate_length=None, typical_sampling=False, typical_mass=.9, **hf_generate_kwargs):
-
+                         max_generate_length=None, typical_sampling=False, typical_mass=.9, intervene_callback=None, **hf_generate_kwargs):
+        """
+        Args:
+            speech_conditioning_latent: 语音条件输入
+            text_inputs: 文本输入
+            intervene_callback: 回调函数，用于实时干预生成过程。接收当前生成的token序列，返回True表示接受，False表示拒绝 ##已经弃用
+        """
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         text_inputs, _ = self.build_aligned_inputs_and_targets(text_inputs, self.start_text_token, self.stop_text_token)
         text_emb = self.text_embedding(text_inputs) + self.text_pos_embedding(text_inputs)
@@ -609,13 +614,58 @@ class UnifiedVoice(nn.Module):
         if input_tokens is None:
             inputs = fake_inputs
         else:
-            assert num_return_sequences % input_tokens.shape[
-                0] == 0, "The number of return sequences must be divisible by the number of input sequences"
+            assert num_return_sequences % input_tokens.shape[0] == 0, "The number of return sequences must be divisible by the number of input sequences"
             fake_inputs = fake_inputs.repeat(num_return_sequences, 1)
             input_tokens = input_tokens.repeat(num_return_sequences // input_tokens.shape[0], 1)
             inputs = torch.cat([fake_inputs, input_tokens], dim=1)
 
-        logits_processor = LogitsProcessorList([TypicalLogitsWarper(mass=typical_mass)]) if typical_sampling else LogitsProcessorList()
+        class InterventionLogitsProcessor(LogitsProcessor):
+            def __init__(self, callback):
+                self.callback = callback
+                self.current_tokens = []
+                self.consecutive_silence = 0
+            
+            def __call__(self, input_ids, scores):
+                if self.callback is not None:
+                    batch_size = input_ids.shape[0]
+
+                    # next_tokens = torch.argmax(scores, dim=-1)  # (batch_size * num_beams,)
+                    
+                    # 对每个序列分别处理
+                    for i in range(batch_size):
+                        # 获取当前序列的所有token
+                        current_seq = input_ids[i].tolist()
+                        
+                        # 检查连续的静音标记
+                        consecutive_silence = 0
+                        for j in range(len(current_seq)-1, max(-1, len(current_seq)-5), -1):
+                            if current_seq[j] == 52:
+                                consecutive_silence += 1
+                            else:
+                                break
+
+                        # 调用回调函数进行干预
+                        # next_token = next_tokens[i].item()
+                        # if not self.callback(current_seq + [next_token]):
+                            # 如果回调函数返回False，将该token的概率设为很小的值
+                            # scores[i, next_token] = float('-inf')
+                        
+                        # 如果已经有连续的静音标记，将52的概率设为很小的值
+                        if consecutive_silence >= 2:  # 允许最多2个连续的静音标记
+                            print(f"阻止生成静音标记，当前连续静音长度: {consecutive_silence}")
+                            scores[i, 52] = float('-inf')  # 禁止生成更多的静音标记
+                            # 增加其他token的概率
+                            non_silence_mask = torch.ones_like(scores[i], dtype=torch.bool)
+                            non_silence_mask[52] = False
+                            scores[i, non_silence_mask] += 2.0  # 增加非静音token的概率
+                
+                return scores
+
+        processors = [InterventionLogitsProcessor(intervene_callback)] if intervene_callback is not None else []
+        if typical_sampling:
+            processors.append(TypicalLogitsWarper(mass=typical_mass))
+        logits_processor = LogitsProcessorList(processors)
+
         max_length = trunc_index + self.max_mel_tokens - 1 if max_generate_length is None else trunc_index + max_generate_length
         gen = self.inference_model.generate(inputs, bos_token_id=self.start_mel_token, pad_token_id=self.stop_mel_token,
                                             eos_token_id=self.stop_mel_token,

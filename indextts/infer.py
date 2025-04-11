@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import numpy as np
 
 import sentencepiece as spm
 import torch
@@ -116,6 +117,14 @@ class IndexTTS:
         code_lens = torch.LongTensor(code_lens).cuda()
         return codes, code_lens
 
+    def intervene_callback(self, current_codes):
+        """在推理过程中实时干预生成的codes"""
+        if current_codes[-1] == 52:  # 如果当前生成的token是静音标记
+            print(f"检测到静音标记生成，位置: {len(current_codes)-1}")
+            # 这里可以返回True来接受这个token，或False来拒绝
+            return False
+        return True
+
     def infer(self, audio_prompt, text, output_path):
         print(f"origin text:{text}")
         text = self.preprocess_text(text)
@@ -188,7 +197,8 @@ class IndexTTS:
                                                           length_penalty=length_penalty,
                                                           num_beams=num_beams,
                                                           repetition_penalty=repetition_penalty,
-                                                          max_generate_length=max_mel_tokens)
+                                                          max_generate_length=max_mel_tokens,
+                                                          intervene_callback=self.intervene_callback)
                 else:
                     codes = self.gpt.inference_speech(auto_conditioning, text_tokens,
                                                       cond_mel_lengths=torch.tensor([auto_conditioning.shape[-1]],
@@ -202,7 +212,8 @@ class IndexTTS:
                                                       length_penalty=length_penalty,
                                                       num_beams=num_beams,
                                                       repetition_penalty=repetition_penalty,
-                                                      max_generate_length=max_mel_tokens)
+                                                      max_generate_length=max_mel_tokens,
+                                                      intervene_callback=self.intervene_callback)
                 #codes = codes[:, :-2]
                 code_lens = torch.tensor([codes.shape[-1]])
                 print(codes, type(codes))
@@ -211,6 +222,7 @@ class IndexTTS:
                 # remove ultra-long silence if exits
                 # temporarily fix the long silence bug.
                 codes, code_lens = self.remove_long_silence(codes, silent_token=52, max_consecutive=30)
+
                 print(codes, type(codes))
                 print(f"fix codes shape: {codes.shape}, codes type: {codes.dtype}")
                 print(f"code len: {code_lens}")
@@ -262,11 +274,11 @@ class IndexTTS:
 
 
 if __name__ == "__main__":
-    prompt_wav="test_data/input.wav"
-    prompt_wav="testwav/spk_1744181067_1.wav"
+    prompt_wav="audio/christmas.mp3.wav"
+    #prompt_wav="testwav/spk_1744181067_1.wav"
     #text="晕 XUAN4 是 一 种 GAN3 觉"
     #text='大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！'
-    text="There is a vehicle arriving in dock number 7?"
+    text="let's read, apple."
 
     tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", is_fp16=True)
     tts.infer(audio_prompt=prompt_wav, text=text, output_path="gen.wav")
