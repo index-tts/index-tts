@@ -75,6 +75,8 @@ class IndexTTS:
         self.bigvgan.eval()
         print(">> bigvgan weights restored from:", self.bigvgan_path)
         self.bpe_path = os.path.join(self.model_dir, self.cfg.dataset['bpe_model'])
+        self.tokenizer = spm.SentencePieceProcessor(model_file=self.bpe_path)
+        print(">> bpe model loaded from:", self.bpe_path)
         self.normalizer = TextNormalizer()
         self.normalizer.load()
         print(">> TextNormalizer loaded")
@@ -134,6 +136,18 @@ class IndexTTS:
         code_lens = torch.LongTensor(code_lens).to(device, dtype=dtype)
         return codes, code_lens
 
+    def split_sentences(self, text):
+        """
+        Split the text into sentences based on punctuation marks.
+        """
+        # 匹配标点符号（包括中英文标点）
+        pattern = r'(?<=[.!?;。！？；])\s*'
+        sentences = re.split(pattern, text)
+        # 过滤掉空字符串和仅包含标点符号的字符串
+        return [
+            sentence.strip() for sentence in sentences if sentence.strip() and sentence.strip() not in {"'", ".", ","}
+        ]
+
     def infer(self, audio_prompt, text, output_path):
         print(f"origin text:{text}")
         text = self.preprocess_text(text)
@@ -150,14 +164,8 @@ class IndexTTS:
 
         auto_conditioning = cond_mel
 
-        tokenizer = spm.SentencePieceProcessor()
-        tokenizer.load(self.bpe_path)
-
-        punctuation = ["!", "?", ".", ";", "！", "？", "。", "；"]
-        pattern = r"(?<=[{0}])\s*".format("".join(punctuation))
-        sentences = [i for i in re.split(pattern, text) if i.strip() != ""]
+        sentences = self.split_sentences(text)
         print("sentences:", sentences)
-
         top_p = .8
         top_k = 30
         temperature = 1.0
@@ -167,8 +175,8 @@ class IndexTTS:
         repetition_penalty = 10.0
         max_mel_tokens = 600
         sampling_rate = 24000
-        lang = "EN"
-        lang = "ZH"
+        # lang = "EN"
+        # lang = "ZH"
         wavs = []
         print(">> start inference...")
         
@@ -181,19 +189,19 @@ class IndexTTS:
             # cleand_text = "他 那 像 HONG3 小 孩 似 的 话 , 引 得 人 们 HONG1 堂 大 笑 , 大 家 听 了 一 HONG3 而 散 ."
             print("cleand_text:", cleand_text)
 
-            text_tokens = torch.IntTensor(tokenizer.encode(cleand_text)).unsqueeze(0).to(self.device)
-
+            text_tokens = torch.tensor(self.tokenizer.EncodeAsIds(cleand_text),dtype=torch.int32, device=self.device).unsqueeze(0)
             # text_tokens = F.pad(text_tokens, (0, 1))  # This may not be necessary.
             # text_tokens = F.pad(text_tokens, (1, 0), value=0)
             # text_tokens = F.pad(text_tokens, (0, 1), value=1)
-            # text_tokens = text_tokens.to(self.device)
+
             print(text_tokens)
             print(f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}")
-            text_token_syms = [tokenizer.IdToPiece(idx) for idx in text_tokens[0].tolist()]
+            # debug tokenizer
+            text_token_syms = self.tokenizer.IdToPiece(text_tokens[0].tolist())
             print(text_token_syms)
-            text_len = [text_tokens.size(1)]
-            text_len = torch.IntTensor(text_len).to(self.device)
-            print(text_len)
+
+            # text_len = torch.IntTensor([text_tokens.size(1)], device=text_tokens.device)
+            # print(text_len)
 
             with torch.no_grad():
                 with torch.amp.autocast(self.device, enabled=self.dtype is not None, dtype=self.dtype):
@@ -234,8 +242,7 @@ class IndexTTS:
                     wav, _ = self.bigvgan(latent.transpose(1, 2), auto_conditioning.transpose(1, 2))
                     wav = wav.squeeze(1).cpu()
 
-                wav = 32767 * wav
-                torch.clip(wav, -32767.0, 32767.0)
+                wav = torch.clip(32767 * wav, -32767.0, 32767.0)
                 print(f"wav shape: {wav.shape}")
                 # wavs.append(wav[:, :-512])
                 wavs.append(wav)
@@ -244,7 +251,7 @@ class IndexTTS:
         elapsed_time = end_time - start_time
         minutes, seconds = divmod(int(elapsed_time), 60)
         milliseconds = int((elapsed_time - int(elapsed_time)) * 1000)
-        print(f">> inference done. time: {minutes}:{seconds}.{milliseconds}")
+        print(f">> inference done. time: {minutes:02d}:{seconds:02d}.{milliseconds:03d}")
         print(">> saving wav file")
         wav = torch.cat(wavs, dim=1)
         torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
