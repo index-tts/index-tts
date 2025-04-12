@@ -17,9 +17,9 @@ accelerate==0.25.0
 tensorboard==2.9.1
 omegaconf
 sentencepiece
-pypinyin
 librosa
 gradio
 tqdm
-WeTextProcessing # arm机器如果安装失败，请注释此行
-wetext
+
+WeTextProcessing; platform_machine != "Darwin"
+wetext; platform_system == "Darwin"

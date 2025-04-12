@@ -103,7 +103,21 @@ conda activate index-tts
 pip install -r requirements.txt
 apt-get install ffmpeg
 ```
+
 3. Download models:
+
+Download by `huggingface-cli`:
+
+```bash
+# 如果下载速度慢，可以使用官方的镜像
+export HF_ENDPOINT="https://hf-mirror.com"
+huggingface-cli download IndexTeam/Index-TTS \
+  bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab \
+  --local-dir checkpoints
+```
+
+Or by `wget`:
+
 ```bash
 wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/bigvgan_discriminator.pth -P checkpoints
 wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/bigvgan_generator.pth -P checkpoints
@@ -112,11 +126,32 @@ wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/dvae.pth -P checkpo
 wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/gpt.pth -P checkpoints
 wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/unigram_12000.vocab -P checkpoints
 ```
+
 4. Run test script:
+
+
 ```bash
 # Please put your prompt audio in 'test_data' and rename it to 'input.wav'
 PYTHONPATH=. python indextts/infer.py
 ```
+
+5. Use as command line tool:
+
+```bash
+# Make sure pytorch has been installed before running this command
+pip install -e .
+indextts "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！" \
+  --voice reference_voice.wav \
+  --model_dir checkpoints \
+  --config checkpoints/config.yaml \
+  --output output.wav
+```
+
+Use `--help` to see more options.
+```bash
+indextts --help
+```
+
 #### Web Demo
 ```bash
 python webui.py
