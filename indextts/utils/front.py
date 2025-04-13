@@ -4,7 +4,6 @@ import re
 
 class TextNormalizer:
     def __init__(self):
-        # self.normalizer = Normalizer(cache_dir="textprocessing/tn")
         self.zh_normalizer = None
         self.en_normalizer = None
         self.char_rep_map = {
@@ -15,8 +14,8 @@ class TextNormalizer:
             "。": ".",
             "！": "!",
             "？": "?",
-            "\n": ".",
-            "·": ",",
+            "\n": " ",
+            "·": "-",
             "、": ",",
             "...": "…",
             "……": "…",
