@@ -80,9 +80,8 @@ class TextNormalizer:
         if not self.zh_normalizer or not self.en_normalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""
-        pattern = re.compile("|".join(re.escape(p) for p in self.char_rep_map.keys()))
-        replaced_text = pattern.sub(lambda x: self.char_rep_map[x.group()], text.rstrip())
-        replaced_text, pinyin_list = self.save_pinyin_tones(replaced_text)
+        replaced_text, pinyin_list = self.save_pinyin_tones(text.rstrip())
+
         try:
             normalizer = self.zh_normalizer if self.use_chinese(replaced_text) else self.en_normalizer
             result = normalizer.normalize(replaced_text)
@@ -90,6 +89,8 @@ class TextNormalizer:
             result = ""
             print(traceback.format_exc())
         result = self.restore_pinyin_tones(result, pinyin_list)
+        pattern = re.compile("|".join(re.escape(p) for p in self.char_rep_map.keys()))
+        result = pattern.sub(lambda x: self.char_rep_map[x.group()], result)
         return result
 
     def correct_pinyin(self, pinyin):
@@ -147,4 +148,30 @@ class TextNormalizer:
 if __name__ == '__main__':
     # 测试程序
     text_normalizer = TextNormalizer()
-    print(text_normalizer.infer("2.5平方电线"))
+    text_normalizer.load()
+    cases = [
+        "我爱你！",
+        "I love you!",
+        "我爱你的英语是”I love you“",
+        "2.5平方电线",
+        "共465篇，约315万字",
+        "2002年的第一场雪，下在了2003年",
+        "速度是10km/h",
+        "现在是北京时间2025年01月11日 20:00",
+        "他这条裤子是2012年买的，花了200块钱",
+        "电话：135-4567-8900",
+        "1键3连",
+        "他这条视频点赞3000+，评论1000+，收藏500+",
+        "这是1024元的手机，你要吗？",
+        "受不liao3你了",
+        "”衣裳“不读衣chang2，而是读衣shang5",
+        "最zhong4要的是：不要chong2蹈覆辙",
+        "IndexTTS 正式发布1.0版本了，效果666",
+        "See you at 8:00 AM",
+        "8:00 AM 开会",
+        "苹果于2030/1/2发布新 iPhone 2X 系列手机，最低售价仅 ¥12999",
+    ]
+    for case in cases:
+        print(f"原始文本: {case}")
+        print(f"处理后文本: {text_normalizer.infer(case)}")
+        print("-" * 50)
