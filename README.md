@@ -50,7 +50,22 @@ The main improvements and contributions are summarized as follows:
 
 ## 📑 Evaluation
 
-**Word Error Rate (WER) Results for IndexTTS and Baseline Models**
+**Word Error Rate (WER) Results for IndexTTS and Baseline Models on the** [**seed-test**](https://github.com/BytedanceSpeech/seed-tts-eval)
+
+| **WER**                | **test_zh** | **test_en** | **test_hard** |
+|:----------------------:|:-----------:|:-----------:|:-------------:|
+| **Human**              | 1.26        | 2.14        | -             |
+| **SeedTTS**            | 1.002       | 1.945       | **6.243**         |
+| **CosyVoice 2**        | 1.45        | 2.57        | 6.83          |
+| **F5TTS**              | 1.56        | 1.83        | 8.67          |
+| **FireRedTTS**         | 1.51        | 3.82        | 17.45         |
+| **MaskGCT**            | 2.27        | 2.62        | 10.27         |
+| **Spark-TTS**          | 1.2         | 1.98        | -             |
+| **MegaTTS 3**          | 1.36        | **1.82**        | -             |
+| **IndexTTS**           | **0.937**       | 1.936       | 6.831         |
+
+
+**Word Error Rate (WER) Results for IndexTTS and Baseline Models on the other opensource test**
 
 
 |    **Model**    | **aishell1_test** | **commonvoice_20_test_zh** | **commonvoice_20_test_en** | **librispeech_test_clean** |  **avg** |
