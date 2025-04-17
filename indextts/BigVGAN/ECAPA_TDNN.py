@@ -303,8 +303,7 @@ class AttentiveStatisticsPooling(nn.Module):
             )
             return mean, std
 
-        if lengths is None:
-            lengths = torch.ones(x.shape[0], device=x.device)
+        lengths = torch.ones(x.shape[0], device=x.device)
 
         # Make binary mask of shape [N, 1, L]
         mask = length_to_mask(lengths * L, max_len=L, device=x.device)
@@ -540,7 +539,7 @@ class ECAPA_TDNN(torch.nn.Module):
             kernel_size=1,
         )
 
-    def forward(self, x, lengths=None):
+    def forward(self, x):
         """Returns the embedding vector.
 
         Arguments
@@ -560,10 +559,7 @@ class ECAPA_TDNN(torch.nn.Module):
 
         xl = []
         for layer in self.blocks:
-            try:
-                x = layer(x, lengths=lengths)
-            except TypeError:
-                x = layer(x)
+            x = layer(x)
             xl.append(x)
 
         # Multi-layer feature aggregation
@@ -571,7 +567,7 @@ class ECAPA_TDNN(torch.nn.Module):
         x = self.mfa(x)
 
         # Attentive Statistical Pooling
-        x = self.asp(x, lengths=lengths)
+        x = self.asp(x)
         x = self.asp_bn(x)
 
         # Final linear transformation

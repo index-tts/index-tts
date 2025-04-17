@@ -506,6 +506,57 @@ class UnifiedVoice(nn.Module):
         tar = F.pad(input, (0, 1), value=stop_token)
         return inp, tar
 
+    def set_text_padding_compiled(self, text_input_tokens, text_lengths):
+        """
+        使用张量操作代替条件语句的版本，用于设置文本填充
+        """
+        batch_size = text_input_tokens.shape[0]
+        seq_length = text_input_tokens.shape[1]
+
+        # 创建一个表示位置的张量
+        positions = torch.arange(seq_length, device=text_input_tokens.device).expand(
+            batch_size, seq_length
+        )
+
+        # 创建一个表示每个位置是否超过实际长度的掩码
+        mask = positions >= text_lengths.unsqueeze(1)
+
+        # 使用掩码操作替代条件语句
+        text_input_tokens = text_input_tokens.masked_fill(mask, self.stop_text_token)
+
+        return text_input_tokens
+
+    def set_mel_padding_compiled(self, mel_input_tokens, mel_lengths):
+        """
+        兼容版本的 set_mel_padding。
+        当 mel_input_tokens 的 batch_size 小于 mel_lengths 的长度时，
+        只使用 mel_lengths 中对应 batch_size 数量的值。
+
+        Args:
+            mel_input_tokens: shape [B, seq_len]，其中 B 可能小于 len(mel_lengths)
+            mel_lengths: shape [L]，其中 L >= B
+        Returns:
+            shape 与输入 mel_input_tokens 相同
+        """
+        batch_size, seq_len = mel_input_tokens.shape
+        
+        # 只使用需要的长度值
+        effective_lengths = mel_lengths[:batch_size]
+        
+        # 创建位置索引 [B, seq_len]
+        position_idx = torch.arange(seq_len, device=mel_input_tokens.device)
+        position_idx = position_idx[None, :].expand(batch_size, -1)
+        
+        # 创建掩码 [B, seq_len]
+        mask = position_idx >= effective_lengths[:, None]
+        
+        # 使用掩码更新 tensor
+        mel_input_tokens = torch.where(mask, self.stop_mel_token, mel_input_tokens)
+        
+        return mel_input_tokens
+
+
+    
     def set_mel_padding(self, mel_input_tokens, mel_lengths):
         """
         Given mel tokens that are derived from a padded audio clip and the actual lengths of each batch element in
@@ -615,6 +666,38 @@ class UnifiedVoice(nn.Module):
             conds = conds.unsqueeze(1)
         return conds
 
+    @torch.compile(
+        fullgraph=True,  # 整个图编译，提供最大优化
+        backend=(
+            "inductor" if torch.cuda.is_available() else "aot_eager"
+        ),  # 根据设备选择后端
+        mode=(
+            "reduce-overhead" if torch.cuda.is_available() else None
+        ),  # GPU上使用减少开销模式
+    )
+    def optimized_forward(
+        self,
+        speech_conditioning_latent,
+        text_inputs,
+        text_lengths,
+        mel_codes,
+        wav_lengths,
+        cond_mel_lengths,
+        return_latent=True,
+        clip_inputs=False,
+    ):
+        """优化的前向传播函数"""
+        return self.forward(
+            speech_conditioning_latent=speech_conditioning_latent,
+            text_inputs=text_inputs,
+            text_lengths=text_lengths,
+            mel_codes=mel_codes,
+            wav_lengths=wav_lengths,
+            cond_mel_lengths=cond_mel_lengths,
+            return_latent=return_latent,
+            clip_inputs=clip_inputs,
+        )
+
     def forward(
         self,
         speech_conditioning_latent,
@@ -668,9 +751,26 @@ class UnifiedVoice(nn.Module):
         mel_codes_lengths = (
             torch.ceil(wav_lengths / self.mel_length_compression).long() + 1
         )
-        mel_codes = self.set_mel_padding(mel_codes, mel_codes_lengths)
 
-        text_inputs = self.set_text_padding(text_inputs, text_lengths)
+        # mel_codes_copy = mel_codes.clone()
+
+        # print(f"mel_codes.shape: {mel_codes.shape} mel_codes_lengths.shape: {mel_codes_lengths.shape} mel_codes_copy.shape: {mel_codes_copy.shape}")
+
+        # mel_codes = self.set_mel_padding(mel_codes, mel_codes_lengths)
+        mel_codes = self.set_mel_padding_compiled(mel_codes, mel_codes_lengths)
+
+        # mel_codes_compiled = self.set_mel_padding_compiled(mel_codes_copy, mel_codes_lengths)
+
+        
+
+        # print(f"mel_codes.shape: {mel_codes.shape} mel_codes_compiled.shape: {mel_codes_compiled.shape}")
+
+        # text_inputs = self.set_text_padding(text_inputs, text_lengths)
+        text_inputs = self.set_text_padding_compiled(text_inputs, text_lengths)
+        # text_inputs_compiled = self.set_text_padding_compiled(text_inputs, text_lengths)
+
+        # print(f"text_inputs.shape: {text_inputs.shape} text_inputs_compiled.shape: {text_inputs_compiled.shape}")
+
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         mel_codes = F.pad(mel_codes, (0, 1), value=self.stop_mel_token)
 
@@ -692,13 +792,15 @@ class UnifiedVoice(nn.Module):
         mel_emb = mel_emb + self.mel_pos_embedding(mel_codes)
 
         if text_first:
-            # print(f"conds: {conds.shape}, text_emb: {text_emb.shape}, mel_emb: {mel_emb.shape}")
+            # print(
+            #     f"conds: {conds.shape}, text_emb: {text_emb.shape}, mel_emb: {mel_emb.shape}"
+            # )
             text_logits, mel_logits = self.get_logits(
-                conds,
-                text_emb,
-                self.text_head,
-                mel_emb,
-                self.mel_head,
+                speech_conditioning_inputs=conds,
+                first_inputs=text_emb,
+                first_head=self.text_head,
+                second_inputs=mel_emb,
+                second_head=self.mel_head,
                 get_attns=return_attentions,
                 return_latent=return_latent,
             )
@@ -728,6 +830,49 @@ class UnifiedVoice(nn.Module):
         loss_mel = F.cross_entropy(mel_logits, mel_targets.long())
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
+    # 在UnifiedVoice类中添加这个新方法
+    @torch.compile(
+        fullgraph=False,
+        backend="inductor" if torch.cuda.is_available() else "aot_eager",
+        mode="reduce-overhead" if torch.cuda.is_available() else None,
+    )
+    def prepare_inference_inputs(
+        self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None
+    ):
+        """
+        优化的输入预处理函数，专门为torch.compile设计，处理推理过程中的嵌入计算部分
+
+        Args:
+            speech_conditioning_latent: 语音条件输入特征，通常是参考音频的mel谱图
+            text_inputs: 文本输入tokens
+            cond_mel_lengths: 条件mel长度 (可选)
+
+        Returns:
+            tuple: (
+                嵌入向量,
+                文本输入设备,
+                填充的文本tokens (用于后续处理)
+            )
+        """
+        # 文本输入处理
+        text_inputs_padded = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
+        text_inputs_aligned, _ = self.build_aligned_inputs_and_targets(
+            text_inputs_padded, self.start_text_token, self.stop_text_token
+        )
+        text_emb = self.text_embedding(text_inputs_aligned) + self.text_pos_embedding(
+            text_inputs_aligned
+        )
+
+        # 语音条件处理
+        speech_conds = self.get_conditioning(
+            speech_conditioning_latent, cond_mel_lengths
+        )
+
+        # 组合嵌入
+        combined_emb = torch.cat([speech_conds, text_emb], dim=1)
+
+        return combined_emb, text_inputs.device, text_inputs_aligned
+
     def inference_speech(
         self,
         speech_conditioning_latent,
@@ -738,7 +883,7 @@ class UnifiedVoice(nn.Module):
         max_generate_length=None,
         typical_sampling=False,
         typical_mass=0.9,
-        **hf_generate_kwargs
+        **hf_generate_kwargs,
     ):
 
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
@@ -799,6 +944,73 @@ class UnifiedVoice(nn.Module):
             max_length=max_length,
             logits_processor=logits_processor,
             num_return_sequences=num_return_sequences,
-            **hf_generate_kwargs
+            **hf_generate_kwargs,
+        )
+        return gen[:, trunc_index:]
+
+    def inference_speech_optimized(
+        self,
+        speech_conditioning_latent,
+        text_inputs,
+        cond_mel_lengths=None,
+        input_tokens=None,
+        num_return_sequences=1,
+        max_generate_length=None,
+        typical_sampling=False,
+        typical_mass=0.9,
+        **hf_generate_kwargs,
+    ):
+        """
+        使用torch.compile优化的语音推理方法
+        """
+        # 使用编译后的函数处理输入
+        emb, device, text_inputs_aligned = self.prepare_inference_inputs(
+            speech_conditioning_latent, text_inputs, cond_mel_lengths
+        )
+
+        # 存储嵌入用于推理模型
+        self.inference_model.store_mel_emb(emb)
+
+        # 创建假输入，+1 是为了start_audio_token
+        fake_inputs = torch.full(
+            (emb.shape[0], emb.shape[1] + 1),
+            fill_value=1,
+            dtype=torch.long,
+            device=device,
+        )
+
+        fake_inputs[:, -1] = self.start_mel_token
+        trunc_index = fake_inputs.shape[1]
+        if input_tokens is None:
+            inputs = fake_inputs
+        else:
+            assert (
+                num_return_sequences % input_tokens.shape[0] == 0
+            ), "The number of return sequences must be divisible by the number of input sequences"
+            fake_inputs = fake_inputs.repeat(num_return_sequences, 1)
+            input_tokens = input_tokens.repeat(
+                num_return_sequences // input_tokens.shape[0], 1
+            )
+            inputs = torch.cat([fake_inputs, input_tokens], dim=1)
+
+        logits_processor = (
+            LogitsProcessorList([TypicalLogitsWarper(mass=typical_mass)])
+            if typical_sampling
+            else LogitsProcessorList()
+        )
+        max_length = (
+            trunc_index + self.max_mel_tokens - 1
+            if max_generate_length is None
+            else trunc_index + max_generate_length
+        )
+        gen = self.inference_model.generate(
+            inputs,
+            bos_token_id=self.start_mel_token,
+            pad_token_id=self.stop_mel_token,
+            eos_token_id=self.stop_mel_token,
+            max_length=max_length,
+            logits_processor=logits_processor,
+            num_return_sequences=num_return_sequences,
+            **hf_generate_kwargs,
         )
         return gen[:, trunc_index:]

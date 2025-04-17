@@ -197,9 +197,19 @@ class BigVGAN(torch.nn.Module):
                 self.conds.append(nn.Conv1d(h.speaker_embedding_dim, ch, 1))
 
         # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+    @torch.compile(
+        fullgraph=True,  # 整个图编译，提供最大优化
+        backend=("inductor" if torch.cuda.is_available() else "aot_eager"),  # 根据设备选择后端
+        mode=("reduce-overhead" if torch.cuda.is_available() else None),  # GPU上使用减少开销模式
+    )
+    def inference_forward(self, x, mel_ref):
+        """优化的推理函数，只返回音频波形"""
+        wav, contrastive_loss = self.forward(x, mel_ref)
+        return wav, contrastive_loss
+    
 
-    def forward(self, x, mel_ref, lens=None):
-        speaker_embedding = self.speaker_encoder(mel_ref, lens)
+    def forward(self, x, mel_ref):
+        speaker_embedding = self.speaker_encoder(mel_ref)
         n_batch = x.size(0)
         contrastive_loss = None
         if n_batch * 2 == speaker_embedding.size(0):

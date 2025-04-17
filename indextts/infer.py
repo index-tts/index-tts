@@ -11,13 +11,22 @@ from torch.nn.utils.rnn import pad_sequence
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-from indextts.BigVGAN.models import BigVGAN as Generator
+from indextts.BigVGAN.models import BigVGAN
 from indextts.gpt.model import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 from indextts.utils.common import tokenize_by_CJK_char
 
 from indextts.utils.front import TextNormalizer
+
+import torch._inductor.config
+
+torch._inductor.config.coordinate_descent_tuning = True
+torch._inductor.config.triton.unique_kernel_names = True
+
+if hasattr(torch._inductor.config, "fx_graph_cache"):
+    # Experimental feature to reduce compilation times, will be on by default in future
+    torch._inductor.config.fx_graph_cache = True
 
 
 class IndexTTS:
@@ -118,7 +127,7 @@ class IndexTTS:
                     ">> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch."
                 )
                 self.use_cuda_kernel = False
-        self.bigvgan = Generator(self.cfg.bigvgan, use_cuda_kernel=self.use_cuda_kernel)
+        self.bigvgan = BigVGAN(self.cfg.bigvgan, use_cuda_kernel=self.use_cuda_kernel)
         self.bigvgan_path = os.path.join(self.model_dir, self.cfg.bigvgan_checkpoint)
         vocoder_dict = torch.load(self.bigvgan_path, map_location="cpu")
         self.bigvgan.load_state_dict(vocoder_dict["generator"])
@@ -333,7 +342,7 @@ class IndexTTS:
             with torch.amp.autocast(
                 self.device, enabled=self.dtype is not None, dtype=self.dtype
             ):
-                batch_codes = self.gpt.inference_speech(
+                batch_codes = self.gpt.inference_speech_optimized(
                     batch_auto_conditioning,
                     batch_text_tokens,
                     cond_mel_lengths=batch_cond_mel_lengths,
@@ -376,14 +385,14 @@ class IndexTTS:
                 with torch.amp.autocast(
                     self.device, enabled=self.dtype is not None, dtype=self.dtype
                 ):
-                    latent = self.gpt(
-                        auto_conditioning,
-                        text_tokens,
-                        torch.tensor(
+                    latent = self.gpt.optimized_forward(
+                        speech_conditioning_latent=auto_conditioning,
+                        text_inputs=text_tokens,
+                        text_lengths=torch.tensor(
                             [text_tokens.shape[-1]], device=text_tokens.device
                         ),
-                        codes,
-                        code_lens * self.gpt.mel_length_compression,
+                        mel_codes=codes,
+                        wav_lengths=code_lens * self.gpt.mel_length_compression,
                         cond_mel_lengths=torch.tensor(
                             [auto_conditioning.shape[-1]], device=text_tokens.device
                         ),
@@ -414,7 +423,9 @@ class IndexTTS:
                     self.device, enabled=self.dtype is not None, dtype=self.dtype
                 ):
                     m_start_time = time.perf_counter()
-                    wav, _ = self.bigvgan(latent, auto_conditioning.transpose(1, 2))
+                    wav, _ = self.bigvgan.inference_forward(
+                        latent, auto_conditioning.transpose(1, 2)
+                    )
                     bigvgan_time += time.perf_counter() - m_start_time
                     wav = wav.squeeze(1)
                     pass
@@ -651,7 +662,13 @@ if __name__ == "__main__":
 
     prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references/"
 
-    prompt_id_list = ["ks_曾鼎全", "QY13323323_清盐", "柴柴_男声"]
+    prompt_id_list = [
+        # "ks_曾鼎全",
+        # "QY13323323_清盐",
+        # "柴柴_男声",
+        # "是阿殇啦",
+        "JINQQ124_东北话",
+    ]
 
     prompt_file_name = "sample1.mp3"
     # text="晕 XUAN4 是 一 种 GAN3 觉"
@@ -663,15 +680,16 @@ if __name__ == "__main__":
         model_dir="checkpoints",
         is_fp16=True,
         use_cuda_kernel=False,
-        device="cpu",
+        # device="cpu",
     )
 
-    for prompt_id in prompt_id_list:
-        prompt_wav = prompt_wav_path + "/" + prompt_id + "/" + prompt_file_name
-        print(prompt_wav)
-        tts.infer_fast(
-            audio_prompt=prompt_wav,
-            text=text_2,
-            output_path=f"./outputs/{prompt_id}_gen.wav",
-            verbose=True,
-        )
+    for i in range(5):
+        for prompt_id in prompt_id_list:
+            prompt_wav = prompt_wav_path + "/" + prompt_id + "/" + prompt_file_name
+            print(prompt_wav)
+            tts.infer_fast(
+                audio_prompt=prompt_wav,
+                text=text_2,
+                output_path=f"./outputs/{prompt_id}_gen_{i}.wav",
+                verbose=False,
+            )
