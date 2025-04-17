@@ -549,7 +549,11 @@ class IndexTTS:
         wav = wav.cpu() # to cpu
         if output_path:
             # 直接保存音频到指定路径中
-            os.makedirs(os.path.dirname(output_path),exist_ok=True)
+            if os.path.isfile(output_path):
+                os.remove(output_path)
+                print(">> remove old wav file:", output_path)
+            if os.path.dirname(output_path) != "":
+                os.makedirs(os.path.dirname(output_path),exist_ok=True)
             torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
             print(">> wav file saved to:", output_path)
             return output_path
@@ -561,11 +565,10 @@ class IndexTTS:
 
 
 if __name__ == "__main__":
-    prompt_wav = "testwav/input.wav"
-    prompt_wav = "testwav/spk_1744181067_1.wav"
-    text="晕 XUAN4 是 一 种 GAN3 觉"
-    text = "There is a vehicle arriving in dock number 7?"
-    text='大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！'
+    prompt_wav="test_data/input.wav"
+    #text="晕 XUAN4 是 一 种 GAN3 觉"
+    #text='大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！'
+    text="There is a vehicle arriving in dock number 7?"
 
     tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", is_fp16=True, use_cuda_kernel=False)
     tts.infer(audio_prompt=prompt_wav, text=text, output_path="gen.wav", verbose=True)
