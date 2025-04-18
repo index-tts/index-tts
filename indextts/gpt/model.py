@@ -465,6 +465,7 @@ class UnifiedVoice(nn.Module):
             n_head=self.heads,
             gradient_checkpointing=False,
             use_cache=True,
+            attn_implementation="sdpa" if torch.cuda.is_available() else None,  # 或使用"sdpa"
         )
         self.inference_model = GPT2InferenceModel(
             gpt_config,
