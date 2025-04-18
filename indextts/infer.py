@@ -502,9 +502,12 @@ class IndexTTS:
                         if self.compile
                         else self.bigvgan.forward
                     )
-                    wav, _ = bigvgan_forward_fn(
-                        latent, auto_conditioning.transpose(1, 2)
-                    )
+                    mel_ref = auto_conditioning.transpose(1, 2)
+                    if verbose:
+                        print(
+                            f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}"
+                        )
+                    wav, _ = bigvgan_forward_fn(latent, mel_ref)
                     if "cuda" in str(self.device) and self.compile:
                         wav = wav.clone()
 
