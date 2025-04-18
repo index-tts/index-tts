@@ -474,54 +474,82 @@ class IndexTTS:
                         all_latents.append(latent)
 
         # bigvgan chunk
-        chunk_size = 2
+        # chunk_size = 2
         all_latents = [all_latents[all_idxs.index(i)] for i in range(len(all_latents))]
-        chunk_latents = [
-            all_latents[i : i + chunk_size]
-            for i in range(0, len(all_latents), chunk_size)
-        ]
-        chunk_length = len(chunk_latents)
         latent_length = len(all_latents)
-        all_latents = None
+        # 直接连接所有latents
+        latent = torch.cat(all_latents, dim=1)
+        all_latents = None  # 释放内存
+
+        # chunk_latents = [
+        #     all_latents[i : i + chunk_size]
+        #     for i in range(0, len(all_latents), chunk_size)
+        # ]
+        # chunk_length = len(chunk_latents)
+        # latent_length = len(all_latents)
+        # all_latents = None
 
         # bigvgan chunk decode
         self._set_gr_progress(0.7, "bigvgan decode...")
         tqdm_progress = tqdm(total=latent_length, desc="bigvgan")
-        for items in chunk_latents:
-            tqdm_progress.update(len(items))
-            latent = torch.cat(items, dim=1)
-            with torch.no_grad():
-                with torch.amp.autocast(
-                    self.device, enabled=self.dtype is not None, dtype=self.dtype
-                ):
-                    # 在调用optimized_forward前添加此行
-                    if "cuda" in str(self.device) and self.compile:
-                        torch.compiler.cudagraph_mark_step_begin()
+        # for items in chunk_latents:
+        #     tqdm_progress.update(len(items))
+        #     latent = torch.cat(items, dim=1)
+        #     with torch.no_grad():
+        #         with torch.amp.autocast(
+        #             self.device, enabled=self.dtype is not None, dtype=self.dtype
+        #         ):
+        #             # 在调用optimized_forward前添加此行
+        #             if "cuda" in str(self.device) and self.compile:
+        #                 torch.compiler.cudagraph_mark_step_begin()
 
-                    m_start_time = time.perf_counter()
-                    bigvgan_forward_fn = (
-                        self.bigvgan.compile_forward
-                        if self.compile
-                        else self.bigvgan.forward
-                    )
-                    mel_ref = auto_conditioning.transpose(1, 2)
-                    if verbose:
-                        print(
-                            f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}"
-                        )
-                    wav, _ = bigvgan_forward_fn(latent, mel_ref)
-                    if "cuda" in str(self.device) and self.compile:
-                        wav = wav.clone()
+        #             m_start_time = time.perf_counter()
+        #             bigvgan_forward_fn = (
+        #                 self.bigvgan.compile_forward
+        #                 if self.compile
+        #                 else self.bigvgan.forward
+        #             )
+        #             mel_ref = auto_conditioning.transpose(1, 2)
+        #             if verbose:
+        #                 print(
+        #                     f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}"
+        #                 )
+        #             wav, _ = bigvgan_forward_fn(latent, mel_ref)
+        #             if "cuda" in str(self.device) and self.compile:
+        #                 wav = wav.clone()
 
-                    bigvgan_time += time.perf_counter() - m_start_time
-                    wav = wav.squeeze(1)
-                    pass
-            wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
-            wavs.append(wav)
+        #             bigvgan_time += time.perf_counter() - m_start_time
+        #             wav = wav.squeeze(1)
+        #             pass
+        #     wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
+        #     wavs.append(wav)
+        with torch.no_grad():
+            with torch.amp.autocast(self.device, enabled=self.dtype is not None, dtype=self.dtype):
+                if "cuda" in str(self.device) and self.compile:
+                    torch.compiler.cudagraph_mark_step_begin()
+                    
+                m_start_time = time.perf_counter()
+                bigvgan_forward_fn = (
+                    self.bigvgan.compile_forward if self.compile else self.bigvgan.forward
+                )
+                mel_ref = auto_conditioning.transpose(1, 2)
+                if verbose:
+                    print(f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}")
+                    
+                wav, _ = bigvgan_forward_fn(latent, mel_ref)
+                
+                if "cuda" in str(self.device) and self.compile:
+                    wav = wav.clone()
+                    
+                bigvgan_time += time.perf_counter() - m_start_time
+                wav = wav.squeeze(1)
+        tqdm_progress.update(1)
+        wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
+        wavs = [wav]  # 使用单个波形而不是多个
 
         # clear cache
         tqdm_progress.close()  # 确保进度条被关闭
-        chunk_latents.clear()
+        # chunk_latents.clear()
         end_time = time.perf_counter()
         self.torch_empty_cache()
 
@@ -537,7 +565,7 @@ class IndexTTS:
         print(f">> bigvgan_time: {bigvgan_time:.2f} seconds")
         print(f">> Total fast inference time: {end_time - start_time:.2f} seconds")
         print(f">> Generated audio length: {wav_length:.2f} seconds")
-        print(f">> [fast] bigvgan chunk_length: {chunk_length}")
+        # print(f">> [fast] bigvgan chunk_length: {chunk_length}")
         print(f">> [fast] batch_num: {all_batch_num} bucket_enable: {bucket_enable}")
         print(f">> [fast] RTF: {(end_time - start_time) / wav_length:.4f}")
 
@@ -633,7 +661,7 @@ if __name__ == "__main__":
         selected_fragments = [script_fragments[i] for i in selected_indices]
 
         # 组合脚本
-        combined_script = " ".join(selected_fragments)
+        combined_script = "。".join(selected_fragments)
 
         return combined_script
 
@@ -686,12 +714,14 @@ if __name__ == "__main__":
         "柴柴_男声",
         "是阿殇啦",
         "JINQQ124_东北话",
+        "简妮特",
+        "仙_男声"
     ]
 
     prompt_file_name = "sample1.mp3"
-    # text="晕 XUAN4 是 一 种 GAN3 觉"
-    text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
-    # text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
+    # # text="晕 XUAN4 是 一 种 GAN3 觉"
+    # text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
+    # # text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
 
     tts = IndexTTS(
         cfg_path="checkpoints/config.yaml",
