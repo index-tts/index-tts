@@ -16,9 +16,6 @@ from indextts.gpt.model import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 from indextts.utils.common import tokenize_by_CJK_char
-from indextts.BigVGAN.alias_free_activation.cuda.activation1d import (
-    FusedAntiAliasActivation,
-)
 from indextts.utils.front import TextNormalizer
 
 import torch._inductor.config
@@ -36,8 +33,6 @@ if torch.backends.mps.is_available():
     # 使用最佳可用的 SDPA 实现
     os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"  # 防止内存碎片
     # PyTorch 2.0+ 会自动为 MPS 选择最优的 SDPA 实现
-
-torch.compiler.allow_in_graph(FusedAntiAliasActivation.apply)
 
 
 class IndexTTS:
@@ -394,11 +389,14 @@ class IndexTTS:
                     if "cuda" in str(self.device) and self.compile:
                         torch.compiler.cudagraph_mark_step_begin()
 
-                    inference_fn = (
-                        self.gpt.inference_speech_optimized
-                        if self.compile
-                        else self.gpt.inference_speech
-                    )
+                    # inference_fn = (
+                    #     self.gpt.inference_speech_optimized
+                    #     if self.compile
+                    #     else self.gpt.inference_speech
+                    # )
+
+                    # 这里compile会拉慢速度。
+                    inference_fn = self.gpt.inference_speech
                     temp_codes = inference_fn(
                         batch_auto_conditioning,
                         batch_text_tokens,
@@ -699,8 +697,8 @@ if __name__ == "__main__":
         cfg_path="checkpoints/config.yaml",
         model_dir="checkpoints",
         is_fp16=True,
-        use_cuda_kernel=False,
-        compile=False,
+        use_cuda_kernel=True,
+        compile=True,
         # device="cpu",
     )
 
@@ -710,8 +708,8 @@ if __name__ == "__main__":
             print(prompt_wav)
             tts.infer_fast(
                 audio_prompt=prompt_wav,
-                text=text,
+                text=script,
                 output_path=f"./outputs//results/{prompt_id}/gen_{script[:2]}_{random.randint(1,200)}_text.wav",
-                verbose=script,
+                verbose=False,
                 prompt_id=prompt_id,
             )
