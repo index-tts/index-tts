@@ -696,20 +696,18 @@ class IndexTTS:
 
 if __name__ == "__main__":
 
-    prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references"
+    prompt_wav_path = "test_path"
 
     prompt_id_list = [
         # "ks_曾鼎全",
         # "QY13323323_清盐",
         # "柴柴_男声",
-        "是阿殇啦",
+        "test_id",
         # "JINQQ124_东北话",
     ]
 
     prompt_file_name = "sample1.mp3"
-    # text="晕 XUAN4 是 一 种 GAN3 觉"
-    # text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
-    text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
+    text="大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可以访问 bilibili studio，相信我，你们也会吃惊的。"
 
     tts = IndexTTS(
         cfg_path="checkpoints/config.yaml",
@@ -725,7 +723,7 @@ if __name__ == "__main__":
             print(prompt_wav)
             tts.infer_fast(
                 audio_prompt=prompt_wav,
-                text=text_2,
+                text=text,
                 output_path=f"./outputs/{prompt_id}_gen_{i}.wav",
                 verbose=False,
             )
