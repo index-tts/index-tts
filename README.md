@@ -20,6 +20,7 @@ Experience **IndexTTS**: Please contact <u>xuanwu@bilibili.com</u> for more deta
 ### Contact
 QQ群：553460296 \
 Discord：https://discord.gg/uT32E7KDmy  \
+简历：indexspeech@bilibili.com  \
 欢迎大家来交流讨论！
 ## 📣 Updates
 
