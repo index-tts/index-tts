@@ -465,7 +465,9 @@ class UnifiedVoice(nn.Module):
             n_head=self.heads,
             gradient_checkpointing=False,
             use_cache=True,
-            attn_implementation="sdpa" if torch.cuda.is_available() else None,  # 或使用"sdpa"
+            attn_implementation=(
+                "eager" if torch.cuda.is_available() else None
+            ),  # 或使用"sdpa"
         )
         self.inference_model = GPT2InferenceModel(
             gpt_config,
@@ -757,7 +759,6 @@ class UnifiedVoice(nn.Module):
         mel_codes_lengths = (
             torch.ceil(wav_lengths / self.mel_length_compression).long() + 1
         )
-
 
         # mel_codes = self.set_mel_padding(mel_codes, mel_codes_lengths)
         mel_codes = self.set_mel_padding_compiled(mel_codes, mel_codes_lengths)
