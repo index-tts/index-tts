@@ -495,6 +495,13 @@ class UnifiedVoice(nn.Module):
                 dtype=torch.float32,
             )
             self.inference_model = self.ds_engine.module.eval()
+        # elif torch.backends.mps.is_available():
+        #     self.inference_model = self.inference_model.to("mps")
+        #     # 对于MPS设备，使用混合精度可能会有帮助
+        #     if half:
+        #         # 注意：MPS目前对float16支持有限，需要谨慎使用
+        #         self.inference_model = self.inference_model.to(torch.float16)
+        #     self.inference_model = self.inference_model.eval()
         else:
             self.inference_model = self.inference_model.eval()
 
@@ -539,24 +546,22 @@ class UnifiedVoice(nn.Module):
             shape 与输入 mel_input_tokens 相同
         """
         batch_size, seq_len = mel_input_tokens.shape
-        
+
         # 只使用需要的长度值
         effective_lengths = mel_lengths[:batch_size]
-        
+
         # 创建位置索引 [B, seq_len]
         position_idx = torch.arange(seq_len, device=mel_input_tokens.device)
         position_idx = position_idx[None, :].expand(batch_size, -1)
-        
+
         # 创建掩码 [B, seq_len]
         mask = position_idx >= effective_lengths[:, None]
-        
+
         # 使用掩码更新 tensor
         mel_input_tokens = torch.where(mask, self.stop_mel_token, mel_input_tokens)
-        
+
         return mel_input_tokens
 
-
-    
     def set_mel_padding(self, mel_input_tokens, mel_lengths):
         """
         Given mel tokens that are derived from a padded audio clip and the actual lengths of each batch element in
@@ -752,24 +757,12 @@ class UnifiedVoice(nn.Module):
             torch.ceil(wav_lengths / self.mel_length_compression).long() + 1
         )
 
-        # mel_codes_copy = mel_codes.clone()
-
-        # print(f"mel_codes.shape: {mel_codes.shape} mel_codes_lengths.shape: {mel_codes_lengths.shape} mel_codes_copy.shape: {mel_codes_copy.shape}")
 
         # mel_codes = self.set_mel_padding(mel_codes, mel_codes_lengths)
         mel_codes = self.set_mel_padding_compiled(mel_codes, mel_codes_lengths)
 
-        # mel_codes_compiled = self.set_mel_padding_compiled(mel_codes_copy, mel_codes_lengths)
-
-        
-
-        # print(f"mel_codes.shape: {mel_codes.shape} mel_codes_compiled.shape: {mel_codes_compiled.shape}")
-
         # text_inputs = self.set_text_padding(text_inputs, text_lengths)
         text_inputs = self.set_text_padding_compiled(text_inputs, text_lengths)
-        # text_inputs_compiled = self.set_text_padding_compiled(text_inputs, text_lengths)
-
-        # print(f"text_inputs.shape: {text_inputs.shape} text_inputs_compiled.shape: {text_inputs_compiled.shape}")
 
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         mel_codes = F.pad(mel_codes, (0, 1), value=self.stop_mel_token)

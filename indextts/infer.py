@@ -28,6 +28,11 @@ if hasattr(torch._inductor.config, "fx_graph_cache"):
     # Experimental feature to reduce compilation times, will be on by default in future
     torch._inductor.config.fx_graph_cache = True
 
+# 在文件顶部或主入口点添加
+if torch.backends.mps.is_available():
+    # 使用最佳可用的 SDPA 实现
+    os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"  # 防止内存碎片
+    # PyTorch 2.0+ 会自动为 MPS 选择最优的 SDPA 实现
 
 class IndexTTS:
     def __init__(
@@ -660,14 +665,14 @@ class IndexTTS:
 
 if __name__ == "__main__":
 
-    prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references/"
+    prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references"
 
     prompt_id_list = [
         # "ks_曾鼎全",
         # "QY13323323_清盐",
         # "柴柴_男声",
-        # "是阿殇啦",
-        "JINQQ124_东北话",
+        "是阿殇啦",
+        # "JINQQ124_东北话",
     ]
 
     prompt_file_name = "sample1.mp3"
