@@ -20,6 +20,7 @@ from indextts.utils.common import tokenize_by_CJK_char
 from indextts.utils.front import TextNormalizer
 
 import torch._inductor.config
+import torch.compiler  # 添加这一行
 
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.triton.unique_kernel_names = True
@@ -43,6 +44,7 @@ class IndexTTS:
         is_fp16=True,
         device=None,
         use_cuda_kernel=None,
+        compile=False,
     ):
         """
         Args:
@@ -78,6 +80,7 @@ class IndexTTS:
         self.model_dir = model_dir
         self.dtype = torch.float16 if self.is_fp16 else None
         self.stop_mel_token = self.cfg.gpt.stop_mel_token
+        self.compile = compile
 
         # Comment-off to load the VQ-VAE model for debugging tokenizer
         #   https://github.com/index-tts/index-tts/issues/34
@@ -149,8 +152,8 @@ class IndexTTS:
         self.normalizer.load()
         print(">> TextNormalizer loaded")
         # 缓存参考音频mel：
-        self.cache_audio_prompt = None
-        self.cache_cond_mel = None
+        self.cache_audio_prompt = []
+        self.cache_cond_mel = {}
         # 进度引用显示（可选）
         self.gr_progress = None
 
@@ -273,9 +276,11 @@ class IndexTTS:
             self.gr_progress(value, desc=desc)
 
     # 快速推理：对于“多句长文本”，可实现至少 2~10 倍以上的速度提升~ （First modified by sunnyboxs 2025-04-16）
-    def infer_fast(self, audio_prompt, text, output_path, verbose=False):
+    def infer_fast(self, audio_prompt, text, output_path, verbose=False, prompt_id=""):
         print(">> start fast inference...")
         self._set_gr_progress(0, "start fast inference...")
+        if not prompt_id:
+            prompt_id = audio_prompt
         if verbose:
             print(f"origin text:{text}")
         start_time = time.perf_counter()
@@ -283,7 +288,10 @@ class IndexTTS:
         print(f"normalized text:{normalized_text}")
 
         # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
-        if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
+        if (
+            self.cache_cond_mel.get(prompt_id, None) is None
+            or prompt_id not in self.cache_audio_prompt
+        ):
             audio, sr = torchaudio.load(audio_prompt)
             audio = torch.mean(audio, dim=0, keepdim=True)
             if audio.shape[0] > 1:
@@ -294,10 +302,11 @@ class IndexTTS:
             if verbose:
                 print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
 
-            self.cache_audio_prompt = audio_prompt
-            self.cache_cond_mel = cond_mel
+            self.cache_audio_prompt.append(prompt_id)
+            self.cache_cond_mel[prompt_id] = cond_mel
         else:
-            cond_mel = self.cache_cond_mel
+            cond_mel = self.cache_cond_mel.get(prompt_id, None)
+            assert cond_mel is not None, f"cache_cond_mel: {prompt_id} is None!!!"
             cond_mel_frame = cond_mel.shape[-1]
             pass
 
@@ -377,7 +386,16 @@ class IndexTTS:
                 with torch.amp.autocast(
                     self.device, enabled=self.dtype is not None, dtype=self.dtype
                 ):
-                    temp_codes = self.gpt.inference_speech_optimized(
+                    # 在调用optimized_forward前添加此行
+                    if "cuda" in str(self.device) and self.compile:
+                        torch.compiler.cudagraph_mark_step_begin()
+
+                    inference_fn = (
+                        self.gpt.inference_speech_optimized
+                        if self.compile
+                        else self.gpt.inference_speech
+                    )
+                    temp_codes = inference_fn(
                         batch_auto_conditioning,
                         batch_text_tokens,
                         cond_mel_lengths=batch_cond_mel_lengths,
@@ -392,6 +410,10 @@ class IndexTTS:
                         repetition_penalty=repetition_penalty,
                         max_generate_length=max_mel_tokens,
                     )
+
+                    if "cuda" in str(self.device) and self.compile:
+                        temp_codes = temp_codes.clone()
+
                     all_batch_codes.append(temp_codes)
             gpt_gen_time += time.perf_counter() - m_start_time
 
@@ -420,7 +442,16 @@ class IndexTTS:
                     with torch.amp.autocast(
                         self.device, enabled=self.dtype is not None, dtype=self.dtype
                     ):
-                        latent = self.gpt.optimized_forward(
+                        # 在调用optimized_forward前添加此行
+                        if "cuda" in str(self.device) and self.compile:
+                            torch.compiler.cudagraph_mark_step_begin()
+
+                        forward_fn = (
+                            self.gpt.optimized_forward
+                            if self.compile
+                            else self.gpt.forward
+                        )
+                        latent = forward_fn(
                             auto_conditioning,
                             text_tokens,
                             torch.tensor(
@@ -434,6 +465,9 @@ class IndexTTS:
                             return_latent=True,
                             clip_inputs=False,
                         )
+                        if "cuda" in str(self.device) and self.compile:
+                            latent = latent.clone()
+
                         gpt_forward_time += time.perf_counter() - m_start_time
                         all_latents.append(latent)
 
@@ -458,10 +492,22 @@ class IndexTTS:
                 with torch.amp.autocast(
                     self.device, enabled=self.dtype is not None, dtype=self.dtype
                 ):
+                    # 在调用optimized_forward前添加此行
+                    if "cuda" in str(self.device) and self.compile:
+                        torch.compiler.cudagraph_mark_step_begin()
+
                     m_start_time = time.perf_counter()
-                    wav, _ = self.bigvgan.inference_forward(
+                    bigvgan_forward_fn = (
+                        self.bigvgan.compile_forward
+                        if self.compile
+                        else self.bigvgan.forward
+                    )
+                    wav, _ = bigvgan_forward_fn(
                         latent, auto_conditioning.transpose(1, 2)
                     )
+                    if "cuda" in str(self.device) and self.compile:
+                        wav = wav.clone()
+
                     bigvgan_time += time.perf_counter() - m_start_time
                     wav = wav.squeeze(1)
                     pass
@@ -508,214 +554,30 @@ class IndexTTS:
             wav_data = wav_data.numpy().T
             return (sampling_rate, wav_data)
 
-    # 原始推理模式
-    def infer(self, audio_prompt, text, output_path, verbose=False):
-        print(">> start inference...")
-        self._set_gr_progress(0, "start inference...")
-        if verbose:
-            print(f"origin text:{text}")
-        start_time = time.perf_counter()
-        normalized_text = self.preprocess_text(text)
-        print(f"normalized text:{normalized_text}")
-
-        # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
-        if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
-            audio, sr = torchaudio.load(audio_prompt)
-            audio = torch.mean(audio, dim=0, keepdim=True)
-            if audio.shape[0] > 1:
-                audio = audio[0].unsqueeze(0)
-            audio = torchaudio.transforms.Resample(sr, 24000)(audio)
-            cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
-            cond_mel_frame = cond_mel.shape[-1]
-            if verbose:
-                print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
-
-            self.cache_audio_prompt = audio_prompt
-            self.cache_cond_mel = cond_mel
-        else:
-            cond_mel = self.cache_cond_mel
-            cond_mel_frame = cond_mel.shape[-1]
-            pass
-
-        auto_conditioning = cond_mel
-
-        sentences = self.split_sentences(normalized_text)
-        if verbose:
-            print("sentences:", sentences)
-
-        top_p = 0.8
-        top_k = 30
-        temperature = 1.0
-        autoregressive_batch_size = 1
-        length_penalty = 0.0
-        num_beams = 3
-        repetition_penalty = 10.0
-        max_mel_tokens = 600
-        sampling_rate = 24000
-        # lang = "EN"
-        # lang = "ZH"
-        wavs = []
-        gpt_gen_time = 0
-        gpt_forward_time = 0
-        bigvgan_time = 0
-
-        for sent in sentences:
-            # sent = " ".join([char for char in sent.upper()]) if lang == "ZH" else sent.upper()
-            cleand_text = tokenize_by_CJK_char(sent)
-            # cleand_text = "他 那 像 HONG3 小 孩 似 的 话 , 引 得 人 们 HONG1 堂 大 笑 , 大 家 听 了 一 HONG3 而 散 ."
-            if verbose:
-                print("cleand_text:", cleand_text)
-
-            text_tokens = torch.tensor(
-                self.tokenizer.EncodeAsIds(cleand_text),
-                dtype=torch.int32,
-                device=self.device,
-            ).unsqueeze(0)
-            # text_tokens = F.pad(text_tokens, (0, 1))  # This may not be necessary.
-            # text_tokens = F.pad(text_tokens, (1, 0), value=0)
-            # text_tokens = F.pad(text_tokens, (0, 1), value=1)
-            if verbose:
-                print(text_tokens)
-                print(
-                    f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}"
-                )
-                # debug tokenizer
-                text_token_syms = self.tokenizer.IdToPiece(text_tokens[0].tolist())
-                print(text_token_syms)
-
-            # text_len = torch.IntTensor([text_tokens.size(1)], device=text_tokens.device)
-            # print(text_len)
-
-            m_start_time = time.perf_counter()
-            with torch.no_grad():
-                with torch.amp.autocast(
-                    self.device, enabled=self.dtype is not None, dtype=self.dtype
-                ):
-                    codes = self.gpt.inference_speech(
-                        auto_conditioning,
-                        text_tokens,
-                        cond_mel_lengths=torch.tensor(
-                            [auto_conditioning.shape[-1]], device=text_tokens.device
-                        ),
-                        # text_lengths=text_len,
-                        do_sample=True,
-                        top_p=top_p,
-                        top_k=top_k,
-                        temperature=temperature,
-                        num_return_sequences=autoregressive_batch_size,
-                        length_penalty=length_penalty,
-                        num_beams=num_beams,
-                        repetition_penalty=repetition_penalty,
-                        max_generate_length=max_mel_tokens,
-                    )
-                gpt_gen_time += time.perf_counter() - m_start_time
-                # codes = codes[:, :-2]
-                code_lens = torch.tensor(
-                    [codes.shape[-1]], device=codes.device, dtype=codes.dtype
-                )
-                if verbose:
-                    print(codes, type(codes))
-                    print(f"codes shape: {codes.shape}, codes type: {codes.dtype}")
-                    print(f"code len: {code_lens}")
-
-                # remove ultra-long silence if exits
-                # temporarily fix the long silence bug.
-                codes, code_lens = self.remove_long_silence(
-                    codes, silent_token=52, max_consecutive=30
-                )
-                if verbose:
-                    print(codes, type(codes))
-                    print(f"fix codes shape: {codes.shape}, codes type: {codes.dtype}")
-                    print(f"code len: {code_lens}")
-
-                m_start_time = time.perf_counter()
-                # latent, text_lens_out, code_lens_out = \
-                with torch.amp.autocast(
-                    self.device, enabled=self.dtype is not None, dtype=self.dtype
-                ):
-                    latent = self.gpt(
-                        auto_conditioning,
-                        text_tokens,
-                        torch.tensor(
-                            [text_tokens.shape[-1]], device=text_tokens.device
-                        ),
-                        codes,
-                        code_lens * self.gpt.mel_length_compression,
-                        cond_mel_lengths=torch.tensor(
-                            [auto_conditioning.shape[-1]], device=text_tokens.device
-                        ),
-                        return_latent=True,
-                        clip_inputs=False,
-                    )
-                    gpt_forward_time += time.perf_counter() - m_start_time
-
-                    m_start_time = time.perf_counter()
-                    wav, _ = self.bigvgan(latent, auto_conditioning.transpose(1, 2))
-                    bigvgan_time += time.perf_counter() - m_start_time
-                    wav = wav.squeeze(1)
-
-                wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
-                print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
-                # wavs.append(wav[:, :-512])
-                wavs.append(wav)
-        end_time = time.perf_counter()
-
-        wav = torch.cat(wavs, dim=1)
-        wav_length = wav.shape[-1] / sampling_rate
-        print(
-            f">> Reference audio length: {cond_mel_frame*256 / sampling_rate:.2f} seconds"
-        )
-        print(f">> gpt_gen_time: {gpt_gen_time:.2f} seconds")
-        print(f">> gpt_forward_time: {gpt_forward_time:.2f} seconds")
-        print(f">> bigvgan_time: {bigvgan_time:.2f} seconds")
-        print(f">> Total inference time: {end_time - start_time:.2f} seconds")
-        print(f">> Generated audio length: {wav_length:.2f} seconds")
-        print(f">> RTF: {(end_time - start_time) / wav_length:.4f}")
-
-        # torchaudio.save(output_path, wav.cpu().type(torch.int16), sampling_rate)
-        # print(">> wav file saved to:", output_path)
-
-        # save audio
-        wav = wav.cpu()  # to cpu
-        if output_path:
-            # 直接保存音频到指定路径中
-            if os.path.isfile(output_path):
-                os.remove(output_path)
-                print(">> remove old wav file:", output_path)
-            if os.path.dirname(output_path) != "":
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
-            print(">> wav file saved to:", output_path)
-            return output_path
-        else:
-            # 返回以符合Gradio的格式要求
-            wav_data = wav.type(torch.int16)
-            wav_data = wav_data.numpy().T
-            return (sampling_rate, wav_data)
-
 
 if __name__ == "__main__":
 
-    prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references"
+    prompt_wav_path = "outputs/upload_references"
 
     prompt_id_list = [
-        # "ks_曾鼎全",
-        # "QY13323323_清盐",
-        # "柴柴_男声",
+        "ks_曾鼎全",
+        "QY13323323_清盐",
+        "柴柴_男声",
         "是阿殇啦",
-        # "JINQQ124_东北话",
+        "JINQQ124_东北话",
     ]
 
     prompt_file_name = "sample1.mp3"
     # text="晕 XUAN4 是 一 种 GAN3 觉"
-    # text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
-    text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
+    text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
+    # text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
 
     tts = IndexTTS(
         cfg_path="checkpoints/config.yaml",
         model_dir="checkpoints",
         is_fp16=True,
         use_cuda_kernel=False,
+        compile=False,
         # device="cpu",
     )
 
@@ -725,7 +587,8 @@ if __name__ == "__main__":
             print(prompt_wav)
             tts.infer_fast(
                 audio_prompt=prompt_wav,
-                text=text_2,
-                output_path=f"./outputs/{prompt_id}_gen_{i}.wav",
+                text=text,
+                output_path=f"./outputs//results/{prompt_id}/gen_{i}_text.wav",
                 verbose=False,
+                prompt_id=prompt_id,
             )
