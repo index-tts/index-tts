@@ -15,7 +15,7 @@ from message.message import TTSMessage, WebsocketMessage
 
 # 匹配标点符号（包括中英文标点）
 pattern = r'(?<=[.!?;。！？；])\s*'
-audioPrompt = "/home/zhuangwj/index-tts/prompts/"
+audioPrompt = "~/index-tts/prompts/"
 tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
 app = FastAPI()
 
