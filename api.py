@@ -152,14 +152,20 @@ def markdown_to_text(markdown_string):
 async def sendMessageToWebsocket(queue: SimpleQueue, websocket: WebSocket):
     while True:
         msg:WebsocketMessage = queue.get(True, 1000)
-        if (msg.type == WebsocketMessage.String):
-            print(msg.text, end='', flush=True)
-            await websocket.send_text(msg.text)
-            await asyncio.sleep(0)
-        elif (msg.type == WebsocketMessage.Blob):
-            await websocket.send_bytes(msg.blob)
-            await asyncio.sleep(0)
-        else:
+        if websocket is None:
+            print("websocket is None or closed")
+            return
+        try:
+            if (msg.type == WebsocketMessage.String):
+                print(msg.text, end='', flush=True)
+                await websocket.send_text(msg.text)
+                await asyncio.sleep(0)
+            elif (msg.type == WebsocketMessage.Blob):
+                await websocket.send_bytes(msg.blob)
+                await asyncio.sleep(0)
+            else:
+                return
+        except RuntimeError:
             return
 
 def ttsInfer(prompt: str, queue: SimpleQueue, wsQueue: SimpleQueue):
@@ -256,3 +262,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         wsMsg = WebsocketMessage(WebsocketMessage.Exit)
         wsQueue.put(wsMsg)
+        websocket = None
