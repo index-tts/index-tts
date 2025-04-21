@@ -1,6 +1,9 @@
 import os
+from queue import SimpleQueue
 import re
 import time
+import io
+from threading import Lock
 from subprocess import CalledProcessError
 
 import numpy as np
@@ -17,11 +20,13 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 from indextts.BigVGAN.models import BigVGAN as Generator
 from indextts.gpt.model import UnifiedVoice
+from indextts.types import PromptCache
 from indextts.utils.checkpoint import load_checkpoint
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 from indextts.utils.common import tokenize_by_CJK_char
 
 from indextts.utils.front import TextNormalizer
+from message.message import WebsocketMessage
 
 class IndexTTS:
     def __init__(
@@ -121,6 +126,9 @@ class IndexTTS:
         self.cache_cond_mel = None
         # 进度引用显示（可选）
         self.gr_progress = None
+        # 音频提示缓存
+        self.promptDict = {}
+        self.promptLock = Lock()
 
     def preprocess_text(self, text):
         # chinese_punctuation = "，。！？；：“”‘’（）【】《》"
@@ -598,6 +606,174 @@ class IndexTTS:
             wav_data = wav.type(torch.int16)
             wav_data = wav_data.numpy().T  
             return (sampling_rate, wav_data)
+    
+    # 原始推理模式，输出到 websocket
+    def inferToWebsocket(self, audio_prompt, text, queue: SimpleQueue, verbose=False):
+        if not os.path.exists(audio_prompt):
+            print(f"Error: 音频提示文件不存在:{audio_prompt}")
+            return
+        print(">> start inference...")
+        if verbose:
+            print(f"origin text:{text}")
+        start_time = time.perf_counter()
+        normalized_text = self.preprocess_text(text)
+        print(f"normalized text:{normalized_text}")
+
+        # 从缓存中获取音频提示
+        cache_prompt:PromptCache = None
+        with self.promptLock:
+            cache_prompt = self.promptDict.get(audio_prompt)
+        # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
+        if cache_prompt is None:
+            audio, sr = torchaudio.load(audio_prompt)
+            audio = torch.mean(audio, dim=0, keepdim=True)
+            if audio.shape[0] > 1:
+                audio = audio[0].unsqueeze(0)
+            audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+            cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
+            cond_mel_frame = cond_mel.shape[-1]
+            if verbose:
+                print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
+            
+            with self.promptLock:
+                self.promptDict[audio_prompt] = PromptCache(audio_prompt, cond_mel)
+        else:
+            # 音频提示命中缓存
+            print(f"音频提示缓存命中{audio_prompt}")
+            cache_prompt.used_at = time.time()
+            cond_mel = cache_prompt.cond_mel
+            cond_mel_frame = cond_mel.shape[-1]
+            pass
+        
+        # 清除音频提示缓存缓存中过期的内容, 1小时
+        with self.promptLock:
+            ts = time.time()
+            keys = list(self.promptDict.keys())
+            for key in keys:
+                cache = self.promptDict[key]
+                if (cache.used_at + 1800) < ts:
+                    del self.promptDict[key]
+                    print(f"删除音频提示缓存{key}")
+                    if text.find("Default_") < 0:
+                        try:
+                            os.remove(key)
+                            print(f"文件 {key} 已删除")
+                        except FileNotFoundError:
+                            print(f"文件 {key} 不存在")
+                        except PermissionError:
+                            print(f"没有权限删除文件 {key}")
+                        except OSError as e:
+                            print(f"删除文件时出错: {e}")
+
+        auto_conditioning = cond_mel
+
+        sentences = self.split_sentences(normalized_text)
+        if verbose:
+            print("sentences:", sentences)
+
+        top_p = .8
+        top_k = 30
+        temperature = 1.0
+        autoregressive_batch_size = 1
+        length_penalty = 0.0
+        num_beams = 3
+        repetition_penalty = 10.0
+        max_mel_tokens = 600
+        sampling_rate = 24000
+        # lang = "EN"
+        # lang = "ZH"
+        gpt_gen_time = 0
+        gpt_forward_time = 0
+        bigvgan_time = 0
+
+        for sent in sentences:
+            # sent = " ".join([char for char in sent.upper()]) if lang == "ZH" else sent.upper()
+            cleand_text = tokenize_by_CJK_char(sent)
+            # cleand_text = "他 那 像 HONG3 小 孩 似 的 话 , 引 得 人 们 HONG1 堂 大 笑 , 大 家 听 了 一 HONG3 而 散 ."
+            if verbose:
+                print("cleand_text:", cleand_text)
+
+            text_tokens = torch.tensor(self.tokenizer.EncodeAsIds(cleand_text),dtype=torch.int32, device=self.device).unsqueeze(0)
+            # text_tokens = F.pad(text_tokens, (0, 1))  # This may not be necessary.
+            # text_tokens = F.pad(text_tokens, (1, 0), value=0)
+            # text_tokens = F.pad(text_tokens, (0, 1), value=1)
+            if verbose:
+                print(text_tokens)
+                print(f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}")
+                # debug tokenizer
+                text_token_syms = self.tokenizer.IdToPiece(text_tokens[0].tolist())
+                print(text_token_syms)
+
+            # text_len = torch.IntTensor([text_tokens.size(1)], device=text_tokens.device)
+            # print(text_len)
+
+            m_start_time = time.perf_counter()
+            with torch.no_grad():
+                with torch.amp.autocast(self.device, enabled=self.dtype is not None, dtype=self.dtype):
+                    codes = self.gpt.inference_speech(auto_conditioning, text_tokens,
+                                                        cond_mel_lengths=torch.tensor([auto_conditioning.shape[-1]],
+                                                                                      device=text_tokens.device),
+                                                        # text_lengths=text_len,
+                                                        do_sample=True,
+                                                        top_p=top_p,
+                                                        top_k=top_k,
+                                                        temperature=temperature,
+                                                        num_return_sequences=autoregressive_batch_size,
+                                                        length_penalty=length_penalty,
+                                                        num_beams=num_beams,
+                                                        repetition_penalty=repetition_penalty,
+                                                        max_generate_length=max_mel_tokens)
+                gpt_gen_time += time.perf_counter() - m_start_time
+                #codes = codes[:, :-2]
+                code_lens = torch.tensor([codes.shape[-1]], device=codes.device, dtype=codes.dtype)
+                if verbose:
+                    print(codes, type(codes))
+                    print(f"codes shape: {codes.shape}, codes type: {codes.dtype}")
+                    print(f"code len: {code_lens}")
+
+                # remove ultra-long silence if exits
+                # temporarily fix the long silence bug.
+                codes, code_lens = self.remove_long_silence(codes, silent_token=52, max_consecutive=30)
+                if verbose:
+                    print(codes, type(codes))
+                    print(f"fix codes shape: {codes.shape}, codes type: {codes.dtype}")
+                    print(f"code len: {code_lens}")
+
+                m_start_time = time.perf_counter()
+                # latent, text_lens_out, code_lens_out = \
+                with torch.amp.autocast(self.device, enabled=self.dtype is not None, dtype=self.dtype):
+                    latent = \
+                        self.gpt(auto_conditioning, text_tokens,
+                                    torch.tensor([text_tokens.shape[-1]], device=text_tokens.device), codes,
+                                    code_lens*self.gpt.mel_length_compression,
+                                    cond_mel_lengths=torch.tensor([auto_conditioning.shape[-1]], device=text_tokens.device),
+                                    return_latent=True, clip_inputs=False)
+                    gpt_forward_time += time.perf_counter() - m_start_time
+
+                    m_start_time = time.perf_counter()
+                    wav, _ = self.bigvgan(latent, auto_conditioning.transpose(1, 2))
+                    bigvgan_time += time.perf_counter() - m_start_time
+                    wav = wav.squeeze(1)
+
+                wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
+                print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
+                # save audio
+                wav = wav.cpu() # to cpu
+                buffer = io.BytesIO()
+                torchaudio.save(buffer, wav.type(torch.int16), sampling_rate, format='wav')
+                # 获取字节数据
+                audio_bytes = buffer.getvalue()
+                msg = WebsocketMessage(WebsocketMessage.Blob)
+                msg.blob = audio_bytes
+                queue.put(msg)
+
+        end_time = time.perf_counter()
+
+        print(f">> Reference audio length: {cond_mel_frame*256 / sampling_rate:.2f} seconds")
+        print(f">> gpt_gen_time: {gpt_gen_time:.2f} seconds")
+        print(f">> gpt_forward_time: {gpt_forward_time:.2f} seconds")
+        print(f">> bigvgan_time: {bigvgan_time:.2f} seconds")
+        print(f">> Total inference time: {end_time - start_time:.2f} seconds")
 
 
 if __name__ == "__main__":
