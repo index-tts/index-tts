@@ -11,6 +11,10 @@ from torch.nn.utils.rnn import pad_sequence
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 from indextts.BigVGAN.models import BigVGAN as Generator
 from indextts.gpt.model import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
@@ -184,6 +188,20 @@ class IndexTTS:
         return [
             sentence.strip() for sentence in sentences if sentence.strip() and sentence.strip() not in {"'", ".", ","}
         ]
+
+    def bucket_sentences(self, sentences, enable):
+        """
+        Sentence data bucketing
+        """
+        max_len = max(len(s) for s in sentences)
+        half = max_len // 2
+        outputs = [[],[]]
+        for idx, sent in enumerate(sentences):
+            if enable == False or len(sent) <= half:
+                outputs[0].append({"idx":idx,"sent":sent})
+            else:
+                outputs[1].append({"idx":idx,"sent":sent})
+        return [item for item in outputs if item]
         
     def bucket_sentences(self, sentences, enable):
         """
@@ -287,7 +305,6 @@ class IndexTTS:
         gpt_gen_time = 0
         gpt_forward_time = 0
         bigvgan_time = 0
-
 
         # text processing
         all_text_tokens = []
