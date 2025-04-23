@@ -279,8 +279,97 @@ class IndexTTS:
         if self.gr_progress is not None:
             self.gr_progress(value, desc=desc)
 
+    # 添加新方法到IndexTTS类中
+
+    def process_audio_prompts(
+        self,
+        audio_prompts,
+        prompt_id="",
+        verbose=False,
+        fusion_method="average",
+        weights=None,
+    ):
+        """
+        处理参考音频，提取并可能融合多个音频的Mel特征
+
+        Args:
+            audio_prompts: 单个音频路径字符串或多个音频路径的列表
+            prompt_id: 缓存标识符，如未提供则使用第一个音频路径
+            verbose: 是否显示详细信息
+            fusion_method: 融合方法，"average"或"weighted"
+            weights: 多个音频的权重列表（用于weighted融合）
+
+        Returns:
+            tuple: (cond_mel, cond_mel_frame) - 条件Mel特征及其帧数
+        """
+        # 确保audio_prompts是列表格式
+        if isinstance(audio_prompts, str):
+            audio_prompts = [audio_prompts]
+
+        # 确保有prompt_id
+        if not prompt_id:
+            prompt_id = audio_prompts[0]  # 使用第一个音频路径作为默认ID
+
+        # 检查缓存
+        cache_key = f"{prompt_id}_{fusion_method}"
+        if (
+            self.cache_cond_mel.get(cache_key, None) is None
+            or cache_key not in self.cache_audio_prompt
+        ):
+            if verbose:
+                print(f"处理音频样本: {audio_prompts}")
+
+            # 处理所有音频文件
+            processed_audios = []
+            for audio_path in audio_prompts:
+                audio, sr = torchaudio.load(audio_path)
+                audio = torch.mean(audio, dim=0, keepdim=True)
+                if audio.shape[0] > 1:
+                    audio = audio[0].unsqueeze(0)
+                audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+                processed_audios.append(audio)
+
+            # 使用MelSpectrogramFeatures同时处理所有音频并融合
+            if len(processed_audios) == 1:
+                cond_mel = MelSpectrogramFeatures()(processed_audios[0]).to(self.device)
+            else:
+                # 使用融合功能处理多个音频
+                cond_mel = MelSpectrogramFeatures()(
+                    processed_audios, weights=weights, fusion_method=fusion_method
+                ).to(self.device)
+
+            cond_mel_frame = cond_mel.shape[-1]
+            if verbose:
+                print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
+                if len(processed_audios) > 1:
+                    print(f"融合方法: {fusion_method}")
+                    if weights:
+                        print(f"融合权重: {weights}")
+
+            # 更新缓存
+            self.cache_audio_prompt.append(cache_key)
+            self.cache_cond_mel[cache_key] = cond_mel
+        else:
+            # 使用缓存数据
+            cond_mel = self.cache_cond_mel.get(cache_key, None)
+            assert cond_mel is not None, f"cache_cond_mel: {cache_key} is None!!!"
+            cond_mel_frame = cond_mel.shape[-1]
+            if verbose:
+                print(f"使用缓存的音频特征: {cache_key}")
+
+        return cond_mel, cond_mel_frame
+
     # 快速推理：对于“多句长文本”，可实现至少 2~10 倍以上的速度提升~ （First modified by sunnyboxs 2025-04-16）
-    def infer_fast(self, audio_prompt, text, output_path, verbose=False, prompt_id=""):
+    def infer_fast(
+        self,
+        audio_prompt,
+        text,
+        output_path,
+        verbose=False,
+        prompt_id="",
+        fusion_method="average",
+        weights=None,
+    ):
         print(">> start fast inference...")
         self._set_gr_progress(0, "start fast inference...")
         if not prompt_id:
@@ -291,30 +380,15 @@ class IndexTTS:
         normalized_text = self.preprocess_text(text)
         print(f"normalized text:{normalized_text}")
 
-        # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
-        if (
-            self.cache_cond_mel.get(prompt_id, None) is None
-            or prompt_id not in self.cache_audio_prompt
-        ):
-            audio, sr = torchaudio.load(audio_prompt)
-            audio = torch.mean(audio, dim=0, keepdim=True)
-            if audio.shape[0] > 1:
-                audio = audio[0].unsqueeze(0)
-            audio = torchaudio.transforms.Resample(sr, 24000)(audio)
-            cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
-            cond_mel_frame = cond_mel.shape[-1]
-            if verbose:
-                print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
+        # 使用新方法处理参考音频
+        auto_conditioning, cond_mel_frame = self.process_audio_prompts(
+            audio_prompt,
+            prompt_id=prompt_id,
+            verbose=verbose,
+            fusion_method=fusion_method,
+            weights=weights,
+        )
 
-            self.cache_audio_prompt.append(prompt_id)
-            self.cache_cond_mel[prompt_id] = cond_mel
-        else:
-            cond_mel = self.cache_cond_mel.get(prompt_id, None)
-            assert cond_mel is not None, f"cache_cond_mel: {prompt_id} is None!!!"
-            cond_mel_frame = cond_mel.shape[-1]
-            pass
-
-        auto_conditioning = cond_mel
         cond_mel_lengths = torch.tensor([cond_mel_frame], device=self.device)
 
         # text_tokens
@@ -348,9 +422,7 @@ class IndexTTS:
             all_text_tokens.append(temp_tokens)
             for item in sentences:
                 sent = item["sent"]
-                # sent = " ".join([char for char in sent.upper()]) if lang == "ZH" else sent.upper()
                 cleand_text = tokenize_by_CJK_char(sent)
-                # cleand_text = "他 那 像 HONG3 小 孩 似 的 话 , 引 得 人 们 HONG1 堂 大 笑 , 大 家 听 了 一 HONG3 而 散 ."
                 if verbose:
                     print("cleand_text:", cleand_text)
 
@@ -359,9 +431,6 @@ class IndexTTS:
                     dtype=torch.int32,
                     device=self.device,
                 ).unsqueeze(0)
-                # text_tokens = F.pad(text_tokens, (0, 1))  # This may not be necessary.
-                # text_tokens = F.pad(text_tokens, (1, 0), value=0)
-                # text_tokens = F.pad(text_tokens, (0, 1), value=1)
                 if verbose:
                     print(text_tokens)
                     print(
@@ -390,16 +459,6 @@ class IndexTTS:
                 with torch.amp.autocast(
                     self.device, enabled=self.dtype is not None, dtype=self.dtype
                 ):
-                    # 在调用optimized_forward前添加此行
-                    if "cuda" in str(self.device) and self.compile:
-                        torch.compiler.cudagraph_mark_step_begin()
-
-                    # inference_fn = (
-                    #     self.gpt.inference_speech_optimized
-                    #     if self.compile
-                    #     else self.gpt.inference_speech
-                    # )
-
                     # 这里compile会拉慢速度，所以不使用compile
                     inference_fn = self.gpt.inference_speech
                     temp_codes = inference_fn(
@@ -555,7 +614,7 @@ class IndexTTS:
                     wav = wav.clone()
 
                 bigvgan_time += time.perf_counter() - m_start_time
-                wav = wav.squeeze(1).detach().cpu() # 立刻转移到cpu 来减少 显存消耗
+                wav = wav.squeeze(1).detach().cpu()  # 立刻转移到cpu 来减少 显存消耗
         tqdm_progress.update(1)
         wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
         wavs = [wav]  # 使用单个波形而不是多个

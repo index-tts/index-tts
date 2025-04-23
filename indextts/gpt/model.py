@@ -834,49 +834,6 @@ class UnifiedVoice(nn.Module):
         loss_mel = F.cross_entropy(mel_logits, mel_targets.long())
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
-    # 在UnifiedVoice类中添加这个新方法
-    @torch.compile(
-        fullgraph=False,
-        backend="inductor" if torch.cuda.is_available() else "aot_eager",
-        mode="reduce-overhead" if torch.cuda.is_available() else None,
-    )
-    def prepare_inference_inputs(
-        self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None
-    ):
-        """
-        优化的输入预处理函数，专门为torch.compile设计，处理推理过程中的嵌入计算部分
-
-        Args:
-            speech_conditioning_latent: 语音条件输入特征，通常是参考音频的mel谱图
-            text_inputs: 文本输入tokens
-            cond_mel_lengths: 条件mel长度 (可选)
-
-        Returns:
-            tuple: (
-                嵌入向量,
-                文本输入设备,
-                填充的文本tokens (用于后续处理)
-            )
-        """
-        # 文本输入处理
-        text_inputs_padded = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
-        text_inputs_aligned, _ = self.build_aligned_inputs_and_targets(
-            text_inputs_padded, self.start_text_token, self.stop_text_token
-        )
-        text_emb = self.text_embedding(text_inputs_aligned) + self.text_pos_embedding(
-            text_inputs_aligned
-        )
-
-        # 语音条件处理
-        speech_conds = self.get_conditioning(
-            speech_conditioning_latent, cond_mel_lengths
-        )
-
-        # 组合嵌入
-        combined_emb = torch.cat([speech_conds, text_emb], dim=1)
-
-        return combined_emb, text_inputs.device, text_inputs_aligned
-
     def inference_speech(
         self,
         speech_conditioning_latent,
@@ -950,71 +907,178 @@ class UnifiedVoice(nn.Module):
             num_return_sequences=num_return_sequences,
             **hf_generate_kwargs,
         )
-        return gen[:, trunc_index:]
 
-    def inference_speech_optimized(
+        result = gen[:, trunc_index:]
+        print(f"self.inference_model.generate result: {gen}")
+        print(f"inference_speech result: {result}")
+        return result
+
+    def inference_speech_streaming(
         self,
         speech_conditioning_latent,
         text_inputs,
         cond_mel_lengths=None,
         input_tokens=None,
-        num_return_sequences=1,
         max_generate_length=None,
-        typical_sampling=False,
-        typical_mass=0.9,
-        **hf_generate_kwargs,
+        temperature=1.0,
+        top_k=0,
+        top_p=0.0,
+        typical_p=1.0,
     ):
         """
-        使用torch.compile优化的语音推理方法
+        流式语音推理方法，返回生成器以逐步产生音频tokens
+
+        Args:
+            speech_conditioning_latent: 语音条件输入特征
+            text_inputs: 文本输入tokens
+            cond_mel_lengths: 条件mel长度 (可选)
+            input_tokens: 可选的已生成token作为继续生成的起点
+            max_generate_length: 生成的最大token数量
+            temperature: 采样温度
+            top_k: top-k 采样参数
+            top_p: nucleus 采样参数
+            typical_p: typical 采样参数
+
+        Yields:
+            next_token: 下一个生成的token
         """
         # 使用编译后的函数处理输入
-        emb, device, text_inputs_aligned = self.prepare_inference_inputs(
-            speech_conditioning_latent, text_inputs, cond_mel_lengths
+        text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
+        text_inputs, _ = self.build_aligned_inputs_and_targets(
+            text_inputs, self.start_text_token, self.stop_text_token
+        )
+        text_emb = self.text_embedding(text_inputs) + self.text_pos_embedding(
+            text_inputs
         )
 
-        # 存储嵌入用于推理模型
+        speech_conditioning_latent = self.get_conditioning(
+            speech_conditioning_latent, cond_mel_lengths
+        )
+        conds = speech_conditioning_latent
+        emb = torch.cat([conds, text_emb], dim=1)
         self.inference_model.store_mel_emb(emb)
 
-        # 创建假输入，+1 是为了start_audio_token
-        fake_inputs = torch.full(
-            (emb.shape[0], emb.shape[1] + 1),
-            fill_value=1,
-            dtype=torch.long,
-            device=device,
-        )
-
-        fake_inputs[:, -1] = self.start_mel_token
-        trunc_index = fake_inputs.shape[1]
-        if input_tokens is None:
-            inputs = fake_inputs
-        else:
-            assert (
-                num_return_sequences % input_tokens.shape[0] == 0
-            ), "The number of return sequences must be divisible by the number of input sequences"
-            fake_inputs = fake_inputs.repeat(num_return_sequences, 1)
-            input_tokens = input_tokens.repeat(
-                num_return_sequences // input_tokens.shape[0], 1
-            )
-            inputs = torch.cat([fake_inputs, input_tokens], dim=1)
-
-        logits_processor = (
-            LogitsProcessorList([TypicalLogitsWarper(mass=typical_mass)])
-            if typical_sampling
-            else LogitsProcessorList()
-        )
+        # 设置最大生成长度
         max_length = (
-            trunc_index + self.max_mel_tokens - 1
+            self.max_mel_tokens - 1
             if max_generate_length is None
-            else trunc_index + max_generate_length
+            else max_generate_length
         )
-        gen = self.inference_model.generate(
-            inputs,
-            bos_token_id=self.start_mel_token,
-            pad_token_id=self.stop_mel_token,
-            eos_token_id=self.stop_mel_token,
-            max_length=max_length,
-            logits_processor=logits_processor,
-            num_return_sequences=num_return_sequences,
-            **hf_generate_kwargs,
+
+        # 创建初始输入
+        if input_tokens is None:
+            input_ids = torch.full(
+                (emb.shape[0], 1),
+                fill_value=self.start_mel_token,
+                dtype=torch.long,
+                device=text_inputs.device,
+            )
+        else:
+            # 使用提供的tokens继续生成
+            input_ids = torch.cat(
+                [
+                    torch.full(
+                        (input_tokens.shape[0], 1),
+                        fill_value=self.start_mel_token,
+                        dtype=torch.long,
+                        device=input_tokens.device,
+                    ),
+                    input_tokens,
+                ],
+                dim=1,
+            )
+
+        # 创建注意力掩码
+        attention_mask = torch.ones(
+            (input_ids.shape[0], emb.shape[1] + input_ids.shape[1]),
+            dtype=torch.long,
+            device=input_ids.device,
         )
-        return gen[:, trunc_index:]
+
+        # 初始化past_key_values为None
+        past_key_values = None
+
+        # 追踪总生成的token数量
+        total_generated = 0
+
+        # 生成循环
+        while total_generated < max_length:
+            # 准备logits处理器
+            logits_processor = LogitsProcessorList()
+            if typical_p < 1.0:
+                logits_processor.append(TypicalLogitsWarper(mass=typical_p))
+
+            # 模型前向传播
+            outputs = self.inference_model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                past_key_values=past_key_values,
+                use_cache=True,
+                return_dict=True,
+            )
+
+            # 获取logits并处理
+            next_token_logits = outputs.logits[:, -1, :]
+
+            # 应用温度缩放
+            if temperature > 0:
+                next_token_logits = next_token_logits / temperature
+
+            # 应用logits处理器
+            if logits_processor:
+                next_token_logits = logits_processor(input_ids, next_token_logits)
+
+            # 应用top-k过滤
+            if top_k > 0:
+                indices_to_remove = (
+                    next_token_logits
+                    < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                )
+                next_token_logits[indices_to_remove] = -float("Inf")
+
+            # 应用top-p (nucleus) 采样
+            if top_p > 0.0:
+                sorted_logits, sorted_indices = torch.sort(
+                    next_token_logits, descending=True
+                )
+                cumulative_probs = torch.cumsum(
+                    F.softmax(sorted_logits, dim=-1), dim=-1
+                )
+
+                # 移除累积概率超过阈值的token
+                sorted_indices_to_remove = cumulative_probs > top_p
+                # 保留第一个token
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                    ..., :-1
+                ].clone()
+                sorted_indices_to_remove[..., 0] = 0
+
+                # 应用掩码到原始logits
+                indices_to_remove = torch.zeros_like(
+                    next_token_logits, dtype=torch.bool
+                ).scatter_(-1, sorted_indices, sorted_indices_to_remove)
+                next_token_logits[indices_to_remove] = -float("Inf")
+
+            # 采样下一个token
+            probs = F.softmax(next_token_logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+
+            # 更新past_key_values用于下一次迭代
+            past_key_values = outputs.past_key_values
+
+            # 产生当前token
+            token_id = next_token.item()
+            yield token_id
+
+            # 如果生成了结束token，结束生成
+            if token_id == self.stop_mel_token:
+                break
+
+            # 更新输入为当前生成的token
+            input_ids = next_token
+
+            # 扩展注意力掩码
+            attention_mask = F.pad(attention_mask, (0, 1), value=1)
+
+            # 增加计数
+            total_generated += 1
