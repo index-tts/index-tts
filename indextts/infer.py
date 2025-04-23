@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -231,20 +232,18 @@ class IndexTTS:
             if sentence.strip() and sentence.strip() not in {"'", ".", ","}
         ]
 
-    
-        
     def bucket_sentences(self, sentences, enable):
         """
         Sentence data bucketing
         """
         max_len = max(len(s) for s in sentences)
         half = max_len // 2
-        outputs = [[],[]]
+        outputs = [[], []]
         for idx, sent in enumerate(sentences):
             if enable == False or len(sent) <= half:
-                outputs[0].append({"idx":idx,"sent":sent})
+                outputs[0].append({"idx": idx, "sent": sent})
             else:
-                outputs[1].append({"idx":idx,"sent":sent})
+                outputs[1].append({"idx": idx, "sent": sent})
         return [item for item in outputs if item]
 
     def pad_tokens_cat(self, tokens):
@@ -401,7 +400,7 @@ class IndexTTS:
                     #     else self.gpt.inference_speech
                     # )
 
-                    # 这里compile会拉慢速度。
+                    # 这里compile会拉慢速度，所以不使用compile
                     inference_fn = self.gpt.inference_speech
                     temp_codes = inference_fn(
                         batch_auto_conditioning,
@@ -529,26 +528,34 @@ class IndexTTS:
         #             pass
         #     wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
         #     wavs.append(wav)
+
+        # 将所有bigvgan的解码合并到一起进行
         with torch.no_grad():
-            with torch.amp.autocast(self.device, enabled=self.dtype is not None, dtype=self.dtype):
+            with torch.amp.autocast(
+                self.device, enabled=self.dtype is not None, dtype=self.dtype
+            ):
                 if "cuda" in str(self.device) and self.compile:
                     torch.compiler.cudagraph_mark_step_begin()
-                    
+
                 m_start_time = time.perf_counter()
                 bigvgan_forward_fn = (
-                    self.bigvgan.compile_forward if self.compile else self.bigvgan.forward
+                    self.bigvgan.compile_forward
+                    if self.compile
+                    else self.bigvgan.forward
                 )
                 mel_ref = auto_conditioning.transpose(1, 2)
                 if verbose:
-                    print(f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}")
-                    
+                    print(
+                        f"latent shape: {latent.shape}, mel_ref shape: {mel_ref.shape}"
+                    )
+
                 wav, _ = bigvgan_forward_fn(latent, mel_ref)
-                
+
                 if "cuda" in str(self.device) and self.compile:
                     wav = wav.clone()
-                    
+
                 bigvgan_time += time.perf_counter() - m_start_time
-                wav = wav.squeeze(1)
+                wav = wav.squeeze(1).detach().cpu() # 立刻转移到cpu 来减少 显存消耗
         tqdm_progress.update(1)
         wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
         wavs = [wav]  # 使用单个波形而不是多个
@@ -721,7 +728,7 @@ if __name__ == "__main__":
         "是阿殇啦",
         "JINQQ124_东北话",
         "简妮特",
-        "仙_男声"
+        "仙_男声",
     ]
 
     prompt_file_name = "sample1.mp3"
