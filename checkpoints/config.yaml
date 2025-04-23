@@ -19,6 +19,7 @@ gpt:
     use_mel_codes_as_input: true
     mel_length_compression: 1024
     layers: 20
+    activation_function: "gelu_pytorch_tanh"
     number_text_tokens: 12000
     number_mel_codes: 8194
     start_mel_token: 8192

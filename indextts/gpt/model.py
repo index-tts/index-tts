@@ -256,7 +256,13 @@ class LearnedPositionEmbeddings(nn.Module):
 
 
 def build_hf_gpt_transformer(
-    layers, model_dim, heads, max_mel_seq_len, max_text_seq_len, checkpointing
+    layers,
+    model_dim,
+    heads,
+    max_mel_seq_len,
+    max_text_seq_len,
+    checkpointing,
+    activation_function,
 ):
     """
     GPT-2 implemented by the HuggingFace library.
@@ -270,6 +276,7 @@ def build_hf_gpt_transformer(
         n_embd=model_dim,
         n_layer=layers,
         n_head=heads,
+        activation_function=activation_function or "gelu_new",
         gradient_checkpointing=checkpointing,
         use_cache=not checkpointing,
     )
@@ -338,6 +345,7 @@ class UnifiedVoice(nn.Module):
         use_mel_codes_as_input=True,
         checkpointing=True,
         types=1,
+        activation_function=None,
         condition_num_latent=32,
         condition_type="perceiver",
         condition_module=None,
@@ -431,6 +439,7 @@ class UnifiedVoice(nn.Module):
             self.max_mel_tokens + 2 + self.max_conditioning_inputs,
             self.max_text_tokens + 2,
             checkpointing,
+            activation_function,
         )
         if train_solo_embeddings:
             self.mel_solo_embedding = nn.Parameter(
