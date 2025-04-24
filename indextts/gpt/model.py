@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from transformers import GPT2Config, GPT2PreTrainedModel, LogitsProcessorList
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
-
+from indextts.gpt.mel_streamer import TokenStreamer
 from indextts.gpt.conformer_encoder import ConformerEncoder
 from indextts.gpt.perceiver import PerceiverResampler
 from indextts.utils.arch_util import AttentionBlock
@@ -156,6 +156,7 @@ class GPT2InferenceModel(GPT2PreTrainedModel):
             emb = emb + self.text_pos_embedding.get_fixed_embedding(
                 attention_mask.shape[1] - mel_len, attention_mask.device
             )
+
         transformer_outputs = self.transformer(
             inputs_embeds=emb,
             past_key_values=past_key_values,
@@ -897,6 +898,29 @@ class UnifiedVoice(nn.Module):
             if max_generate_length is None
             else trunc_index + max_generate_length
         )
+
+        print(f"self.inference_model.generate inputs: {inputs}")
+
+        print(f"inputs.dtype: {inputs.dtype}")
+
+        # 检查是否在 CUDA 上下文中
+        device = inputs.device
+        device_type = device.type  # 'cuda' 或 'cpu'
+
+        # 获取当前的 autocast 状态
+        # 注意：这是正确的方法，我们直接使用 is_autocast_enabled 函数
+        is_enabled = torch.is_autocast_enabled(device_type)
+        # 获取当前的 autocast dtype
+        if is_enabled:
+            current_dtype = torch.get_autocast_dtype(device_type)
+        else:
+            # 默认值
+            current_dtype = torch.float32
+
+        print(
+            f"当前 autocast 状态: enabled={is_enabled}, dtype={current_dtype}, device_type={device_type}"
+        )
+
         gen = self.inference_model.generate(
             inputs,
             bos_token_id=self.start_mel_token,
@@ -913,36 +937,46 @@ class UnifiedVoice(nn.Module):
         print(f"inference_speech result: {result}")
         return result
 
-    def inference_speech_streaming(
+    def inference_speech_stream(
         self,
         speech_conditioning_latent,
         text_inputs,
         cond_mel_lengths=None,
         input_tokens=None,
+        num_return_sequences=1,
         max_generate_length=None,
-        temperature=1.0,
-        top_k=0,
-        top_p=0.0,
-        typical_p=1.0,
+        typical_sampling=False,
+        typical_mass=0.9,
+        **hf_generate_kwargs,
     ):
         """
-        流式语音推理方法，返回生成器以逐步产生音频tokens
+        流式生成语音的 Mel 编码，返回一个迭代器，每次产生新的 Mel 编码块。
 
-        Args:
-            speech_conditioning_latent: 语音条件输入特征
-            text_inputs: 文本输入tokens
-            cond_mel_lengths: 条件mel长度 (可选)
-            input_tokens: 可选的已生成token作为继续生成的起点
-            max_generate_length: 生成的最大token数量
-            temperature: 采样温度
-            top_k: top-k 采样参数
-            top_p: nucleus 采样参数
-            typical_p: typical 采样参数
+        与 inference_speech 不同，此方法不会等待整个生成过程完成，而是在生成过程中
+        逐步返回生成的 Mel 编码块。这对于实时应用非常有用，可以在生成过程中开始处理或播放语音。
 
-        Yields:
-            next_token: 下一个生成的token
+        参数:
+            speech_conditioning_latent: 语音条件潜向量
+            text_inputs: 文本输入 token
+            cond_mel_lengths: 条件 mel 的长度
+            input_tokens: 初始输入的 token
+            num_return_sequences: 返回序列的数量
+            max_generate_length: 最大生成长度
+            typical_sampling: 是否使用 typical sampling
+            typical_mass: typical sampling 的参数
+            **hf_generate_kwargs: 其他传递给 huggingface generate 的参数
+
+        返回:
+            iterator: 每次产生新的 Mel 编码块的迭代器。对于批量生成，每个项目是形状为 [batch_size, seq_len] 的列表。
+            对于单一样本生成，每个项目是形状为 [seq_len] 的列表。
         """
-        # 使用编译后的函数处理输入
+        # 创建 streamer
+        streamer = TokenStreamer(
+            start_mel_token=self.start_mel_token,
+            stop_mel_token=self.stop_mel_token,
+        )
+
+        # 准备生成过程，这部分与 inference_speech 相同
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         text_inputs, _ = self.build_aligned_inputs_and_targets(
             text_inputs, self.start_text_token, self.stop_text_token
@@ -958,127 +992,116 @@ class UnifiedVoice(nn.Module):
         emb = torch.cat([conds, text_emb], dim=1)
         self.inference_model.store_mel_emb(emb)
 
-        # 设置最大生成长度
-        max_length = (
-            self.max_mel_tokens - 1
-            if max_generate_length is None
-            else max_generate_length
-        )
-
-        # 创建初始输入
-        if input_tokens is None:
-            input_ids = torch.full(
-                (emb.shape[0], 1),
-                fill_value=self.start_mel_token,
-                dtype=torch.long,
-                device=text_inputs.device,
-            )
-        else:
-            # 使用提供的tokens继续生成
-            input_ids = torch.cat(
-                [
-                    torch.full(
-                        (input_tokens.shape[0], 1),
-                        fill_value=self.start_mel_token,
-                        dtype=torch.long,
-                        device=input_tokens.device,
-                    ),
-                    input_tokens,
-                ],
-                dim=1,
-            )
-
-        # 创建注意力掩码
-        attention_mask = torch.ones(
-            (input_ids.shape[0], emb.shape[1] + input_ids.shape[1]),
+        # +1 for the start_audio_token
+        fake_inputs = torch.full(
+            (
+                emb.shape[0],
+                emb.shape[1] + 1,
+            ),
+            fill_value=1,
             dtype=torch.long,
-            device=input_ids.device,
+            device=text_inputs.device,
         )
 
-        # 初始化past_key_values为None
-        past_key_values = None
+        fake_inputs[:, -1] = self.start_mel_token
+        trunc_index = fake_inputs.shape[1]
+        if input_tokens is None:
+            inputs = fake_inputs
+        else:
+            assert (
+                num_return_sequences % input_tokens.shape[0] == 0
+            ), "The number of return sequences must be divisible by the number of input sequences"
+            fake_inputs = fake_inputs.repeat(num_return_sequences, 1)
+            input_tokens = input_tokens.repeat(
+                num_return_sequences // input_tokens.shape[0], 1
+            )
+            inputs = torch.cat([fake_inputs, input_tokens], dim=1)
 
-        # 追踪总生成的token数量
-        total_generated = 0
+        logits_processor = (
+            LogitsProcessorList([TypicalLogitsWarper(mass=typical_mass)])
+            if typical_sampling
+            else LogitsProcessorList()
+        )
+        max_length = (
+            trunc_index + self.max_mel_tokens - 1
+            if max_generate_length is None
+            else trunc_index + max_generate_length
+        )
 
-        # 生成循环
-        while total_generated < max_length:
-            # 准备logits处理器
-            logits_processor = LogitsProcessorList()
-            if typical_p < 1.0:
-                logits_processor.append(TypicalLogitsWarper(mass=typical_p))
+        print(f"inputs.dtype: {inputs.dtype}")
 
-            # 模型前向传播
-            outputs = self.inference_model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                past_key_values=past_key_values,
-                use_cache=True,
-                return_dict=True,
+        # 检查是否在 CUDA 上下文中
+        device = inputs.device
+        device_type = device.type  # 'cuda' 或 'cpu'
+
+        # 获取当前的 autocast 状态
+        # 注意：这是正确的方法，我们直接使用 is_autocast_enabled 函数
+        is_enabled = torch.is_autocast_enabled(device_type)
+        # 获取当前的 autocast dtype
+        if is_enabled:
+            current_dtype = torch.get_autocast_dtype(device_type)
+        else:
+            # 默认值
+            current_dtype = torch.float32
+        
+        final_result = None
+
+        # 使用闭包创建生成函数，捕获当前的 autocast 状态
+        def create_generate_function():
+            # 捕获当前作用域中的所有变量
+            _inputs = inputs
+            _start_mel_token = self.start_mel_token
+            _stop_mel_token = self.stop_mel_token
+            _max_length = max_length
+            _logits_processor = logits_processor
+            _streamer = streamer
+            _num_return_sequences = num_return_sequences
+            _inference_model = self.inference_model
+            _is_enabled = is_enabled
+            _current_dtype = current_dtype
+            _device_type = device_type
+            _hf_generate_kwargs = (
+                hf_generate_kwargs.copy() if hf_generate_kwargs else {}
             )
 
-            # 获取logits并处理
-            next_token_logits = outputs.logits[:, -1, :]
+            # 返回一个在闭包中捕获这些变量的函数
+            def generate_function():
+                # 在线程内部重新应用 autocast 状态
+                with torch.amp.autocast(
+                    device_type=_device_type, enabled=_is_enabled, dtype=_current_dtype
+                ):
+                    print(
+                        f"线程内部 autocast 状态: enabled={_is_enabled}, dtype={_current_dtype}"
+                    )
+                    # 调用模型的 generate 方法
+                    gen_result = _inference_model.generate(
+                        input_ids=_inputs,
+                        bos_token_id=_start_mel_token,
+                        pad_token_id=_stop_mel_token,
+                        eos_token_id=_stop_mel_token,
+                        max_length=_max_length,
+                        logits_processor=_logits_processor,
+                        streamer=_streamer,
+                        num_return_sequences=_num_return_sequences,
+                        **_hf_generate_kwargs,
+                    )
+                    # print(f"gen_result.shape: {gen_result.shape}")
+                    # print(gen_result)
+                    # final_result = gen_result[:, trunc_index:]
+                    # print(f"final_result.shape: {final_result.shape}")
+                    # print(final_result)
+                    
+            return generate_function
 
-            # 应用温度缩放
-            if temperature > 0:
-                next_token_logits = next_token_logits / temperature
+        # 创建生成函数
+        generate_function = create_generate_function()
 
-            # 应用logits处理器
-            if logits_processor:
-                next_token_logits = logits_processor(input_ids, next_token_logits)
+        # 在后台线程中启动生成过程
+        import threading
 
-            # 应用top-k过滤
-            if top_k > 0:
-                indices_to_remove = (
-                    next_token_logits
-                    < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                )
-                next_token_logits[indices_to_remove] = -float("Inf")
+        generation_thread = threading.Thread(target=generate_function)
+        generation_thread.daemon = True
+        generation_thread.start()
 
-            # 应用top-p (nucleus) 采样
-            if top_p > 0.0:
-                sorted_logits, sorted_indices = torch.sort(
-                    next_token_logits, descending=True
-                )
-                cumulative_probs = torch.cumsum(
-                    F.softmax(sorted_logits, dim=-1), dim=-1
-                )
-
-                # 移除累积概率超过阈值的token
-                sorted_indices_to_remove = cumulative_probs > top_p
-                # 保留第一个token
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                    ..., :-1
-                ].clone()
-                sorted_indices_to_remove[..., 0] = 0
-
-                # 应用掩码到原始logits
-                indices_to_remove = torch.zeros_like(
-                    next_token_logits, dtype=torch.bool
-                ).scatter_(-1, sorted_indices, sorted_indices_to_remove)
-                next_token_logits[indices_to_remove] = -float("Inf")
-
-            # 采样下一个token
-            probs = F.softmax(next_token_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-
-            # 更新past_key_values用于下一次迭代
-            past_key_values = outputs.past_key_values
-
-            # 产生当前token
-            token_id = next_token.item()
-            yield token_id
-
-            # 如果生成了结束token，结束生成
-            if token_id == self.stop_mel_token:
-                break
-
-            # 更新输入为当前生成的token
-            input_ids = next_token
-
-            # 扩展注意力掩码
-            attention_mask = F.pad(attention_mask, (0, 1), value=1)
-
-            # 增加计数
-            total_generated += 1
+        # 返回 streamer，它已经实现了迭代器接口
+        return streamer
