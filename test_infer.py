@@ -157,10 +157,13 @@ if __name__ == "__main__":
             #     verbose=True,
             #     prompt_id=prompt_id,
             # )
-            # tts.infer_fast(
-            #     audio_prompt=prompt_wav,
-            #     text=script,
-            #     output_path=f"./outputs/results/{prompt_id}/gen_{script[:2]}_{random.randint(1,200)}_text.wav",
-            #     verbose=False,
-            #     prompt_id=prompt_id,
-            # )
+
+            print("_" * 200)
+
+            tts.infer_fast(
+                audio_prompt=prompt_wav,
+                text=script,
+                output_path=f"./outputs/results/{prompt_id}/gen_{script[:2]}_{random.randint(1,200)}_text.wav",
+                verbose=False,
+                prompt_id=prompt_id,
+            )
