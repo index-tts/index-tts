@@ -899,27 +899,6 @@ class UnifiedVoice(nn.Module):
             else trunc_index + max_generate_length
         )
 
-        print(f"self.inference_model.generate inputs: {inputs}")
-
-        print(f"inputs.dtype: {inputs.dtype}")
-
-        # 检查是否在 CUDA 上下文中
-        device = inputs.device
-        device_type = device.type  # 'cuda' 或 'cpu'
-
-        # 获取当前的 autocast 状态
-        # 注意：这是正确的方法，我们直接使用 is_autocast_enabled 函数
-        is_enabled = torch.is_autocast_enabled(device_type)
-        # 获取当前的 autocast dtype
-        if is_enabled:
-            current_dtype = torch.get_autocast_dtype(device_type)
-        else:
-            # 默认值
-            current_dtype = torch.float32
-
-        print(
-            f"当前 autocast 状态: enabled={is_enabled}, dtype={current_dtype}, device_type={device_type}"
-        )
 
         gen = self.inference_model.generate(
             inputs,
@@ -1027,8 +1006,6 @@ class UnifiedVoice(nn.Module):
             if max_generate_length is None
             else trunc_index + max_generate_length
         )
-
-        print(f"inputs.dtype: {inputs.dtype}")
 
         # 检查是否在 CUDA 上下文中
         device = inputs.device
