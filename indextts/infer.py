@@ -172,15 +172,15 @@ class IndexTTS:
         # return text.translate(punctuation_map)
         return self.normalizer.infer(text)
 
-    @torch.compile(
-        fullgraph=True,  # 整个图编译，提供最大优化
-        backend=(
-            "inductor" if torch.cuda.is_available() else "aot_eager"
-        ),  # 根据设备选择后端
-        mode=(
-            "reduce-overhead" if torch.cuda.is_available() else None
-        ),  # GPU上使用减少开销模式
-    )
+    # @torch.compile(
+    #     fullgraph=True,  # 整个图编译，提供最大优化
+    #     backend=(
+    #         "inductor" if torch.cuda.is_available() else "aot_eager"
+    #     ),  # 根据设备选择后端
+    #     mode=(
+    #         "reduce-overhead" if torch.cuda.is_available() else None
+    #     ),  # GPU上使用减少开销模式
+    # )
     def remove_long_silence(self, codes, silent_token=52, max_consecutive=30):
         """
         移除音频中的长静音片段，使用纯张量操作实现以支持torch.compile
@@ -710,7 +710,7 @@ class IndexTTS:
                         all_latents.append(latent)
 
         # bigvgan chunk
-        # chunk_size = 2
+
         all_latents = [all_latents[all_idxs.index(i)] for i in range(len(all_latents))]
         latent_length = len(all_latents)
         # 直接连接所有latents
@@ -752,9 +752,9 @@ class IndexTTS:
             wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
             wavs = [wav]  # 使用单个波形而不是多个
         else:
+            chunk_size = 2
             chunk_latents = [
-                all_latents[i : i + chunk_size]
-                for i in range(0, len(all_latents), chunk_size)
+                all_latents[i : i + chunk_size] for i in range(0, len(all_latents), chunk_size)
             ]
             chunk_length = len(chunk_latents)
             latent_length = len(all_latents)

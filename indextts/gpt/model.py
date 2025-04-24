@@ -912,8 +912,6 @@ class UnifiedVoice(nn.Module):
         )
 
         result = gen[:, trunc_index:]
-        print(f"self.inference_model.generate result: {gen}")
-        print(f"inference_speech result: {result}")
         return result
 
     def inference_speech_stream(
