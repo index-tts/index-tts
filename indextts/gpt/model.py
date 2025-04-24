@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from transformers import GPT2Config, GPT2PreTrainedModel, LogitsProcessorList
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
-
+from indextts.gpt.mel_streamer import TokenStreamer
 from indextts.gpt.conformer_encoder import ConformerEncoder
 from indextts.gpt.perceiver import PerceiverResampler
 from indextts.utils.arch_util import AttentionBlock
@@ -156,6 +156,7 @@ class GPT2InferenceModel(GPT2PreTrainedModel):
             emb = emb + self.text_pos_embedding.get_fixed_embedding(
                 attention_mask.shape[1] - mel_len, attention_mask.device
             )
+
         transformer_outputs = self.transformer(
             inputs_embeds=emb,
             past_key_values=past_key_values,
@@ -256,7 +257,13 @@ class LearnedPositionEmbeddings(nn.Module):
 
 
 def build_hf_gpt_transformer(
-    layers, model_dim, heads, max_mel_seq_len, max_text_seq_len, checkpointing
+    layers,
+    model_dim,
+    heads,
+    max_mel_seq_len,
+    max_text_seq_len,
+    checkpointing,
+    activation_function,
 ):
     """
     GPT-2 implemented by the HuggingFace library.
@@ -270,6 +277,7 @@ def build_hf_gpt_transformer(
         n_embd=model_dim,
         n_layer=layers,
         n_head=heads,
+        activation_function=activation_function or "gelu_new",
         gradient_checkpointing=checkpointing,
         use_cache=not checkpointing,
     )
@@ -338,6 +346,7 @@ class UnifiedVoice(nn.Module):
         use_mel_codes_as_input=True,
         checkpointing=True,
         types=1,
+        activation_function=None,
         condition_num_latent=32,
         condition_type="perceiver",
         condition_module=None,
@@ -431,6 +440,7 @@ class UnifiedVoice(nn.Module):
             self.max_mel_tokens + 2 + self.max_conditioning_inputs,
             self.max_text_tokens + 2,
             checkpointing,
+            activation_function,
         )
         if train_solo_embeddings:
             self.mel_solo_embedding = nn.Parameter(
@@ -465,6 +475,9 @@ class UnifiedVoice(nn.Module):
             n_head=self.heads,
             gradient_checkpointing=False,
             use_cache=True,
+            attn_implementation=(
+                "eager" if torch.cuda.is_available() else None
+            ),  # 或使用"sdpa"
         )
         self.inference_model = GPT2InferenceModel(
             gpt_config,
@@ -757,7 +770,6 @@ class UnifiedVoice(nn.Module):
             torch.ceil(wav_lengths / self.mel_length_compression).long() + 1
         )
 
-
         # mel_codes = self.set_mel_padding(mel_codes, mel_codes_lengths)
         mel_codes = self.set_mel_padding_compiled(mel_codes, mel_codes_lengths)
 
@@ -823,49 +835,6 @@ class UnifiedVoice(nn.Module):
         loss_mel = F.cross_entropy(mel_logits, mel_targets.long())
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
-    # 在UnifiedVoice类中添加这个新方法
-    @torch.compile(
-        fullgraph=False,
-        backend="inductor" if torch.cuda.is_available() else "aot_eager",
-        mode="reduce-overhead" if torch.cuda.is_available() else None,
-    )
-    def prepare_inference_inputs(
-        self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None
-    ):
-        """
-        优化的输入预处理函数，专门为torch.compile设计，处理推理过程中的嵌入计算部分
-
-        Args:
-            speech_conditioning_latent: 语音条件输入特征，通常是参考音频的mel谱图
-            text_inputs: 文本输入tokens
-            cond_mel_lengths: 条件mel长度 (可选)
-
-        Returns:
-            tuple: (
-                嵌入向量,
-                文本输入设备,
-                填充的文本tokens (用于后续处理)
-            )
-        """
-        # 文本输入处理
-        text_inputs_padded = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
-        text_inputs_aligned, _ = self.build_aligned_inputs_and_targets(
-            text_inputs_padded, self.start_text_token, self.stop_text_token
-        )
-        text_emb = self.text_embedding(text_inputs_aligned) + self.text_pos_embedding(
-            text_inputs_aligned
-        )
-
-        # 语音条件处理
-        speech_conds = self.get_conditioning(
-            speech_conditioning_latent, cond_mel_lengths
-        )
-
-        # 组合嵌入
-        combined_emb = torch.cat([speech_conds, text_emb], dim=1)
-
-        return combined_emb, text_inputs.device, text_inputs_aligned
-
     def inference_speech(
         self,
         speech_conditioning_latent,
@@ -929,6 +898,29 @@ class UnifiedVoice(nn.Module):
             if max_generate_length is None
             else trunc_index + max_generate_length
         )
+
+        print(f"self.inference_model.generate inputs: {inputs}")
+
+        print(f"inputs.dtype: {inputs.dtype}")
+
+        # 检查是否在 CUDA 上下文中
+        device = inputs.device
+        device_type = device.type  # 'cuda' 或 'cpu'
+
+        # 获取当前的 autocast 状态
+        # 注意：这是正确的方法，我们直接使用 is_autocast_enabled 函数
+        is_enabled = torch.is_autocast_enabled(device_type)
+        # 获取当前的 autocast dtype
+        if is_enabled:
+            current_dtype = torch.get_autocast_dtype(device_type)
+        else:
+            # 默认值
+            current_dtype = torch.float32
+
+        print(
+            f"当前 autocast 状态: enabled={is_enabled}, dtype={current_dtype}, device_type={device_type}"
+        )
+
         gen = self.inference_model.generate(
             inputs,
             bos_token_id=self.start_mel_token,
@@ -939,9 +931,13 @@ class UnifiedVoice(nn.Module):
             num_return_sequences=num_return_sequences,
             **hf_generate_kwargs,
         )
-        return gen[:, trunc_index:]
 
-    def inference_speech_optimized(
+        result = gen[:, trunc_index:]
+        print(f"self.inference_model.generate result: {gen}")
+        print(f"inference_speech result: {result}")
+        return result
+
+    def inference_speech_stream(
         self,
         speech_conditioning_latent,
         text_inputs,
@@ -954,22 +950,57 @@ class UnifiedVoice(nn.Module):
         **hf_generate_kwargs,
     ):
         """
-        使用torch.compile优化的语音推理方法
+        流式生成语音的 Mel 编码，返回一个迭代器，每次产生新的 Mel 编码块。
+
+        与 inference_speech 不同，此方法不会等待整个生成过程完成，而是在生成过程中
+        逐步返回生成的 Mel 编码块。这对于实时应用非常有用，可以在生成过程中开始处理或播放语音。
+
+        参数:
+            speech_conditioning_latent: 语音条件潜向量
+            text_inputs: 文本输入 token
+            cond_mel_lengths: 条件 mel 的长度
+            input_tokens: 初始输入的 token
+            num_return_sequences: 返回序列的数量
+            max_generate_length: 最大生成长度
+            typical_sampling: 是否使用 typical sampling
+            typical_mass: typical sampling 的参数
+            **hf_generate_kwargs: 其他传递给 huggingface generate 的参数
+
+        返回:
+            iterator: 每次产生新的 Mel 编码块的迭代器。对于批量生成，每个项目是形状为 [batch_size, seq_len] 的列表。
+            对于单一样本生成，每个项目是形状为 [seq_len] 的列表。
         """
-        # 使用编译后的函数处理输入
-        emb, device, text_inputs_aligned = self.prepare_inference_inputs(
-            speech_conditioning_latent, text_inputs, cond_mel_lengths
+        # 创建 streamer
+        streamer = TokenStreamer(
+            start_mel_token=self.start_mel_token,
+            stop_mel_token=self.stop_mel_token,
         )
 
-        # 存储嵌入用于推理模型
+        # 准备生成过程，这部分与 inference_speech 相同
+        text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
+        text_inputs, _ = self.build_aligned_inputs_and_targets(
+            text_inputs, self.start_text_token, self.stop_text_token
+        )
+        text_emb = self.text_embedding(text_inputs) + self.text_pos_embedding(
+            text_inputs
+        )
+
+        speech_conditioning_latent = self.get_conditioning(
+            speech_conditioning_latent, cond_mel_lengths
+        )
+        conds = speech_conditioning_latent
+        emb = torch.cat([conds, text_emb], dim=1)
         self.inference_model.store_mel_emb(emb)
 
-        # 创建假输入，+1 是为了start_audio_token
+        # +1 for the start_audio_token
         fake_inputs = torch.full(
-            (emb.shape[0], emb.shape[1] + 1),
+            (
+                emb.shape[0],
+                emb.shape[1] + 1,
+            ),
             fill_value=1,
             dtype=torch.long,
-            device=device,
+            device=text_inputs.device,
         )
 
         fake_inputs[:, -1] = self.start_mel_token
@@ -996,14 +1027,81 @@ class UnifiedVoice(nn.Module):
             if max_generate_length is None
             else trunc_index + max_generate_length
         )
-        gen = self.inference_model.generate(
-            inputs,
-            bos_token_id=self.start_mel_token,
-            pad_token_id=self.stop_mel_token,
-            eos_token_id=self.stop_mel_token,
-            max_length=max_length,
-            logits_processor=logits_processor,
-            num_return_sequences=num_return_sequences,
-            **hf_generate_kwargs,
-        )
-        return gen[:, trunc_index:]
+
+        print(f"inputs.dtype: {inputs.dtype}")
+
+        # 检查是否在 CUDA 上下文中
+        device = inputs.device
+        device_type = device.type  # 'cuda' 或 'cpu'
+
+        # 获取当前的 autocast 状态
+        # 注意：这是正确的方法，我们直接使用 is_autocast_enabled 函数
+        is_enabled = torch.is_autocast_enabled(device_type)
+        # 获取当前的 autocast dtype
+        if is_enabled:
+            current_dtype = torch.get_autocast_dtype(device_type)
+        else:
+            # 默认值
+            current_dtype = torch.float32
+        
+        final_result = None
+
+        # 使用闭包创建生成函数，捕获当前的 autocast 状态
+        def create_generate_function():
+            # 捕获当前作用域中的所有变量
+            _inputs = inputs
+            _start_mel_token = self.start_mel_token
+            _stop_mel_token = self.stop_mel_token
+            _max_length = max_length
+            _logits_processor = logits_processor
+            _streamer = streamer
+            _num_return_sequences = num_return_sequences
+            _inference_model = self.inference_model
+            _is_enabled = is_enabled
+            _current_dtype = current_dtype
+            _device_type = device_type
+            _hf_generate_kwargs = (
+                hf_generate_kwargs.copy() if hf_generate_kwargs else {}
+            )
+
+            # 返回一个在闭包中捕获这些变量的函数
+            def generate_function():
+                # 在线程内部重新应用 autocast 状态
+                with torch.amp.autocast(
+                    device_type=_device_type, enabled=_is_enabled, dtype=_current_dtype
+                ):
+                    print(
+                        f"线程内部 autocast 状态: enabled={_is_enabled}, dtype={_current_dtype}"
+                    )
+                    # 调用模型的 generate 方法
+                    gen_result = _inference_model.generate(
+                        input_ids=_inputs,
+                        bos_token_id=_start_mel_token,
+                        pad_token_id=_stop_mel_token,
+                        eos_token_id=_stop_mel_token,
+                        max_length=_max_length,
+                        logits_processor=_logits_processor,
+                        streamer=_streamer,
+                        num_return_sequences=_num_return_sequences,
+                        **_hf_generate_kwargs,
+                    )
+                    # print(f"gen_result.shape: {gen_result.shape}")
+                    # print(gen_result)
+                    # final_result = gen_result[:, trunc_index:]
+                    # print(f"final_result.shape: {final_result.shape}")
+                    # print(final_result)
+                    
+            return generate_function
+
+        # 创建生成函数
+        generate_function = create_generate_function()
+
+        # 在后台线程中启动生成过程
+        import threading
+
+        generation_thread = threading.Thread(target=generate_function)
+        generation_thread.daemon = True
+        generation_thread.start()
+
+        # 返回 streamer，它已经实现了迭代器接口
+        return streamer
