@@ -118,23 +118,15 @@ if __name__ == "__main__":
     print("随机组合的口播脚本:")
     random_scripts = generate_multiple_scripts(1, structured=False)
 
-    # prompt_wav_path = "outputs/upload_references"
-    prompt_wav_path = "/Users/wangxianchen/Desktop/tts_reference/upload_references"
+    prompt_wav_path = "outputs/upload_references"
 
     prompt_id_list = [
-        "ks_曾鼎全",
-        # "QY13323323_清盐",
-        # "柴柴_男声",
-        # "是阿殇啦",
-        # "JINQQ124_东北话",
-        # "简妮特",
-        # "仙_男声",
+        "你的音色id"
     ]
 
     prompt_file_name = "sample1.mp3"
-    # # text="晕 XUAN4 是 一 种 GAN3 觉"
-    text = "各位老铁们，欢迎新进直播间的老铁们！库存真的不多了，咱们1号、2号链接赶紧拍起来！1号链接的炸鸡三兄弟配送，性价比超高，绝对值得您拥有！无论是和朋友一起分享，还是犒劳自己，都值得您拥有！而2号2号链接则更加实惠，让您省钱又省心！炸鸡三兄弟配送，价格超低，绝对值得您拥有！不管是屯个三单，五单分开用，还是一起用，都是可以的！赶紧拍，赶紧屯，让您的味蕾享受美味的同时，也能省下一大笔钱！"
-    # # text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
+    # text="晕 XUAN4 是 一 种 GAN3 觉"
+    # text_2 = "来刘炭ZHANG3吃烤肉，肉质鲜嫩多汁，秘制酱料香到上头！炭火现烤滋滋冒油，人均50吃到扶墙走！吃货们快约上姐妹冲，大口吃肉才叫爽！"
 
     tts = IndexTTS(
         cfg_path="checkpoints/config.yaml",
@@ -152,7 +144,7 @@ if __name__ == "__main__":
 
             tts.infer_real_stream(
                 audio_prompt=prompt_wav,
-                text=text,
+                text=script,
                 output_path=f"./outputs/results/{prompt_id}/gen_{script[:2]}_{random.randint(1,200)}_text.wav",
                 verbose=True,
                 prompt_id=prompt_id,
