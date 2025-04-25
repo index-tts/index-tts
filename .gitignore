@@ -10,3 +10,4 @@ checkpoints/*.model
 checkpoints/.cache
 outputs/
 build/
+cache/

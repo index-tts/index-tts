@@ -20,7 +20,36 @@ from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="zh_CN")
 MODE = 'local'
-tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
+
+REQUIRED_FILES=[
+    "bigvgan_discriminator.pth",
+    "bigvgan_generator.pth",
+    "bpe.model",
+    "gpt.pth"
+]
+
+
+
+tts = None
+def init_model(**model_args):
+    global tts
+    tts = IndexTTS(**model_args)
+
+
+def download_files_from_hf_hub(model_dir, files):
+    from huggingface_hub import hf_hub_download
+    REPO_ID = os.getenv("HF_REPO_ID", "IndexTeam/Index-TTS")
+    import multiprocessing
+    with multiprocessing.Pool(processes=len(files)) as pool:
+        pool.map(
+            lambda file: hf_hub_download(
+                repo_id=REPO_ID,
+                filename=file,
+                local_dir=model_dir,
+            ),
+            files,
+        )
+
 
 os.makedirs("outputs/tasks",exist_ok=True)
 os.makedirs("prompts",exist_ok=True)
@@ -76,6 +105,62 @@ with gr.Blocks() as demo:
                      outputs=[output_audio])
 
 
+def is_docker_env():
+    if os.path.exists("/.dockerenv"):
+        return True
+    cgroup_path = "/proc/1/cgroup"
+    if os.path.exists(cgroup_path):
+        with open(cgroup_path, "r") as f:
+            content = f.read()
+            if "docker" in content or "kubepods" in content:
+                return True
+    return False
+
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="IndexTTS WebUI")
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0" if is_docker_env() else None,
+        help="Host address for the web UI (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=7860,
+        help="Port for the web UI (default: 7860)",
+    )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default="checkpoints",
+        help="Path to the model directory (default: checkpoints)",
+    )
+    parser.add_argument(
+        "--cfg_path",
+        type=str,
+        default="checkpoints/config.yaml",
+        help="Path to the model config file (default: checkpoints/config.yaml)",
+    )
+    args = parser.parse_args()
+    # Check if required files exist
+    model_dir = args.model_dir
+    cfg_path = args.cfg_path
+    if not os.path.exists(model_dir):
+        print(f"Model directory '{model_dir}' does not exist.")
+        sys.exit(1)
+    missed_files = []
+    for file in REQUIRED_FILES:
+        file_path = os.path.join(model_dir, file)
+        if not os.path.exists(file_path):
+            missed_files.append(file)
+    if len(missed_files) > 0:
+        print("Downloading files from Hugging Face Hub...")
+        download_files_from_hf_hub(model_dir, missed_files)
+    init_model(
+        model_dir=model_dir,
+        cfg_path=cfg_path,
+    )
     demo.queue(20)
-    demo.launch(server_name="127.0.0.1")
+    demo.launch(server_name=args.host, server_port=args.port, share=False)

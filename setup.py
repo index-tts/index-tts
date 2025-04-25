@@ -27,10 +27,10 @@ setup(
         "sentencepiece",
         "librosa",
         "numpy",
-        "wetext" if platform.system() == "Darwin" else "WeTextProcessing",
+        "wetext" if platform.system() == "Darwin" or platform.machine() == "aarch64" else "WeTextProcessing",
     ],
     extras_require={
-        "webui": ["gradio"],
+        "webui": ["gradio", "huggingface_hub"],
     },
     entry_points={
         "console_scripts": [
