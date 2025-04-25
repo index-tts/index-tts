@@ -328,7 +328,7 @@ class TextTokenizer:
 
     @staticmethod
     def split_sentences_by_token(
-        tokenized_str: List[str], split_tokens: List[str], max_tokens_per_sentence: int
+        tokenized_str: List[str], split_tokens: List[str], max_tokens_per_sentence: int, allow_recursive: bool = True
     ) -> List[List[str]]:
         """
         将tokenize后的结果按特定token进一步分割
@@ -355,15 +355,21 @@ class TextTokenizer:
                     sentences.append(current_sentence)
                 else:
                     # 如果当前tokens的长度超过最大限制
-                    if "," in current_sentence or "▁," in current_sentence: 
+                    if allow_recursive and ("," in current_sentence or "▁," in current_sentence):
                         # 如果当前tokens中有,，则按,分割
                         sub_sentences = TextTokenizer.split_sentences_by_token(
-                            current_sentence, [",", "▁,"], max_tokens_per_sentence=max_tokens_per_sentence
+                            current_sentence,
+                            [",", "▁,"],
+                            max_tokens_per_sentence=max_tokens_per_sentence,
+                            allow_recursive=False
                         )
-                    elif "-" in current_sentence:
+                    elif allow_recursive and "-" in current_sentence:
                         # 没有,，则按-分割
                         sub_sentences = TextTokenizer.split_sentences_by_token(
-                            current_sentence, ["-"], max_tokens_per_sentence=max_tokens_per_sentence
+                            current_sentence,
+                            ["-"],
+                            max_tokens_per_sentence=max_tokens_per_sentence,
+                            allow_recursive=False
                         )
                     else:
                         # 按照长度分割
