@@ -178,6 +178,13 @@ python webui.py
 ```
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
+#### API Demo
+```bash
+pip install -e ".[webui]"
+python api.py
+```
+Open your browser and visit `http://127.0.0.1:8000/docs` to see the docs.
+
 #### Note for Windows Users
 
 On Windows, you may encounter [an error](https://github.com/index-tts/index-tts/issues/61) when installing `pynini`:
