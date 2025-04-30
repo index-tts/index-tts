@@ -11,6 +11,7 @@ import torchaudio
 from torch.nn.utils.rnn import pad_sequence
 from omegaconf import OmegaConf
 from tqdm import tqdm
+import uuid
 
 import warnings
 
@@ -125,6 +126,7 @@ class IndexTTS:
         self.cache_cond_mel = None
         # 进度引用显示（可选）
         self.gr_progress = None
+        self.speaker_mel = {}
 
     def remove_long_silence(self, codes: torch.Tensor, silent_token=52, max_consecutive=30):
         code_lens = []
@@ -402,32 +404,52 @@ class IndexTTS:
             wav_data = wav_data.numpy().T
             return (sampling_rate, wav_data)
 
+    # 将音频文件生成的cond_mel缓存，并返回相应的speaker_id
+    def speaker_cache(self, audio_prompt, verbose=False):
+        audio, sr = torchaudio.load(audio_prompt)
+        audio = torch.mean(audio, dim=0, keepdim=True)
+        if audio.shape[0] > 1:
+            audio = audio[0].unsqueeze(0)
+        audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+        cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
+        if verbose:
+            print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
+        speaker_id = str(uuid.uuid4())
+        self.speaker_mel[speaker_id] = cond_mel 
+        return speaker_id
+
+
     # 原始推理模式
-    def infer(self, audio_prompt, text, output_path, verbose=False):
+    def infer(self, audio_prompt, text, output_path, verbose=False, speaker_id=None):
         print(">> start inference...")
         self._set_gr_progress(0, "start inference...")
         if verbose:
             print(f"origin text:{text}")
         start_time = time.perf_counter()
 
-        # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
-        if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
-            audio, sr = torchaudio.load(audio_prompt)
-            audio = torch.mean(audio, dim=0, keepdim=True)
-            if audio.shape[0] > 1:
-                audio = audio[0].unsqueeze(0)
-            audio = torchaudio.transforms.Resample(sr, 24000)(audio)
-            cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
-            cond_mel_frame = cond_mel.shape[-1]
-            if verbose:
-                print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
+        # 如果当前 speaker_id 缓存过，则直接使用该 speaker_id 对应的 cond_mel
+        if speaker_id is None:
+            # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
+            if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
+                audio, sr = torchaudio.load(audio_prompt)
+                audio = torch.mean(audio, dim=0, keepdim=True)
+                if audio.shape[0] > 1:
+                    audio = audio[0].unsqueeze(0)
+                audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+                cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
+                cond_mel_frame = cond_mel.shape[-1]
+                if verbose:
+                    print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
 
-            self.cache_audio_prompt = audio_prompt
-            self.cache_cond_mel = cond_mel
+                self.cache_audio_prompt = audio_prompt
+                self.cache_cond_mel = cond_mel
+            else:
+                cond_mel = self.cache_cond_mel
+                cond_mel_frame = cond_mel.shape[-1]
+                pass
         else:
-            cond_mel = self.cache_cond_mel
+            cond_mel = self.speaker_mel[speaker_id]
             cond_mel_frame = cond_mel.shape[-1]
-            pass
 
         auto_conditioning = cond_mel
         text_tokens_list = self.tokenizer.tokenize(text)
