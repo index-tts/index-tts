@@ -45,4 +45,3 @@ if __name__ == "__main__":
     speaker_id = tts.speaker_cache(prompt_wav, verbose=True)
     print("speaker id: ", tts.speaker_mel.keys())
     tts.infer(audio_prompt="", text=text, output_path=f"outputs/{text[:20]}.wav", verbose=True, speaker_id=speaker_id)
-    tts.infer(audio_prompt="", text=text, output_path=f"outputs/{text[:21]}.wav", verbose=True, speaker_id=speaker_id)

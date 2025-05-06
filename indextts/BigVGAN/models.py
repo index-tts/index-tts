@@ -198,17 +198,19 @@ class BigVGAN(torch.nn.Module):
 
         # self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
-        self.speaker_embedding_cache = {}
+        self.speaker_embedding_dict = {}
 
+    def speaker_embedding_cache(self, mel_ref, lens=None, speaker_id=None):
+        self.speaker_embedding_dict[speaker_id] = self.speaker_encoder(mel_ref, lens)
     def forward(self, x, mel_ref, lens=None, speaker_id=None):
         if speaker_id is None:
             speaker_embedding = self.speaker_encoder(mel_ref, lens)
         else:
-            if self.speaker_embedding_cache.get(speaker_id, None) is None:
+            if self.speaker_embedding_dict.get(speaker_id, None) is None:
                 speaker_embedding = self.speaker_encoder(mel_ref, lens)
-                self.speaker_embedding_cache[speaker_id] = speaker_embedding
+                self.speaker_embedding_dict[speaker_id] = speaker_embedding
             else:
-                speaker_embedding = self.speaker_embedding_cache[speaker_id]
+                speaker_embedding = self.speaker_embedding_dict[speaker_id]
         n_batch = x.size(0)
         contrastive_loss = None
         if n_batch * 2 == speaker_embedding.size(0):

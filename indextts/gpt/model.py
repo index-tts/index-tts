@@ -590,6 +590,8 @@ class UnifiedVoice(nn.Module):
         loss_mel = F.cross_entropy(mel_logits, mel_targets.long())
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
+    def speech_conditioning_latent_cache(self, speech_conditioning_latent, cond_mel_lengths, speaker_id):
+        self.speaker_speech_conditioning_latent[speaker_id] = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
     def inference_speech(self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None, input_tokens=None, num_return_sequences=1,
                          max_generate_length=None, typical_sampling=False, typical_mass=.9, speaker_id=None, **hf_generate_kwargs):
 

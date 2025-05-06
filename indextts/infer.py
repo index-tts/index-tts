@@ -404,10 +404,13 @@ class IndexTTS:
             wav_data = wav_data.numpy().T
             return (sampling_rate, wav_data)
 
-    # 将音频文件生成的cond_mel缓存，并返回相应的speaker_id
+    # 计算参考音频缓存，并返回相应的speaker_id
     def speaker_cache(self, audio_prompt, verbose=False):
-        import time
+
+        speaker_id = str(uuid.uuid4())
         time_1 = time.perf_counter()
+        
+        # 计算缓存 cond_mel
         audio, sr = torchaudio.load(audio_prompt)
         audio = torch.mean(audio, dim=0, keepdim=True)
         if audio.shape[0] > 1:
@@ -416,10 +419,19 @@ class IndexTTS:
         cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
         if verbose:
             print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
-        speaker_id = str(uuid.uuid4())
         self.speaker_mel[speaker_id] = cond_mel 
+
+        with torch.no_grad():
+            with torch.amp.autocast(torch.device(self.device).type, enabled=self.dtype is not None, dtype=self.dtype):
+                # 计算缓存 speech_conditioning_latent  
+                cond_mel_lengths=torch.tensor([cond_mel.shape[-1]], device=self.device)
+                self.gpt.speech_conditioning_latent_cache(cond_mel, cond_mel_lengths, speaker_id)
+
+                # 计算缓存 speaker_embedding
+                self.bigvgan.speaker_embedding_cache(cond_mel.transpose(1, 2), lens=None, speaker_id=speaker_id)
+
         time_2 = time.perf_counter()
-        print(f"cache time: {time_2 - time_1:.2f} s")
+        print(f">> speaker cache time: {time_2 - time_1:.2f} seconds")
         return speaker_id
 
 
