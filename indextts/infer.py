@@ -406,6 +406,8 @@ class IndexTTS:
 
     # 将音频文件生成的cond_mel缓存，并返回相应的speaker_id
     def speaker_cache(self, audio_prompt, verbose=False):
+        import time
+        time_1 = time.perf_counter()
         audio, sr = torchaudio.load(audio_prompt)
         audio = torch.mean(audio, dim=0, keepdim=True)
         if audio.shape[0] > 1:
@@ -416,6 +418,8 @@ class IndexTTS:
             print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
         speaker_id = str(uuid.uuid4())
         self.speaker_mel[speaker_id] = cond_mel 
+        time_2 = time.perf_counter()
+        print(f"cache time: {time_2 - time_1:.2f} s")
         return speaker_id
 
 
@@ -505,7 +509,8 @@ class IndexTTS:
                                                         length_penalty=length_penalty,
                                                         num_beams=num_beams,
                                                         repetition_penalty=repetition_penalty,
-                                                        max_generate_length=max_mel_tokens)
+                                                        max_generate_length=max_mel_tokens,
+                                                        speaker_id=speaker_id)
                 gpt_gen_time += time.perf_counter() - m_start_time
                 # codes = codes[:, :-2]
                 code_lens = torch.tensor([codes.shape[-1]], device=codes.device, dtype=codes.dtype)
@@ -534,7 +539,7 @@ class IndexTTS:
                     gpt_forward_time += time.perf_counter() - m_start_time
 
                     m_start_time = time.perf_counter()
-                    wav, _ = self.bigvgan(latent, auto_conditioning.transpose(1, 2))
+                    wav, _ = self.bigvgan(latent, auto_conditioning.transpose(1, 2), speaker_id=speaker_id)
                     bigvgan_time += time.perf_counter() - m_start_time
                     wav = wav.squeeze(1)
 

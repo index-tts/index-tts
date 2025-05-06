@@ -385,6 +385,7 @@ class UnifiedVoice(nn.Module):
         for module in embeddings:
             module.weight.data.normal_(mean=0.0, std=.02)
 
+        self.speaker_speech_conditioning_latent = {}
     def post_init_gpt2_config(self, use_deepspeed=False, kv_cache=False, half=False):
         seq_length = self.max_mel_tokens + self.max_text_tokens + 2
         gpt_config = GPT2Config(
@@ -590,13 +591,20 @@ class UnifiedVoice(nn.Module):
         return loss_text.mean(), loss_mel.mean(), mel_logits
 
     def inference_speech(self, speech_conditioning_latent, text_inputs, cond_mel_lengths=None, input_tokens=None, num_return_sequences=1,
-                         max_generate_length=None, typical_sampling=False, typical_mass=.9, **hf_generate_kwargs):
+                         max_generate_length=None, typical_sampling=False, typical_mass=.9, speaker_id=None, **hf_generate_kwargs):
 
         text_inputs = F.pad(text_inputs, (0, 1), value=self.stop_text_token)
         text_inputs, _ = self.build_aligned_inputs_and_targets(text_inputs, self.start_text_token, self.stop_text_token)
         text_emb = self.text_embedding(text_inputs) + self.text_pos_embedding(text_inputs)
 
-        speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+        if speaker_id is None:
+            speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+        else:
+            if self.speaker_speech_conditioning_latent.get(speaker_id) is None:
+                speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+                self.speaker_speech_conditioning_latent[speaker_id] = speech_conditioning_latent
+            else:
+                speech_conditioning_latent = self.speaker_speech_conditioning_latent[speaker_id]    
         conds = speech_conditioning_latent
         emb = torch.cat([conds, text_emb], dim=1)
         self.inference_model.store_mel_emb(emb)
