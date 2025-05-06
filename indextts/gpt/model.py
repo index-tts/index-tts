@@ -521,7 +521,7 @@ class UnifiedVoice(nn.Module):
 
     def forward(self, speech_conditioning_latent, text_inputs, text_lengths, mel_codes, wav_lengths,
                 cond_mel_lengths=None, types=None, text_first=True, raw_mels=None, return_attentions=False,
-                return_latent=False, clip_inputs=False):
+                return_latent=False, clip_inputs=False, speaker_id=None):
         """
         Forward pass that uses both text and voice in either text conditioning mode or voice conditioning mode
         (actuated by `text_first`).
@@ -538,7 +538,15 @@ class UnifiedVoice(nn.Module):
         If clip_inputs is True, the inputs will be clipped to the smallest input size across each input modality.
         """
 
-        speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+        if speaker_id is None:
+            speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+        else:
+            if self.speaker_speech_conditioning_latent.get(speaker_id) is None:
+                speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent, cond_mel_lengths)
+                self.speaker_speech_conditioning_latent[speaker_id] = speech_conditioning_latent
+            else:
+                speech_conditioning_latent = self.speaker_speech_conditioning_latent[speaker_id] 
+                
         # Types are expressed by expanding the text embedding space.
         if types is not None:
             text_inputs = text_inputs * (1 + types).unsqueeze(-1)
