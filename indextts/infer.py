@@ -406,10 +406,8 @@ class IndexTTS:
 
     # 计算参考音频缓存，并返回相应的speaker_id
     def speaker_cache(self, audio_prompt, verbose=False):
-
         speaker_id = str(uuid.uuid4())
-        time_1 = time.perf_counter()
-        
+    
         # 计算缓存 cond_mel
         audio, sr = torchaudio.load(audio_prompt)
         audio = torch.mean(audio, dim=0, keepdim=True)
@@ -421,25 +419,15 @@ class IndexTTS:
             print(f"cond_mel shape: {cond_mel.shape}", "dtype:", cond_mel.dtype)
         self.speaker_mel[speaker_id] = cond_mel 
 
-        time_2 = time.perf_counter()
-
         with torch.no_grad():
             with torch.amp.autocast(torch.device(self.device).type, enabled=self.dtype is not None, dtype=self.dtype):
                 # 计算缓存 speech_conditioning_latent  
                 cond_mel_lengths=torch.tensor([cond_mel.shape[-1]], device=self.device)
                 self.gpt.speech_conditioning_latent_cache(cond_mel, cond_mel_lengths, speaker_id)
 
-                time_3 = time.perf_counter()
-
                 # 计算缓存 speaker_embedding
-                self.bigvgan.speaker_embedding_cache(cond_mel.transpose(1, 2), lens=None, speaker_id=speaker_id)
+                self.bigvgan.speaker_embedding_cache(cond_mel.transpose(1, 2), None, speaker_id)
 
-                time_4 = time.perf_counter()
-
-        print(f">> mel cache time: {time_2 - time_1:.2f} seconds")
-        print(f">> speech conditioning cache time: {time_3 - time_2:.2f} seconds")
-        print(f">> speaker embedding cache time: {time_4 - time_3:.2f} seconds")
-        print(f">> total cache time: {time_4 - time_1:.2f} seconds")
         return speaker_id
 
 
