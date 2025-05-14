@@ -40,3 +40,8 @@ if __name__ == "__main__":
 讲述了由莱昂纳多·迪卡普里奥扮演的造梦师，带领特工团队进入他人梦境，从他人的潜意识中盗取机密，并重塑他人梦境的故事。
 """.replace("\n", "")
     tts.infer_fast(audio_prompt=prompt_wav, text=text, output_path=f"outputs/{text[:20]}.wav", verbose=True)
+    # speaker mel 缓存测试
+    text="大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可以访问 bilibili studio，相信我，你们也会吃惊的。"
+    speaker_id = tts.speaker_cache(prompt_wav, verbose=True)
+    print("speaker id: ", tts.speaker_mel.keys())
+    tts.infer(audio_prompt="", text=text, output_path=f"outputs/{text[:20]}.wav", verbose=True, speaker_id=speaker_id)
