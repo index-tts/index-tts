@@ -206,6 +206,60 @@ text="大家好，我现在正在bilibili 体验 ai 科技，说实话，来之�
 tts.infer(voice, text, output_path)
 ```
 
+### Docker usage
+
+#### Build the Docker image
+```bash
+# Build from Dockerfile
+docker build -t indextts:0.1 .
+```
+
+#### Run the Docker image
+```bash
+mkdir -p outputs prompts cache
+chmod 777 checkpoints outputs prompts cache
+docker run -it \
+  -p 7860:7860 \
+  --gpus all \
+  -v $(pwd)/checkpoints:/app/checkpoints \
+  -v $(pwd)/cache:/root/.cache \
+  --mount "type=bind,src=$(pwd)/outputs,dst=/app/outputs" \
+  --mount "type=bind,src=$(pwd)/prompts,dst=/app/prompts" \
+  indextts:0.1
+```
+
+#### Override Docker build args if needed
+
+For example, to use Python 3.11 and PyTorch 2.6.0 cpu version
+
+```bash
+# build with python 311
+docker build -t indextts:0.1-py311-torch260 \
+  --build-arg PYTHON_VERSION=3.11 \
+  --build-arg PYTORCH_VERSION=2.6.0 \
+  --build-arg PYTORCH_INDEX_URL="" \
+  .
+# run image
+docker run -it \
+  -p 7860:7860 \
+  -v $(pwd)/checkpoints:/app/checkpoints \
+  -v $(pwd)/cache:/root/.cache \
+  --mount "type=bind,src=$(pwd)/outputs,dst=/app/outputs" \
+  --mount "type=bind,src=$(pwd)/prompts,dst=/app/prompts" \
+  indextts:0.1-py311-torch260
+```
+
+You may need to set the `BASE_IMAGE`,`PYTORCH_INDEX_URL` and `PYPI_INDEX_URL` to a mirror site. e.g:
+```bash
+# build with custom base image and index url
+docker build -t indextts:0.1 --platform linux/amd64 \
+  --build-arg BASE_IMAGE=docker.1ms.run/continuumio/miniconda3:latest \
+  --build-arg OVERRIDE_CONDA_CHANNEL=1  \
+  --build-arg PYTORCH_INDEX_URL="https://mirrors.aliyun.com/pytorch-wheels/cu121" \
+  --build-arg PYPI_INDEX_URL="https://mirrors.aliyun.com/pypi/simple/" \
+  .
+```
+
 ## Acknowledge
 1. [tortoise-tts](https://github.com/neonbjb/tortoise-tts)
 2. [XTTSv2](https://github.com/coqui-ai/TTS)

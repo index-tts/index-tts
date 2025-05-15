@@ -85,7 +85,7 @@ class TextNormalizer:
         # sys.path.append(model_dir)
         import platform
 
-        if platform.system() == "Darwin":
+        if platform.system() == "Darwin" or platform.machine() == "aarch64":
             from wetext import Normalizer
 
             self.zh_normalizer = Normalizer(remove_erhua=False, lang="zh", operator="tn")
