@@ -6,7 +6,7 @@ import uvicorn
 from indextts.infer import IndexTTS
 import tempfile
 import hashlib
-from typing import Dict
+from typing import Dict, Optional
 import base64
 from pydantic import BaseModel
 
@@ -17,6 +17,22 @@ tts = IndexTTS(model_dir="checkpoints", cfg_path="checkpoints/config.yaml")
 
 # 确保prompts目录存在
 os.makedirs("prompts", exist_ok=True)
+os.makedirs("outputs", exist_ok=True)
+
+class SynthesizeRequest(BaseModel):
+    filename: str
+    text: str
+    infer_mode: str = "普通推理"
+    max_text_tokens_per_sentence: int = 120
+    sentences_bucket_max_size: int = 4
+    do_sample: bool = True
+    top_p: float = 0.8
+    top_k: int = 30
+    temperature: float = 1.0
+    length_penalty: float = 0.0
+    num_beams: int = 3
+    repetition_penalty: float = 10.0
+    max_mel_tokens: int = 600
 
 @app.post("/upload_audio")
 async def upload_audio(audio: UploadFile = File(...)) -> Dict[str, str]:
@@ -52,7 +68,17 @@ async def upload_audio(audio: UploadFile = File(...)) -> Dict[str, str]:
 async def synthesize_speech(
     prompt_audio: UploadFile = File(...),
     text: str = Form(...),
-    infer_mode: str = Form("普通推理")
+    infer_mode: str = Form("普通推理"),
+    max_text_tokens_per_sentence: int = Form(120),
+    sentences_bucket_max_size: int = Form(4),
+    do_sample: bool = Form(True),
+    top_p: float = Form(0.8),
+    top_k: int = Form(30),
+    temperature: float = Form(1.0),
+    length_penalty: float = Form(0.0),
+    num_beams: int = Form(3),
+    repetition_penalty: float = Form(10.0),
+    max_mel_tokens: int = Form(600)
 ):
     """
     合成语音API
@@ -61,6 +87,16 @@ async def synthesize_speech(
     - prompt_audio: 参考音频文件
     - text: 要合成的文本
     - infer_mode: 推理模式 ("普通推理" 或 "批次推理")
+    - max_text_tokens_per_sentence: 分句最大Token数
+    - sentences_bucket_max_size: 分句分桶的最大容量
+    - do_sample: 是否进行采样
+    - top_p: top-p采样参数
+    - top_k: top-k采样参数
+    - temperature: 温度参数
+    - length_penalty: 长度惩罚参数
+    - num_beams: beam search的beam数量
+    - repetition_penalty: 重复惩罚参数
+    - max_mel_tokens: 生成Token最大数量
     
     返回:
     - JSON响应，包含音频文件的base64编码
@@ -75,11 +111,36 @@ async def synthesize_speech(
     output_path = os.path.join("outputs", f"api_synth_{int(time.time())}.wav")
     
     try:
+        # 准备生成参数
+        generation_kwargs = {
+            "do_sample": do_sample,
+            "top_p": top_p,
+            "top_k": top_k if top_k > 0 else None,
+            "temperature": temperature,
+            "length_penalty": length_penalty,
+            "num_beams": num_beams,
+            "repetition_penalty": repetition_penalty,
+            "max_mel_tokens": max_mel_tokens,
+        }
+        
         # 调用TTS模型进行合成
         if infer_mode == "普通推理":
-            output = tts.infer(temp_audio_path, text, output_path)
+            output = tts.infer(
+                temp_audio_path, 
+                text, 
+                output_path,
+                max_text_tokens_per_sentence=max_text_tokens_per_sentence,
+                **generation_kwargs
+            )
         else:
-            output = tts.infer_fast(temp_audio_path, text, output_path)
+            output = tts.infer_fast(
+                temp_audio_path, 
+                text, 
+                output_path,
+                max_text_tokens_per_sentence=max_text_tokens_per_sentence,
+                sentences_bucket_max_size=sentences_bucket_max_size,
+                **generation_kwargs
+            )
         
         # 读取生成的音频文件并转换为base64
         with open(output, "rb") as audio_file:
@@ -104,18 +165,13 @@ async def synthesize_speech(
         # 清理临时文件
         os.unlink(temp_audio_path)
 
-class SynthesizeRequest(BaseModel):
-    filename: str
-    text: str
-    infer_mode: str = "普通推理"
-
 @app.post("/synthesize_by_filename")
 async def synthesize_speech_by_filename(request: SynthesizeRequest = Body(...)):
     """
     使用已上传的音频文件进行语音合成
     
     参数:
-    - request: 包含filename、text和infer_mode的请求体
+    - request: 包含合成参数的请求体
     
     返回:
     - JSON响应，包含音频文件的base64编码
@@ -137,11 +193,36 @@ async def synthesize_speech_by_filename(request: SynthesizeRequest = Body(...)):
     output_path = os.path.join("outputs", f"api_synth_{int(time.time())}.wav")
     
     try:
+        # 准备生成参数
+        generation_kwargs = {
+            "do_sample": request.do_sample,
+            "top_p": request.top_p,
+            "top_k": request.top_k if request.top_k > 0 else None,
+            "temperature": request.temperature,
+            "length_penalty": request.length_penalty,
+            "num_beams": request.num_beams,
+            "repetition_penalty": request.repetition_penalty,
+            "max_mel_tokens": request.max_mel_tokens,
+        }
+        
         # 调用TTS模型进行合成
         if request.infer_mode == "普通推理":
-            output = tts.infer(prompt_audio_path, request.text, output_path)
+            output = tts.infer(
+                prompt_audio_path, 
+                request.text, 
+                output_path,
+                max_text_tokens_per_sentence=request.max_text_tokens_per_sentence,
+                **generation_kwargs
+            )
         else:
-            output = tts.infer_fast(prompt_audio_path, request.text, output_path)
+            output = tts.infer_fast(
+                prompt_audio_path, 
+                request.text, 
+                output_path,
+                max_text_tokens_per_sentence=request.max_text_tokens_per_sentence,
+                sentences_bucket_max_size=request.sentences_bucket_max_size,
+                **generation_kwargs
+            )
         
         # 读取生成的音频文件并转换为base64
         with open(output, "rb") as audio_file:
