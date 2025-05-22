@@ -62,13 +62,14 @@ class TextNormalizer:
     """
     匹配拼音声调格式：pinyin+数字，声调1-5，5表示轻声
     例如：xuan4, jve2, ying1, zhong4, shang5
+    不匹配：beta1, voice2
     """
-    PINYIN_TONE_PATTERN = r"([bmnpqdfghjklzcsxwy]?h?[aeiouüv]{1,2}[ng]*|ng)([1-5])"
+    PINYIN_TONE_PATTERN = r"(?<![a-z])((?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)?(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)|ng|er)([1-5])"
     """
     匹配人名，格式：中文·中文，中文·中文-中文
     例如：克里斯托弗·诺兰，约瑟夫·高登-莱维特
     """
-    NAME_PATTERN = r"[\u4e00-\u9fff]+([-·—][\u4e00-\u9fff]+){1,2}"
+    NAME_PATTERN = r"[\u4e00-\u9fff]+(?:[-·—][\u4e00-\u9fff]+){1,2}"
 
     def use_chinese(self, s):
         has_chinese = bool(re.search(r"[\u4e00-\u9fff]", s))
@@ -84,7 +85,8 @@ class TextNormalizer:
         # print(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
         # sys.path.append(model_dir)
         import platform
-
+        if self.zh_normalizer is not None and self.en_normalizer is not None:
+            return
         if platform.system() == "Darwin":
             from wetext import Normalizer
 
@@ -93,8 +95,15 @@ class TextNormalizer:
         else:
             from tn.chinese.normalizer import Normalizer as NormalizerZh
             from tn.english.normalizer import Normalizer as NormalizerEn
-
-            self.zh_normalizer = NormalizerZh(remove_interjections=False, remove_erhua=False, overwrite_cache=False)
+            # use new cache dir for build tagger rules with disable remove_interjections and remove_erhua
+            cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tagger_cache")
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+                with open(os.path.join(cache_dir, ".gitignore"), "w") as f:
+                    f.write("*\n")
+            self.zh_normalizer = NormalizerZh(
+                cache_dir=cache_dir, remove_interjections=False, remove_erhua=False, overwrite_cache=False
+            )
             self.en_normalizer = NormalizerEn(overwrite_cache=False)
 
     def normalize(self, text: str) -> str:
@@ -333,53 +342,57 @@ class TextTokenizer:
         """
         将tokenize后的结果按特定token进一步分割
         """
+        # 处理特殊情况
+        if len(tokenized_str) == 0:
+            return []
         sentences: List[List[str]] = []
         current_sentence = []
+        current_sentence_tokens_len = 0
         for i in range(len(tokenized_str)):
             token = tokenized_str[i]
             current_sentence.append(token)
-            if token in split_tokens:
-                if len(current_sentence) == 1:
-                    # 如果当前tokens只有一个，且是切分符号，则忽略这条句子
-                    pass
-                elif len(current_sentence) == 2 and current_sentence[0] == '▁':
-                    # 如果当前tokens只有两个，且仅有切分符号，则忽略这条句子
-                    pass
-                elif len(current_sentence) <= max_tokens_per_sentence:
+            current_sentence_tokens_len += 1
+            if current_sentence_tokens_len <= max_tokens_per_sentence:
+                if token in split_tokens and current_sentence_tokens_len > 2:
                     if i < len(tokenized_str) - 1:
                         if tokenized_str[i + 1] in ["'", "▁'"]:
                             # 后续token是'，则不切分
                             current_sentence.append(tokenized_str[i + 1])
                             i += 1
-
                     sentences.append(current_sentence)
-                else:
-                    # 如果当前tokens的长度超过最大限制
-                    if "," in current_sentence or "▁," in current_sentence: 
-                        # 如果当前tokens中有,，则按,分割
-                        sub_sentences = TextTokenizer.split_sentences_by_token(
-                            current_sentence, [",", "▁,"], max_tokens_per_sentence=max_tokens_per_sentence
-                        )
-                    elif "-" in current_sentence:
-                        # 没有,，则按-分割
-                        sub_sentences = TextTokenizer.split_sentences_by_token(
-                            current_sentence, ["-"], max_tokens_per_sentence=max_tokens_per_sentence
-                        )
+                    current_sentence = []
+                    current_sentence_tokens_len = 0
+                continue
+            # 如果当前tokens的长度超过最大限制
+            if not  ("," in split_tokens or "▁," in split_tokens ) and ("," in current_sentence or "▁," in current_sentence): 
+                # 如果当前tokens中有,，则按,分割
+                sub_sentences = TextTokenizer.split_sentences_by_token(
+                    current_sentence, [",", "▁,"], max_tokens_per_sentence=max_tokens_per_sentence
+                )
+            elif "-" not in split_tokens and "-" in current_sentence:
+                # 没有,，则按-分割
+                sub_sentences = TextTokenizer.split_sentences_by_token(
+                    current_sentence, ["-"], max_tokens_per_sentence=max_tokens_per_sentence
+                )
+            else:
+                # 按照长度分割
+                sub_sentences = []
+                for j in range(0, len(current_sentence), max_tokens_per_sentence):
+                    if j + max_tokens_per_sentence < len(current_sentence):
+                        sub_sentences.append(current_sentence[j : j + max_tokens_per_sentence])
                     else:
-                        # 按照长度分割
-                        sub_sentences = [
-                            current_sentence[:max_tokens_per_sentence],
-                            current_sentence[max_tokens_per_sentence:],
-                        ]
-                        warnings.warn(
-                            f"The tokens length of sentence exceeds limit: {max_tokens_per_sentence}, "
-                            f"Tokens in sentence: {current_sentence}."
-                            "Maybe unexpected behavior",
-                            RuntimeWarning,
-                        )
-                    sentences.extend(sub_sentences)
-                current_sentence = []
-        if len(current_sentence) > 0:
+                        sub_sentences.append(current_sentence[j:])
+                warnings.warn(
+                    f"The tokens length of sentence exceeds limit: {max_tokens_per_sentence}, "
+                    f"Tokens in sentence: {current_sentence}."
+                    "Maybe unexpected behavior",
+                    RuntimeWarning,
+                )
+            sentences.extend(sub_sentences)
+            current_sentence = []
+            current_sentence_tokens_len = 0
+        if current_sentence_tokens_len > 0:
+            assert current_sentence_tokens_len <= max_tokens_per_sentence
             sentences.append(current_sentence)
         # 如果相邻的句子加起来长度小于最大限制，则合并
         merged_sentences = []
@@ -439,15 +452,22 @@ if __name__ == "__main__":
         "Couting down 3, 2, 1, go!",
         "数到3就开始：1、2、3",
         "This sales for 2.5% off, only $12.5.",
+        "5G网络是4G网络的升级版，2G网络是3G网络的前身",
         "苹果于2030/1/2发布新 iPhone 2X 系列手机，最低售价仅 ¥12999",
         "这酒...里...有毒...",
         # 异常case
         "只有,,,才是最好的",
+        "babala2是什么？",  # babala二是什么?
+        "用beta1测试",  # 用beta一测试
+        "have you ever been to beta2?",  # have you ever been to beta two?
+        "such as XTTS, CosyVoice2, Fish-Speech, and F5-TTS",  # such as xtts,cosyvoice two,fish-speech,and f five-tts
         # 人名
         "约瑟夫·高登-莱维特（Joseph Gordon-Levitt is an American actor）",
         "蒂莫西·唐纳德·库克（英文名：Timothy Donald Cook），通称蒂姆·库克（Tim Cook），美国商业经理、工业工程师和工业开发商，现任苹果公司首席执行官。",
         # 长句子
         "《盗梦空间》是由美国华纳兄弟影片公司出品的电影，由克里斯托弗·诺兰执导并编剧，莱昂纳多·迪卡普里奥、玛丽昂·歌迪亚、约瑟夫·高登-莱维特、艾利奥特·佩吉、汤姆·哈迪等联袂主演，2010年7月16日在美国上映，2010年9月1日在中国内地上映，2020年8月28日在中国内地重映。影片剧情游走于梦境与现实之间，被定义为“发生在意识结构内的当代动作科幻片”，讲述了由莱昂纳多·迪卡普里奥扮演的造梦师，带领特工团队进入他人梦境，从他人的潜意识中盗取机密，并重塑他人梦境的故事。",
+        "清晨拉开窗帘，阳光洒在窗台的Bloomixy花艺礼盒上——薰衣草香薰蜡烛唤醒嗅觉，永生花束折射出晨露般光泽。设计师将“自然绽放美学”融入每个细节：手工陶瓷花瓶可作首饰收纳，香薰精油含依兰依兰舒缓配方。限量款附赠《365天插花灵感手册》，让每个平凡日子都有花开仪式感。\n宴会厅灯光暗下的刹那，Glimmeria星月系列耳坠开始发光——瑞士冷珐琅工艺让蓝宝石如银河流动，钛合金骨架仅3.2g无负重感。设计师秘密：内置微型重力感应器，随步伐产生0.01mm振幅，打造“行走的星光”。七夕限定礼盒含星座定制铭牌，让爱意如星辰永恒闪耀。",
+        "电影1：“黑暗骑士”（演员：克里斯蒂安·贝尔、希斯·莱杰；导演：克里斯托弗·诺兰）；电影2：“盗梦空间”（演员：莱昂纳多·迪卡普里奥；导演：克里斯托弗·诺兰）；电影3：“钢琴家”（演员：艾德里安·布洛迪；导演：罗曼·波兰斯基）；电影4：“泰坦尼克号”（演员：莱昂纳多·迪卡普里奥；导演：詹姆斯·卡梅隆）；电影5：“阿凡达”（演员：萨姆·沃辛顿；导演：詹姆斯·卡梅隆）；电影6：“南方公园：大电影”（演员：马特·斯通、托马斯·艾恩格瑞；导演：特雷·帕克）",
     ]
     # 测试分词器
     tokenizer = TextTokenizer(
@@ -465,6 +485,16 @@ if __name__ == "__main__":
     print(f"bos_token: {tokenizer.bos_token}, bos_token_id: {tokenizer.bos_token_id}")
     print(f"eos_token: {tokenizer.eos_token}, eos_token_id: {tokenizer.eos_token_id}")
     print(f"unk_token: {tokenizer.unk_token}, unk_token_id: {tokenizer.unk_token_id}")
+    # 测试拼音 (8474-10201)
+    for id in range(8474, 10201):
+        pinyin = tokenizer.convert_ids_to_tokens(id)
+        if re.match(TextNormalizer.PINYIN_TONE_PATTERN, pinyin, re.IGNORECASE) is None:
+            print(f"{pinyin} should be matched")
+    for badcase in [
+        "beta1", "better1", "voice2", "bala2", "babala2", "hunger2"
+    ]:
+        if re.match(TextNormalizer.PINYIN_TONE_PATTERN, badcase, re.IGNORECASE) is not None:
+            print(f"{badcase} should not be matched!")
     # 不应该有 unk_token_id
     for t in set([*TextTokenizer.punctuation_marks_tokens, ",", "▁,", "-", "▁..."]):
         tokens = tokenizer.convert_tokens_to_ids(t)
@@ -475,16 +505,19 @@ if __name__ == "__main__":
         # 测试 normalize后的字符能被分词器识别
         print(f"`{ch}`", "->", tokenizer.sp_model.Encode(ch, out_type=str))
         print(f"` {ch}`", "->", tokenizer.sp_model.Encode(f" {ch}", out_type=str))
+    max_tokens_per_sentence=120
     for i in range(len(cases)):
         print(f"原始文本: {cases[i]}")
         print(f"Normalized: {text_normalizer.normalize(cases[i])}")
         tokens = tokenizer.tokenize(cases[i])
-        print(f"Tokenzied: {tokens}")
-        sentences = tokenizer.split_sentences(tokens, max_tokens_per_sentence=100)
+        print("Tokenzied: ", ", ".join([f"`{t}`" for t in tokens]))
+        sentences = tokenizer.split_sentences(tokens, max_tokens_per_sentence=max_tokens_per_sentence)
         print("Splitted sentences count:", len(sentences))
         if len(sentences) > 1:
             for j in range(len(sentences)):
                 print(f"  {j}, count:", len(sentences[j]), ", tokens:", "".join(sentences[j]))
+                if len(sentences[j]) > max_tokens_per_sentence:
+                    print(f"Warning: sentence {j} is too long, length: {len(sentences[j])}")
         #print(f"Token IDs (first 10): {codes[i][:10]}")
         if tokenizer.unk_token in codes[i]:
             print(f"Warning: `{cases[i]}` contains UNKNOWN token")
