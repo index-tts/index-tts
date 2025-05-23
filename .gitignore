@@ -10,3 +10,6 @@ checkpoints/*.model
 checkpoints/.cache
 outputs/
 build/
+*.py[cod]
+*.egg-info/
+.venv
