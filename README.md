@@ -18,7 +18,7 @@
 <span style="font-size:16px;">  
 Experience **IndexTTS**: Please contact <u>xuanwu@bilibili.com</u> for more detailed information. </span>
 ### Contact
-QQ群：553460296 \
+QQ群（二群）：1048202584 \
 Discord：https://discord.gg/uT32E7KDmy  \
 简历：indexspeech@bilibili.com  \
 欢迎大家来交流讨论！

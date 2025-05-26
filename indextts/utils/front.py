@@ -59,17 +59,21 @@ class TextNormalizer:
         pattern = r"^[a-zA-Z0-9]+@[a-zA-Z0-9]+\.[a-zA-Z]+$"
         return re.match(pattern, email) is not None
 
+    PINYIN_TONE_PATTERN = r"(?<![a-z])((?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)?(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)|ng|er)([1-5])"
     """
     匹配拼音声调格式：pinyin+数字，声调1-5，5表示轻声
     例如：xuan4, jve2, ying1, zhong4, shang5
     不匹配：beta1, voice2
     """
-    PINYIN_TONE_PATTERN = r"(?<![a-z])((?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)?(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)|ng|er)([1-5])"
+    NAME_PATTERN = r"[\u4e00-\u9fff]+(?:[-·—][\u4e00-\u9fff]+){1,2}"
     """
     匹配人名，格式：中文·中文，中文·中文-中文
     例如：克里斯托弗·诺兰，约瑟夫·高登-莱维特
     """
-    NAME_PATTERN = r"[\u4e00-\u9fff]+(?:[-·—][\u4e00-\u9fff]+){1,2}"
+
+    # 匹配常见英语缩写 's，仅用于替换为 is，不匹配所有 's
+    ENGLISH_CONTRACTION_PATTERN = r"(what|where|who|which|how|t?here|it|s?he|that|this)'s"
+
 
     def use_chinese(self, s):
         has_chinese = bool(re.search(r"[\u4e00-\u9fff]", s))
@@ -111,6 +115,7 @@ class TextNormalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""
         if self.use_chinese(text):
+            text = re.sub(TextNormalizer.ENGLISH_CONTRACTION_PATTERN, r"\1 is", text, flags=re.IGNORECASE)
             replaced_text, pinyin_list = self.save_pinyin_tones(text.rstrip())
             
             replaced_text, original_name_list = self.save_names(replaced_text)
@@ -127,6 +132,7 @@ class TextNormalizer:
             result = pattern.sub(lambda x: self.zh_char_rep_map[x.group()], result)
         else:
             try:
+                text = re.sub(TextNormalizer.ENGLISH_CONTRACTION_PATTERN, r"\1 is", text, flags=re.IGNORECASE)
                 result = self.en_normalizer.normalize(text)
             except Exception:
                 result = text
@@ -461,6 +467,11 @@ if __name__ == "__main__":
         "用beta1测试",  # 用beta一测试
         "have you ever been to beta2?",  # have you ever been to beta two?
         "such as XTTS, CosyVoice2, Fish-Speech, and F5-TTS",  # such as xtts,cosyvoice two,fish-speech,and f five-tts
+        "where's the money?",  # where is the money?
+        "who's there?",  # who is there?
+        "which's the best?",  # which is the best?
+        "how's it going?",  # how is it going?
+        "今天是个好日子 it's a good day",  # 今天是个好日子 it is a good day
         # 人名
         "约瑟夫·高登-莱维特（Joseph Gordon-Levitt is an American actor）",
         "蒂莫西·唐纳德·库克（英文名：Timothy Donald Cook），通称蒂姆·库克（Tim Cook），美国商业经理、工业工程师和工业开发商，现任苹果公司首席执行官。",
