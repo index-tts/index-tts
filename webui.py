@@ -4,6 +4,8 @@ import sys
 import threading
 import time
 import pandas as pd
+import librosa
+import soundfile as sf
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -90,7 +92,15 @@ def gen_single(prompt, text, infer_mode, max_text_tokens_per_sentence=120, sente
             max_text_tokens_per_sentence=int(max_text_tokens_per_sentence),
             sentences_bucket_max_size=(sentences_bucket_max_size),
             **kwargs)
-    return gr.update(value=output,visible=True)
+    
+    # 提升采样率，防闷
+    original_sr = 24000
+    target_sr = 48000
+    audio, _ = librosa.load(output_path, sr=original_sr)
+    high_res_audio = librosa.resample(audio, orig_sr=original_sr, target_sr=target_sr)
+    sf.write(output_path, high_res_audio, target_sr)
+
+    return gr.update(value=output_path, visible=True)
 
 def update_prompt_audio():
     update_button = gr.update(interactive=True)
