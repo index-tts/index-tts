@@ -1,0 +1,25 @@
+services:
+  indextts:
+    build: .
+    image: indextts
+    ports:
+      - 17860:7860"
+    volumes:
+      - ~/models/index-tts/checkpoints:/app/checkpoints
+      - ${HOME}/.cache:/root/.cache
+    environment:
+      - GRADIO_SERVER_NAME=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - indextts-network
+    restart: unless-stopped
+
+networks:
+  indextts-network:
+    driver: bridge
