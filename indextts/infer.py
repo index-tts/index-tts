@@ -1,11 +1,9 @@
 import os
-import re
+import sys
 import time
 from subprocess import CalledProcessError
 from typing import Dict, List, Tuple
 
-import numpy as np
-import sentencepiece as spm
 import torch
 import torchaudio
 from torch.nn.utils.rnn import pad_sequence
@@ -90,20 +88,24 @@ class IndexTTS:
             except (ImportError, OSError, CalledProcessError) as e:
                 use_deepspeed = False
                 print(f">> DeepSpeed加载失败，回退到标准推理: {e}")
+                print("See more details https://www.deepspeed.ai/tutorials/advanced-install/")
 
             self.gpt.post_init_gpt2_config(use_deepspeed=use_deepspeed, kv_cache=True, half=True)
         else:
-            self.gpt.post_init_gpt2_config(use_deepspeed=False, kv_cache=False, half=False)
+            self.gpt.post_init_gpt2_config(use_deepspeed=False, kv_cache=True, half=False)
 
         if self.use_cuda_kernel:
             # preload the CUDA kernel for BigVGAN
             try:
-                from indextts.BigVGAN.alias_free_activation.cuda import load
-
-                anti_alias_activation_cuda = load.load()
+                from indextts.BigVGAN.alias_free_activation.cuda import load as anti_alias_activation_loader
+                anti_alias_activation_cuda = anti_alias_activation_loader.load()
                 print(">> Preload custom CUDA kernel for BigVGAN", anti_alias_activation_cuda)
-            except:
-                print(">> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch.")
+            except Exception as e:
+                print(">> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch.", e, file=sys.stderr)
+                print(" Reinstall with `pip install -e . --no-deps --no-build-isolation` to prebuild `anti_alias_activation_cuda` kernel.", file=sys.stderr)
+                print(
+                    "See more details: https://github.com/index-tts/index-tts/issues/164#issuecomment-2903453206", file=sys.stderr
+                )
                 self.use_cuda_kernel = False
         self.bigvgan = Generator(self.cfg.bigvgan, use_cuda_kernel=self.use_cuda_kernel)
         self.bigvgan_path = os.path.join(self.model_dir, self.cfg.bigvgan_checkpoint)
