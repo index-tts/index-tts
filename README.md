@@ -5,9 +5,13 @@
 </div>
 
 Intel环境设置:
+
 1.下载Anaconda创建python 3.10 的环境
+
 <img src='assets/Anaconda.png' width="250"/>
+
 2.依次运行下面命令
+
 ```bash
 pip install ffmpeg
 ```
@@ -19,7 +23,9 @@ python -m pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index
 ```bash
 python -m pip install intel-extension-for-pytorch==2.7.10+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/cn/
 ```
+
 下面这个如果提示 Y/N 输入Y回车
+
 ```bash
 conda install -c conda-forge pynini==2.1.6
 ```
@@ -36,6 +42,8 @@ D:
 ```bash
 D:cd Apps\index-tts
 ```
+
+
 
 ```bash
 pip install -e .
