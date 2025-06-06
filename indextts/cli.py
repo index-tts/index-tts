@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--model_dir", type=str, default="checkpoints", help="Path to the model directory. Default is 'checkpoints'")
     parser.add_argument("--fp16", action="store_true", default=True, help="Use FP16 for inference if available")
     parser.add_argument("-f", "--force", action="store_true", default=False, help="Force to overwrite the output file if it exists")
-    parser.add_argument("-d", "--device", type=str, default=None, help="Device to run the model on (cpu, cuda, mps)." )
+    parser.add_argument("-d", "--device", type=str, default=None, help="Device to run the model on (cpu, cuda, mps, xpu)." )
     args = parser.parse_args()
     if len(args.text.strip()) == 0:
         print("ERROR: Text is empty.")
@@ -44,11 +44,22 @@ def main():
         print("ERROR: PyTorch is not installed. Please install it first.")
         sys.exit(1)
 
+    xpu_available = False
+    try:
+        import intel_extension_for_pytorch as ipex
+        _ = torch.xpu.device_count()
+        xpu_available = xpu_available or torch.xpu.is_available()
+    except:
+        xpu_available = xpu_available or (hasattr(torch, "xpu") and torch.xpu.is_available())
+
+
     if args.device is None:
         if torch.cuda.is_available():
             args.device = "cuda:0"
         elif torch.mps.is_available():
             args.device = "mps"
+        elif xpu_available:
+            args.device = "xpu"
         else:
             args.device = "cpu"
             args.fp16 = False # Disable FP16 on CPU
