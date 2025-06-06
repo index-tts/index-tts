@@ -1,9 +1,65 @@
 
+
 <div align="center">
 <img src='assets/index_icon.png' width="250"/>
 </div>
 
+Intel环境设置:
+1.下载Anaconda创建python 3.10 的环境
+<img src='assets/Anaconda.png' width="250"/>
+2.依次运行下面命令
+```bash
+pip install ffmpeg
+```
 
+```bash
+python -m pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/xpu
+```
+
+```bash
+python -m pip install intel-extension-for-pytorch==2.7.10+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/cn/
+```
+下面这个如果提示 Y/N 输入Y回车
+```bash
+conda install -c conda-forge pynini==2.1.6
+```
+
+```bash
+pip install WeTextProcessing --no-deps
+```
+
+下面输入你下载的本仓库的代码所在磁盘,下面举例D盘的 D:\Apps\index-tts 目录
+```bash
+D:
+```
+
+```bash
+D:cd Apps\index-tts
+```
+
+```bash
+pip install -e .
+```
+
+如果网络环境在国内运行下面这句,如果在国外直接运行后面的huggingface-cli那段
+```bash
+export HF_ENDPOINT="https://hf-mirror.com"
+```
+
+```bash
+huggingface-cli download IndexTeam/IndexTTS-1.5 config.yaml bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab --local-dir checkpoints
+```
+
+```bash
+pip install -e ".[webui]" --no-build-isolation
+```
+
+```bash
+python webui.py
+```
+
+
+下面是官方介绍:
 <h2><center>IndexTTS: An Industrial-Level Controllable and Efficient Zero-Shot Text-To-Speech System</h2>
 
 <p align="center">
