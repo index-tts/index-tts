@@ -13,3 +13,4 @@ build/
 *.py[cod]
 *.egg-info/
 .venv
+checkpoints/
