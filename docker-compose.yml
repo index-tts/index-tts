@@ -1,0 +1,10 @@
+services:
+  indextts:
+    build: .
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./outputs:/app/outputs
+      - ./prompts:/app/prompts
+    restart: always 
