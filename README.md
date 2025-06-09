@@ -217,6 +217,35 @@ python webui.py --model_dir IndexTTS-1.5
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
 
+
+### Docker
+We provide both `Dockerfile` and `docker-compose.yml` for running the web demo.
+
+#### Use docker-compose (Recommended)
+This is the easiest way. Make sure you have `docker-compose` installed.
+```bash
+docker-compose up -d
+```
+Then open your browser and visit `http://127.0.0.1:7860`.
+
+#### Use Dockerfile
+1. Build the image
+```bash
+docker build -t indextts .
+```
+
+2. Run the container
+```bash
+docker run -p 7860:7860 \
+  -v ./checkpoints:/app/checkpoints \
+  -v ./outputs:/app/outputs \
+  -v ./prompts:/app/prompts \
+  --name index-tts \
+  indextts
+```
+Then open your browser and visit `http://127.0.0.1:7860`.
+
+
 #### Sample Code
 ```python
 from indextts.infer import IndexTTS
