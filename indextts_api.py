@@ -8,6 +8,7 @@ import os
 import sys
 import uuid
 from typing import Any
+import asyncio
 
 # Third-party imports
 import numpy as np
@@ -29,6 +30,20 @@ device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_availa
 
 tts_model = None
 current_model_dir = None
+
+# -----------------------------------------------------------------------------
+# Concurrency control – limit simultaneous inference to prevent GPU contention
+# -----------------------------------------------------------------------------
+
+# Maximum number of concurrent TTS inferences allowed. Increase with caution –
+# each inference can be very memory-intensive and running several in parallel
+# may exhaust GPU/CPU/RAM resources. A value of 1 is the safest default.
+MAX_CONCURRENT_REQUESTS = 1
+
+# Async semaphore that will be awaited before each inference.  We create it at
+# module import time so it is shared across all requests and all workers inside
+# the same Python process.
+model_semaphore: asyncio.Semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 # Configure logging
 def setup_logging(verbose: bool = False):
@@ -53,7 +68,7 @@ app.add_middleware(
 )
 
 @app.post("/tts")
-def tts_endpoint(
+async def tts_endpoint(
     text: str = Form(...),
     voice: str = Form("voice_a"),
     speed: float = Form(1.0),
@@ -73,6 +88,7 @@ def tts_endpoint(
 
     global tts_model
     global current_model_dir
+    global model_semaphore
 
     # Validate and sanitise inputs -------------------------------------------------
     if not text or not text.strip():
@@ -129,8 +145,32 @@ def tts_endpoint(
 
     # Run inference -----------------------------------------------------------------
     try:
-        logger.info(f"Generating TTS – text len={len(text)}, voice={voice}, model_dir={model_dir}")
-        tts_model.infer(audio_prompt=voice_path, text=text, output_path=output_path, verbose=False)
+        logger.info(
+            f"Received TTS Request – text len={len(text)}, voice={voice}, model_dir={model_dir}"
+        )
+
+        # ------------------------------------------------------------------
+        # Acquire semaphore and run the blocking inference in a thread pool so
+        # that we don't block the event-loop.  The semaphore guarantees that
+        # at most MAX_CONCURRENT_REQUESTS inferences run at the same time.
+        # ------------------------------------------------------------------
+
+        async with model_semaphore:
+            logger.info(f"Acquired semaphore for inference")
+            logger.info(f"Generating TTS – text len={len(text)}, voice={voice}, model_dir={model_dir} ...")
+            loop = asyncio.get_running_loop()
+            from typing import cast
+            model_ref: IndexTTS = cast(IndexTTS, tts_model)
+            await loop.run_in_executor(
+                None,
+                lambda: model_ref.infer(  # type: ignore[attr-defined]
+                    audio_prompt=voice_path,
+                    text=text,
+                    output_path=output_path,
+                    verbose=False,
+                ),
+            )
+
     except Exception as e:
         logger.exception("Inference failed")
         return JSONResponse({"error": f"Inference failed: {str(e)}"}, status_code=500)
