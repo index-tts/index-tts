@@ -37,12 +37,15 @@ for file in [
 
 import gradio as gr
 
+import torch
 from indextts.infer import IndexTTS
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="zh_CN")
 MODE = 'local'
-tts = IndexTTS(model_dir=cmd_args.model_dir, cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),)
+
+device = "cuda:0" if torch.cuda.is_available() else "mps" if torch.mps.is_available() else "cpu"
+tts = IndexTTS(model_dir=cmd_args.model_dir, cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"), is_fp16=True, device=device)
 
 
 os.makedirs("outputs/tasks",exist_ok=True)

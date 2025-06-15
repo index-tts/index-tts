@@ -12,14 +12,13 @@ dataset:
         normalize: false
 
 gpt:
-    model_dim: 1024
-    max_mel_tokens: 605
-    max_text_tokens: 402
-    heads: 16
+    model_dim: 1280
+    max_mel_tokens: 800
+    max_text_tokens: 600
+    heads: 20
     use_mel_codes_as_input: true
     mel_length_compression: 1024
-    layers: 20
-    activation_function: "gelu_pytorch_tanh"
+    layers: 24
     number_text_tokens: 12000
     number_mel_codes: 8194
     start_mel_token: 8192
@@ -64,7 +63,7 @@ bigvgan:
     speaker_embedding_dim: 512
     cond_d_vector_in_each_upsampling_layer: true
 
-    gpt_dim: 1024
+    gpt_dim: 1280
 
     activation: "snakebeta"
     snake_logscale: true
@@ -111,3 +110,4 @@ bigvgan:
 dvae_checkpoint: dvae.pth
 gpt_checkpoint: gpt.pth
 bigvgan_checkpoint: bigvgan_generator.pth
+version: 1.5
