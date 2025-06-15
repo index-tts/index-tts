@@ -33,12 +33,10 @@ current_model_dir = None
 # Configure logging
 def setup_logging(verbose: bool = False):
     level = logging.DEBUG if verbose else logging.INFO
-    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    if verbose:
-        format_str = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
+    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
 
     logging.basicConfig(level=level, format=format_str)
-    return logging.getLogger("mlx_audio_server")
+    return logging.getLogger("indextts_api")
 
 
 logger = setup_logging()  # Will be updated with verbose setting in main()
