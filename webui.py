@@ -5,6 +5,7 @@ import threading
 import time
 
 import warnings
+import pandas as pd
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
