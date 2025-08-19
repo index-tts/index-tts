@@ -299,6 +299,15 @@ class IndexTTS:
             if audio.shape[0] > 1:
                 audio = audio[0].unsqueeze(0)
             audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+
+            max_audio_length_seconds = 50  
+            max_audio_samples = int(max_audio_length_seconds * 24000)
+            
+            if audio.shape[1] > max_audio_samples:
+                if verbose:
+                    print(f"Audio too long ({audio.shape[1]} samples), truncating to {max_audio_samples} samples")
+                audio = audio[:, :max_audio_samples]
+
             cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
             cond_mel_frame = cond_mel.shape[-1]
             if verbose:
