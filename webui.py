@@ -16,7 +16,7 @@ import argparse
 parser = argparse.ArgumentParser(description="IndexTTS WebUI")
 parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbose mode")
 parser.add_argument("--port", type=int, default=7860, help="Port to run the web UI on")
-parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the web UI on")
+parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="checkpoints", help="Model checkpoints directory")
 cmd_args = parser.parse_args()
 
@@ -40,7 +40,7 @@ import gradio as gr
 from indextts.infer import IndexTTS
 from tools.i18n.i18n import I18nAuto
 
-i18n = I18nAuto(language="zh_CN")
+i18n = I18nAuto(language="zh_TW")
 MODE = 'local'
 tts = IndexTTS(model_dir=cmd_args.model_dir, cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),)
 
@@ -60,6 +60,9 @@ with open("tests/cases.jsonl", "r", encoding="utf-8") as f:
 
 def gen_single(prompt, text, infer_mode, max_text_tokens_per_sentence=120, sentences_bucket_max_size=4,
                 *args, progress=gr.Progress()):
+    
+    prompt = "/vocals/" + prompt + ".wav"
+
     output_path = None
     if not output_path:
         output_path = os.path.join("outputs", f"spk_{int(time.time())}.wav")
@@ -107,8 +110,16 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     with gr.Tab("音频生成"):
         with gr.Row():
             os.makedirs("prompts",exist_ok=True)
-            prompt_audio = gr.Audio(label="参考音频",key="prompt_audio",
-                                    sources=["upload","microphone"],type="filepath")
+            # prompt_audio = gr.Audio(label="参考音频",key="prompt_audio",
+                                    # sources=["upload","microphone"],type="filepath")
+            prompt_audio = gr.Radio(
+              choices=[
+                 "KD-Female-1",
+                 "KD-Female-2",
+                 "KD-Female-3",
+                 "KD-Male-1",
+                 "KD-Male-2"
+              ], label="參考音頻編號", value="KD-W1")
             prompt_list = os.listdir("prompts")
             default = ''
             if prompt_list:
@@ -195,9 +206,9 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         inputs=[input_text_single, max_text_tokens_per_sentence],
         outputs=[sentences_preview]
     )
-    prompt_audio.upload(update_prompt_audio,
-                         inputs=[],
-                         outputs=[gen_button])
+    # prompt_audio.upload(update_prompt_audio,
+    #                      inputs=[],
+    #                      outputs=[gen_button])
 
     gen_button.click(gen_single,
                      inputs=[prompt_audio, input_text_single, infer_mode,
