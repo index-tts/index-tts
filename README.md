@@ -5,10 +5,9 @@
 
 
 <h2><center>IndexTTS: An Industrial-Level Controllable and Efficient Zero-Shot Text-To-Speech System</h2>
-
+[[中文]](https://github.com/toarujs/index-tts/blob/main/README-CN.md)
 <p align="center">
 <a href='https://arxiv.org/abs/2502.05512'><img src='https://img.shields.io/badge/ArXiv-2502.05512-red'></a>
-[[中文]](https://github.com/toarujs/index-tts/blob/main/README-CN.md)
 
 ## 👉🏻 IndexTTS 👈🏻
 
