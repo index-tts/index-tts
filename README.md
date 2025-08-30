@@ -8,7 +8,7 @@
 
 <p align="center">
 <a href='https://arxiv.org/abs/2502.05512'><img src='https://img.shields.io/badge/ArXiv-2502.05512-red'></a>
-[[中文]]([https://huggingface.co/spaces/IndexTeam/IndexTTS](https://github.com/toarujs/index-tts/blob/main/README-CN.md))
+[[中文]](https://github.com/toarujs/index-tts/blob/main/README-CN.md)
 
 ## 👉🏻 IndexTTS 👈🏻
 
