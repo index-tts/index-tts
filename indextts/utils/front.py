@@ -109,9 +109,24 @@ class TextNormalizer:
                 cache_dir=cache_dir, remove_interjections=False, remove_erhua=False, overwrite_cache=False
             )
             self.en_normalizer = NormalizerEn(overwrite_cache=False)
-
+    def replace_characters(self, text: str) -> str:
+        char_replace_map = {
+            "嗯": "恩", "呣": "母",
+            "米": "芈",  # https://github.com/index-tts/index-tts/issues/226
+            "殄": "舔", "扽": "Den", "耨": "No", "囹": "灵",  "圄": "语",  "蘡": "婴",  # https://github.com/index-tts/index-tts/issues/218
+            "薁": "玉", "龃": "举", "龉": "语", "悛": "圈", "怙": "互", "鼯": "吴",
+            "狖": "右", "靁": "雷", "虺": "辉", "腌": "阿", "臢": "za1", "孓": "爵", 
+            "陟": "制", "臧否": "臧痞", "砭": "鞭", "翕": "西",
+            "耒": "垒", "耜": "寺", "斫": "啄", "谯": "桥", "裾": "拘", "洇": "阴",
+            "璜": "黄", "歃": "煞", "伷": "宙", "蹀": "碟", "躞": "谢", "焐": "悟",
+            "粝": "厉", "鞣": "柔", "鍪": "谋", "襕": "蓝", "舂": "冲"
+        }
+        for old_char, new_char in char_replace_map.items():
+            text = text.replace(old_char, new_char)
+        return text
+    
     def normalize(self, text: str) -> str:
-        text = text.replace("嗯", "恩").replace("呣", "母")
+        text = self.replace_characters(text)
         if not self.zh_normalizer or not self.en_normalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""
