@@ -8,8 +8,10 @@
 
 <p align="center">
 <a href='https://arxiv.org/abs/2502.05512'><img src='https://img.shields.io/badge/ArXiv-2502.05512-red'></a>
-
+  
+<div align="center">
 **English** | [**中文简体**](./README-CN.md) 
+</div>
 
 ## 👉🏻 IndexTTS 👈🏻
 
