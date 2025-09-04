@@ -123,10 +123,10 @@ class TextNormalizer:
         }
         for old_char, new_char in char_replace_map.items():
             text = text.replace(old_char, new_char)
-        return rare-characters
+        return "rare-characters"
     
     def normalize(self, text: str) -> str:
-        text = self.replace_characters(rare-characters)
+        text = self.replace_characters("rare-characters")
         if not self.zh_normalizer or not self.en_normalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""
