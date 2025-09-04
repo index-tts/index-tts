@@ -4,7 +4,7 @@
 </div>
 
 
-<h2><center>IndexTTS: An Industrial-Level Controllable and Efficient Zero-Shot Text-To-Speech System</h2>
+<h2><center>IndexTTS: 一款工业级可控且高效的零样本文本转语音系统</h2>
 
 <p align="center">
 <a href='https://arxiv.org/abs/2502.05512'><img src='https://img.shields.io/badge/ArXiv-2502.05512-red'></a>
@@ -16,9 +16,9 @@
 [[HuggingFace Demo]](https://huggingface.co/spaces/IndexTeam/IndexTTS)   [[ModelScope Demo]](https://modelscope.cn/studios/IndexTeam/IndexTTS-Demo) \
 [[Paper]](https://arxiv.org/abs/2502.05512)  [[Demos]](https://index-tts.github.io)  
 
-**IndexTTS** is a GPT-style text-to-speech (TTS) model mainly based on XTTS and Tortoise. It is capable of correcting the pronunciation of Chinese characters using pinyin and controlling pauses at any position through punctuation marks. We enhanced multiple modules of the system, including the improvement of speaker condition feature representation, and the integration of BigVGAN2 to optimize audio quality. Trained on tens of thousands of hours of data, our system achieves state-of-the-art performance, outperforming current popular TTS systems such as XTTS, CosyVoice2, Fish-Speech, and F5-TTS.
+**IndexTTS** 是一种主要基于 XTTS 和 Tortoise 的 GPT 风格的文本转语音 （TTS） 模型。它能够使用拼音纠正汉字的发音，并通过标点符号控制任何位置的停顿。我们增强了系统的多个模块，包括扬声器条件特征表示的改进，以及 BigVGAN2 的集成以优化音频质量。经过数万小时的数据训练，我们的系统实现了最先进的性能，优于当前流行的 TTS 系统，如 XTTS、CosyVoice2、Fish-Speech 和 F5-TTS。
 <span style="font-size:16px;">  
-Experience **IndexTTS**: Please contact <u>xuanwu@bilibili.com</u> for more detailed information. </span>
+体验 **IndexTTS**：请联系 <u>xuanwu@bilibili.com</u> 了解更多详细信息。 </span>
 ### Contact
 QQ群（二群）：1048202584 \
 Discord：https://discord.gg/uT32E7KDmy  \
@@ -26,27 +26,27 @@ Discord：https://discord.gg/uT32E7KDmy  \
 欢迎大家来交流讨论！
 ## 📣 Updates
 
-- `2025/05/14` 🔥🔥 We release the **IndexTTS-1.5**, Significantly improve the model's stability and its performance in the English language.
-- `2025/03/25` 🔥 We release IndexTTS-1.0 model parameters and inference code.
-- `2025/02/12` 🔥 We submitted our paper on arXiv, and released our demos and test sets.
+- `2025/05/14` 🔥🔥我们发布了 **IndexTTS-1.5**，显著提高了模型在英语语言中的稳定性和性能。
+- `2025/03/25` 🔥 我们发布了IndexTTS-1.0模型参数和推理代码。
+- `2025/02/12` 🔥 我们在arXiv上提交了我们的论文，并发布了我们的演示和测试集。
 
 ## 🖥️ Method
 
-The overview of IndexTTS is shown as follows.
+IndexTTS的概述如下所示。
 
 <picture>
   <img src="assets/IndexTTS.png"  width="800"/>
 </picture>
 
 
-The main improvements and contributions are summarized as follows:
- - In Chinese scenarios, we have introduced a character-pinyin hybrid modeling approach. This allows for quick correction of mispronounced characters.
- - **IndexTTS** incorporate a conformer conditioning encoder and a BigVGAN2-based speechcode decoder. This improves training stability, voice timbre similarity, and sound quality.
- - We release all test sets here, including those for polysyllabic words, subjective and objective test sets.
+主要的改善和贡献总结如下:
+ - 在中文场景中，我们引入了一种字符-拼音混合建模方法。这允许快速纠正发音错误的字符。
+ - **IndexTTS**结合了一个变换器条件编码器和基于BigVGAN2的语音编码解码器。这提高了训练的稳定性、声音音色的相似性和音质。
+ - 我们在这里发布所有测试集，包括多音节词的测试集、主观和客观测试集。
 
 
 
-## Model Download
+## 模型下载
 | 🤗**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
 | [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) |
@@ -55,7 +55,7 @@ The main improvements and contributions are summarized as follows:
 
 ## 📑 Evaluation
 
-**Word Error Rate (WER) Results for IndexTTS and Baseline Models on the** [**seed-test**](https://github.com/BytedanceSpeech/seed-tts-eval)
+**IndexTTS 和基线模型的单词错误率 （WER） 结果** [**seed-test**](https://github.com/BytedanceSpeech/seed-tts-eval)
 
 | **WER**                | **test_zh** | **test_en** | **test_hard** |
 |:----------------------:|:-----------:|:-----------:|:-------------:|
@@ -71,7 +71,7 @@ The main improvements and contributions are summarized as follows:
 | **IndexTTS-1.5**       | **0.821**   | **1.606**   | 6.565         |
 
 
-**Word Error Rate (WER) Results for IndexTTS and Baseline Models on the other opensource test**
+**另一个开源测试中 IndexTTS 和基线模型的单词错误率 （WER） 结果**
 
 
 |    **Model**    | **aishell1_test** | **commonvoice_20_test_zh** | **commonvoice_20_test_en** | **librispeech_test_clean** |  **avg** |
@@ -86,7 +86,7 @@ The main improvements and contributions are summarized as follows:
 |   **IndexTTS-1.5**  |      **1.2**     |          **6.8**          |          **3.9**          |          **1.7**          | **3.1** |
 
 
-**Speaker Similarity (SS) Results for IndexTTS and Baseline Models**
+**IndexTTS 和基线模型的说话人相似度 （SS） 结果**
 
 |    **Model**    | **aishell1_test** | **commonvoice_20_test_zh** | **commonvoice_20_test_en** | **librispeech_test_clean** |  **avg**  |
 |:---------------:|:-----------------:|:--------------------------:|:--------------------------:|:--------------------------:|:---------:|
@@ -101,7 +101,7 @@ The main improvements and contributions are summarized as follows:
 
 
 
-**MOS Scores for Zero-Shot Cloned Voice**
+**零样本克隆语音的 MOS 分数**
 
 | **Model**       | **Prosody** | **Timbre** | **Quality** |  **AVG**  |
 |-----------------|:-----------:|:----------:|:-----------:|:---------:|
@@ -113,15 +113,15 @@ The main improvements and contributions are summarized as follows:
 | **IndexTTS**    |    **3.79**     |    **4.20**    |    **4.05**     |   **4.01**    |
 
 
-## Usage Instructions
-### Environment Setup
-1. Download this repository:
+## 使用说明
+### 环境设置
+1. 下载此存储库:
 ```bash
 git clone https://github.com/index-tts/index-tts.git
 ```
-2. Install dependencies:
+2. 安装依赖:
 
-Create a new conda environment and install dependencies:
+创建新的 conda 环境并安装依赖项:
  
 ```bash
 conda create -n index-tts python=3.10
@@ -131,30 +131,29 @@ apt-get install ffmpeg
 conda install -c conda-forge ffmpeg
 ```
 
-Install [PyTorch](https://pytorch.org/get-started/locally/), e.g.:
+安装 [PyTorch](https://pytorch.org/get-started/locally/), 例如。:
 ```bash
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
 > [!NOTE]
-> If you are using Windows you may encounter [an error](https://github.com/index-tts/index-tts/issues/61) when installing `pynini`:
-`ERROR: Failed building wheel for pynini`
-> In this case, please install `pynini` via `conda`:
+> 如果您使用的是 Windows，则在安装时可能会遇到[错误](https://github.com/index-tts/index-tts/issues/61)`ERROR: Failed building wheel for pynini` 在这种情况下，请通过conda安装pynini 
+>  
 > ```bash
-> # after conda activate index-tts
+> # 在 conda activate index-tts后
 > conda install -c conda-forge pynini==2.1.6
 > pip install WeTextProcessing --no-deps
 > ```
 
-Install `IndexTTS` as a package:
+作为包安装 `IndexTTS`:
 ```bash
 cd index-tts
 pip install -e .
 ```
 
-3. Download models:
+1. 下载模型:
 
-Download by `huggingface-cli`:
+从 `huggingface-cli`下载:
 
 ```bash
 huggingface-cli download IndexTeam/IndexTTS-1.5 \
@@ -162,12 +161,12 @@ huggingface-cli download IndexTeam/IndexTTS-1.5 \
   --local-dir checkpoints
 ```
 
-Recommended for China users. 如果下载速度慢，可以使用镜像：
+推荐给中国用户. 如果下载速度慢，可以使用镜像：
 ```bash
 export HF_ENDPOINT="https://hf-mirror.com"
 ```
 
-Or by `wget`:
+或使用 `wget`:
 
 ```bash
 wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bigvgan_discriminator.pth -P checkpoints
@@ -180,21 +179,21 @@ wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/config.yaml -P c
 ```
 
 > [!NOTE]
-> If you prefer to use the `IndexTTS-1.0` model, please replace `IndexTeam/IndexTTS-1.5` with `IndexTeam/IndexTTS` in the above commands.
+> 如果你更喜欢 `IndexTTS-1.0` 模型, 请将上述命令中的`IndexTeam/IndexTTS-1.5` 替换为 `IndexTeam/IndexTTS` 。
 
 
-4. Run test script:
+4. 运行测试脚本:
 
 
 ```bash
-# Please put your prompt audio in 'test_data' and rename it to 'input.wav'
+# 请将您的提示音频放在 'test_data' 中，并将其重命名为 'input.wav'
 python indextts/infer.py
 ```
 
-5. Use as command line tool:
+5. 作为令行工具使用:
 
 ```bash
-# Make sure pytorch has been installed before running this command
+# 在运行此命令之前，请确保已安装 pytorch
 indextts "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！" \
   --voice reference_voice.wav \
   --model_dir checkpoints \
@@ -202,12 +201,12 @@ indextts "大家好，我现在正在bilibili 体验 ai 科技，说实话，来
   --output output.wav
 ```
 
-Use `--help` to see more options.
+使用`--help`用于查看更多选项
 ```bash
 indextts --help
 ```
 
-#### Web Demo
+#### Web 演示
 ```bash
 pip install -e ".[webui]" --no-build-isolation
 python webui.py
@@ -216,10 +215,10 @@ python webui.py
 python webui.py --model_dir IndexTTS-1.5
 ```
 
-Open your browser and visit `http://127.0.0.1:7860` to see the demo.
+打开浏览器并访问`http://127.0.0.1:7860`以查看演示。
 
 
-#### Sample Code
+#### 示例代码
 ```python
 from indextts.infer import IndexTTS
 tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
@@ -228,16 +227,16 @@ text="大家好，我现在正在bilibili 体验 ai 科技，说实话，来之�
 tts.infer(voice, text, output_path)
 ```
 
-## Acknowledge
+## 感谢
 1. [tortoise-tts](https://github.com/neonbjb/tortoise-tts)
 2. [XTTSv2](https://github.com/coqui-ai/TTS)
 3. [BigVGAN](https://github.com/NVIDIA/BigVGAN)
 4. [wenet](https://github.com/wenet-e2e/wenet/tree/main)
 5. [icefall](https://github.com/k2-fsa/icefall)
 
-## 📚 Citation
+## 📚 引文
 
-🌟 If you find our work helpful, please leave us a star and cite our paper.
+🌟 如果您觉得我们的工作有帮助，请给我们打星标并引用我们的论文。
 
 ```
 @article{deng2025indextts,
