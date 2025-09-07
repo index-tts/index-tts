@@ -5,6 +5,7 @@ import threading
 import time
 
 import warnings
+from pydub import AudioSegment
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -79,6 +80,15 @@ def gen_single(prompt, text, infer_mode, max_text_tokens_per_sentence=120, sente
         # "typical_sampling": bool(typical_sampling),
         # "typical_mass": float(typical_mass),
     }
+    # 检查文件是否为M4A，如果是则转换
+    if prompt.endswith(".m4a"):
+        print("Detected M4A format, converting to WAV...")
+        # 创建一个临时文件路径用于保存转换后的 WAV 文件
+        ext = os.path.splitext(prompt)[-1].lower()
+        temp_wav_path = prompt.replace(ext, ".wav")
+        audio = AudioSegment.from_file(prompt, format="m4a")
+        audio.export(temp_wav_path, format="wav")
+        prompt = temp_wav_path
     if infer_mode == "普通推理":
         output = tts.infer(prompt, text, output_path, verbose=cmd_args.verbose,
                            max_text_tokens_per_sentence=int(max_text_tokens_per_sentence),
