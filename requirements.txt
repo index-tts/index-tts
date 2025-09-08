@@ -26,5 +26,5 @@ gradio
 tqdm
 textstat
 
-WeTextProcessing; platform_machine != "Darwin"
-wetext; platform_system == "Darwin"
+WeTextProcessing; platform_machine == "Linux"
+wetext; platform_system != "Linux"

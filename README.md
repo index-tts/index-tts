@@ -98,7 +98,7 @@ The key contributions of **indextts2** are summarized as follows:
 1. Download this repository:
 ```bash
 git clone https://github.com/index-tts/index-tts.git
-git lfs pull
+git lfs pull # fetch example files
 ```
 2. Install dependencies:
 We use `uv` to initialize and manage the project’s dependency environment.
@@ -110,23 +110,8 @@ uv sync
 
 Download by `huggingface-cli`:
 ```bash
-huggingface-cli download IndexTeam/IndexTTS-2 \
-  bpe.model config.yaml feat1.pt feat2.pt gpt.pth qwen0.6bemo4-merge s2mel.pth wav2vec2bert_stats.pt
-  --local-dir checkpoints
+hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 ```
-
-Or by `wget`:
-```bash
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/bpe.model -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/config.yaml -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/feat1.pt -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/feat2.pt -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/gpt.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/qwen0.6bemo4-merge -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/s2mel.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/wav2vec2bert_stats.pt -P checkpoints
-```
-
 Recommended for China users. 如果下载速度慢，可以使用镜像：
 ```bash
 export HF_ENDPOINT="https://hf-mirror.com"
@@ -136,7 +121,6 @@ Or download by `modelscope`
 ```bash
 modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
-
 
 ### IndexTTS2 Quickstart
 
