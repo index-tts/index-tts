@@ -111,7 +111,6 @@ class TextNormalizer:
             self.en_normalizer = NormalizerEn(overwrite_cache=False)
 
     def normalize(self, text: str) -> str:
-        text = text.replace("嗯", "恩").replace("呣", "母")
         if not self.zh_normalizer or not self.en_normalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""

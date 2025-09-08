@@ -4,10 +4,7 @@ __pycache__
 *.DS_Store
 .idea/
 .vscode/
-checkpoints/*.pth
-checkpoints/*.vocab
-checkpoints/*.model
-checkpoints/.cache
+checkpoints/*
 outputs/
 build/
 *.py[cod]
