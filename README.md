@@ -101,7 +101,7 @@ git clone https://github.com/index-tts/index-tts.git
 git lfs pull # fetch example files
 ```
 2. Install dependencies:
-We use `uv` to initialize and manage the project’s dependency environment.
+We use `uv` to manage the project’s dependency environment.
 ```bash
 uv sync
 ```
@@ -112,15 +112,19 @@ Download by `huggingface-cli`:
 ```bash
 hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 ```
-Recommended for China users. 除了以上模型外，项目初次运行时还会自动下载一些小模型，如果您的网络环境访问HuggingFace的速度较慢，推荐执行：
-```bash
-export HF_ENDPOINT="https://hf-mirror.com"
-```
 
 Or download by `modelscope`
 ```bash
 modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
+
+>In addition to the above models, some small models will also be automatically downloaded when the project is run for the first time. If your network environment has slow access to HuggingFace, it is recommended to execute command below. <br>
+除了以上模型外，项目初次运行时还会自动下载一些小模型，如果您的网络环境访问HuggingFace的速度较慢，推荐执行：
+>```bash
+>export HF_ENDPOINT="https://hf-mirror.com"
+>```
+
+
 
 ### IndexTTS2 Quickstart
 
