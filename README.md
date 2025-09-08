@@ -111,7 +111,7 @@ uv sync
 Download by `huggingface-cli`:
 ```bash
 huggingface-cli download IndexTeam/IndexTTS-2 \
-  bpe.model config.yaml feat1.pt feat2.pt gpt.pth qwen0.6bemo4-merge s2mel.pth wav2vec2bert_stats.pt
+  bpe.model config.yaml feat1.pt feat2.pt gpt.pth qwen0.6bemo4-merge s2mel.pth wav2vec2bert_stats.pt \
   --local-dir checkpoints
 ```
 
