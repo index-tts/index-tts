@@ -8,7 +8,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     # IMPORTANT: Always run `uv lock` or `uv lock --upgrade` to resolve dependencies
-    # and update the lockfile after editing anything below:
+    # and update the lockfile after editing anything below.
+    # WARNING: Ensure that you don't have a local `uv.toml` which overrides PyPI
+    # while generating the lockfile: https://github.com/astral-sh/uv/issues/15741
     "accelerate==1.8.1",
     "cn2an==0.5.22",
     "cython==3.0.7",
@@ -71,8 +73,3 @@ name = "pytorch-cu129"
 url = "https://download.pytorch.org/whl/cu129"
 # Only use this index when explicitly requested by `tool.uv.sources`.
 explicit = true
-
-[[tool.uv.index]]
-# Add extra PyPI mirror for faster downloads in China.
-name = "tsinghua"
-url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"

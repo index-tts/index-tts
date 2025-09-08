@@ -107,9 +107,17 @@ git lfs pull # fetch example files
 
 3. Install dependencies:
 
-We use `uv` to manage the project's dependency environment.
+We use `uv` to manage the project's dependency environment. The following command
+will install the correct versions of all dependencies into your `.venv` directory.
+
 ```bash
 uv sync
+```
+
+If the download is slow, please try a *local mirror*, for example China:
+
+```bash
+uv sync --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ```
 
 4. Download models:
