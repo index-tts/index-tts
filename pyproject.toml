@@ -7,7 +7,8 @@ license-files = ["LICEN[CS]E*", "INDEX_MODEL_LICENSE*"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    # IMPORTANT: Always run `uv lock` to resolve and update the lockfile after edits:
+    # IMPORTANT: Always run `uv lock` or `uv lock --upgrade` to resolve dependencies
+    # and update the lockfile after editing anything below:
     "accelerate==1.8.1",
     "cn2an==0.5.22",
     "cython==3.0.7",
@@ -33,10 +34,12 @@ dependencies = [
     "tensorboard==2.9.1",
     "textstat>=0.7.10",
     "tokenizers==0.21.0",
+    "torch==2.8.*",
+    "torchaudio==2.8.*",
     "tqdm>=4.67.1",
     "transformers==4.52.1",
 
-    # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux."
+    # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
     "wetext>=0.0.9; sys_platform != 'linux'",
     "WeTextProcessing; sys_platform == 'linux'",
 ]
@@ -46,5 +49,30 @@ Homepage = "https://github.com/index-tts/index-tts"
 Repository = "https://github.com/index-tts/index-tts.git"
 
 [tool.uv]
-extra-index-url = ["https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"]
+# Disable build isolation when building DeepSpeed from source.
 no-build-isolation-package = ["deepspeed"]
+
+[tool.uv.sources]
+# Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
+# NOTE: We must explicitly request them as `dependencies` above. These improved
+# versions will not be selected if they're only third-party dependencies.
+torch = [
+  { index = "pytorch-cu129", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchaudio = [
+  { index = "pytorch-cu129", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu129", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+# Only use this index when explicitly requested by `tool.uv.sources`.
+explicit = true
+
+[[tool.uv.index]]
+# Add extra PyPI mirror for faster downloads in China.
+name = "tsinghua"
+url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
