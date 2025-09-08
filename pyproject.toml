@@ -32,9 +32,10 @@ dependencies = [
     "tokenizers==0.21.0",
     "tqdm>=4.67.1",
     "transformers==4.52.1",
-    "wetext>=0.0.9;sys_platform == 'darwin'",
-    "WeTextProcessing;sys_platform != 'darwin'",
+    "wetext>=0.0.9;sys_platform != 'linux'",
+    "WeTextProcessing;sys_platform == 'linux'",
 ]
 
 [tool.uv]
 extra-index-url = ["https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"]
+no-build-isolation-package = ["deepspeed"]

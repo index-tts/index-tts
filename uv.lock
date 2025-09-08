@@ -1151,8 +1151,8 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
     { name = "transformers" },
-    { name = "wetext", marker = "sys_platform == 'darwin'" },
-    { name = "wetextprocessing", marker = "sys_platform != 'darwin'" },
+    { name = "wetext", marker = "sys_platform != 'linux'" },
+    { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
 
 [package.metadata]
@@ -1184,8 +1184,8 @@ requires-dist = [
     { name = "tokenizers", specifier = "==0.21.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = "==4.52.1" },
-    { name = "wetext", marker = "sys_platform == 'darwin'", specifier = ">=0.0.9" },
-    { name = "wetextprocessing", marker = "sys_platform != 'darwin'" },
+    { name = "wetext", marker = "sys_platform != 'linux'", specifier = ">=0.0.9" },
+    { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
 
 [[package]]
@@ -1339,18 +1339,27 @@ wheels = [
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/24/16/5b0a2674a7a8e7019880c1a4cb58d64b9af2e8c6225819f48fca78b7dee9/kaldifst-1.7.17-cp310-cp310-macosx_10_15_universal2.whl", hash = "sha256:c0a26415455d5b3923871206ce744974515c2ad28fec1cf5293c8b1f14952983", size = 8148372, upload-time = "2025-09-02T03:57:24.577Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/19/4e/5768f890a3e794f6fe8ea5653a9680257512472a76d7642c82d810f267e4/kaldifst-1.7.17-cp310-cp310-macosx_10_15_x86_64.whl", hash = "sha256:dabc7a0aea82f96ebadf5632ef6b134c53a125a7aa22ee6b84402dbddee7aa7c", size = 4493873, upload-time = "2025-09-02T04:18:11.345Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/d1/3f/87b8f28434ce2690ad2fc48efcca2ea4f547afeee1b92c7fbaf12b781fd8/kaldifst-1.7.17-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:27416ece4f23e9f7611d6050b12c1a70693a95a1e11e8d3430d1490c84d221d7", size = 3796548, upload-time = "2025-09-02T03:53:26.81Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/94/c4/6da6f7d85c832f030f3ce66379078b07b652d985e9515e49d27a5116a2b6/kaldifst-1.7.17-cp310-cp310-win32.whl", hash = "sha256:9a20cd4ba43aefc973787c3baaf754d7d4886b327b0632c097a279a097c63d26", size = 9036326, upload-time = "2025-09-01T13:45:08.415Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/53/43/5a115f477e4006fccf07e2d8f3c3dc438ff4521b20a0aa8eb1dc4c591d5e/kaldifst-1.7.17-cp310-cp310-win_amd64.whl", hash = "sha256:1b6e3667a6c758c18da9e1a1e5803640c954e22a15dfd7bad9d5247c1d1ce279", size = 9344572, upload-time = "2025-09-01T13:36:08.359Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/26/94/a92361a7bb88d459d3ec755b02a2cc658fa6660920431d7ad8c06e223bc4/kaldifst-1.7.17-cp311-cp311-macosx_10_15_universal2.whl", hash = "sha256:194ac06ab4962b2e0fb1874b7512102745afed04c761ac604fd4faa949663a73", size = 8152249, upload-time = "2025-09-02T06:28:02.783Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/8e/e2/8748f78b7bf56db63c7b74d4125c7d9459cd0118514062c85ed7ff0267a5/kaldifst-1.7.17-cp311-cp311-macosx_10_15_x86_64.whl", hash = "sha256:41621b463b1e4dcfb6b38042c2db64a13e6bcfe336eea33f5e182b740fe2811c", size = 4495380, upload-time = "2025-09-02T03:45:27.665Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/3d/cd/351f2a9f4d4f66fa6ba0bfb4e89bc50a4da2be9d3a4224c83e363cdf9e6d/kaldifst-1.7.17-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:ebfead12e5a1b82cecafda2ea4c926ce6d263123e3740f416bf8058e2bd85788", size = 3798113, upload-time = "2025-09-02T06:11:58.996Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/5a/b1/befd104a329e2942eaac6390b7d669cc1f5a2ead70cf2f4f35d0e813eacc/kaldifst-1.7.17-cp311-cp311-win32.whl", hash = "sha256:8bd88d6c1a7ae43f0b852ed20378286ba9b0b170b10b6796706c6583a432e53d", size = 9036888, upload-time = "2025-09-01T14:00:11.043Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/d2/c9/c94e04e2e27898c9c4c617caa1576aa144dec3e4022ea8fc8687713062a6/kaldifst-1.7.17-cp311-cp311-win_amd64.whl", hash = "sha256:8afbe843b03dee44c4927962cc83f43c3da005f9ff34a7fa23a558a97b8a4310", size = 9345455, upload-time = "2025-09-01T13:41:12.979Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/bb/ab/7302f91166f33d96ea1e31f62064e6b6d5322c1100cad996b0eb259a3450/kaldifst-1.7.17-cp312-cp312-macosx_10_15_universal2.whl", hash = "sha256:aa5d968f47f0d0f6a30e3563045e809fa2a2ca7fc26a2eefe0a7606cb01237a2", size = 8161579, upload-time = "2025-09-02T04:31:16.164Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/12/3c/197a09f680ea037ca39135d4d3e89acbadc35baadd8db084b10acba67c8d/kaldifst-1.7.17-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:516317d46a7d35a508056a2a77e50a679ba463452cfeb2be228db8f370333ad8", size = 4502630, upload-time = "2025-09-01T21:48:37.11Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/37/3c/d7f5911dba655f82c388e238e0f0e5418a34414e84ad407ccc45aff15746/kaldifst-1.7.17-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d840d7ff1f311d619262e9b5b6147cec48a356817861337abf8301e37e9219d7", size = 3799368, upload-time = "2025-09-02T06:02:13.751Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/64/f3/2e8cee6c86b8291d2e096dde6052f57e5e578aa0c4b37e4486ae451b36bc/kaldifst-1.7.17-cp312-cp312-win32.whl", hash = "sha256:8e4cf45fc60d9cf7a4dba65803df5928a96523ba5e0ad6ec4c538495c9edac46", size = 9037970, upload-time = "2025-09-01T14:03:14.198Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/4f/02/97c40f528dc9829c453cd872c9c4c4ddd346491dbf4630a4076ed843fa8c/kaldifst-1.7.17-cp312-cp312-win_amd64.whl", hash = "sha256:6134c001853dc8b5fab2dc3c99e0cf0adfbd4f12c43d153d9ce5638ebaaffc8d", size = 9350652, upload-time = "2025-09-01T14:02:40.316Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/08/e5/eea3482747918eec677b78444ce5e7ed4e3ce046720eadf8bb2415d99c24/kaldifst-1.7.17-cp313-cp313-macosx_10_15_universal2.whl", hash = "sha256:31dcdb92ce43052b96443330ca82c603b7f10153123962f6015f3d96d5c62d22", size = 8161654, upload-time = "2025-09-02T06:33:08.034Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/c0/63/cbbdedc5128858c850271f776251005088a69624d5e765eb403bfbe5d803/kaldifst-1.7.17-cp313-cp313-macosx_10_15_x86_64.whl", hash = "sha256:88523ee64936833a89469efb658542349ea90683eea3506aee496db54bc22530", size = 4502739, upload-time = "2025-09-02T06:44:15.395Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/fe/2f/d3e43dc9d33ef519fff798546a72edfdd00f59be4d2ef770075b8e60d9f7/kaldifst-1.7.17-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:47681b0e74ed633e7e081e6986608d3ed110d6e47d0684eb6cf66326bf98cde3", size = 3799468, upload-time = "2025-09-02T06:31:23.119Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/3a/9e/6b409e0499548e83bf0d42b94f2bb551d337a66e362441f7d5ac748a26ba/kaldifst-1.7.17-cp313-cp313-win32.whl", hash = "sha256:502217ea878f24a7044371502ed74463c20ad554738eb78416b949847f227baf", size = 9037764, upload-time = "2025-09-01T13:56:00.461Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/a8/77/7f0559b787d4e2a61c12af78613c0d515adc1b9a931d09b649dc5cd579d4/kaldifst-1.7.17-cp313-cp313-win_amd64.whl", hash = "sha256:9c0cf66c71a71e790d6a8b8a0ee8b4ac1f25d5be0d186f847a0c2ed8e936889b", size = 9350674, upload-time = "2025-09-01T13:59:20.59Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/66/e7/13b241a56c13527d3b91233337608e4dae7da5bdf6ef7158cf287b5ad260/kaldifst-1.7.17-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:8a9cbd55dc5363d7308deb1d11c63bf143a5646b2821e0c90ff008af24dadc1f", size = 8162615, upload-time = "2025-09-02T06:39:36.514Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/35/d7/1eadc7bb57487bf31063776131556dc7f49a431553c2cf44e84bc52529d5/kaldifst-1.7.17-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:e2145ab4d4b96cf6af045aa3e30a57f49859367f47b2cc63f935965d060720c7", size = 4502813, upload-time = "2025-09-02T06:17:51.384Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/8f/14/3f659c163f59666301cd2e2c58d87ce0cf13c13a3848eca8908356d8d72e/kaldifst-1.7.17-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:e4d01992a5bd69f5a6a2775024f268e8ab63fb2865e947c27f8760979d23daa9", size = 3800334, upload-time = "2025-09-02T04:31:31.8Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/df/c4/ece538e3f5bbb091a9ae68f2ec0c02a18b2cdb60f1cb9f973586f95b3631/kaldifst-1.7.17-cp314-cp314-win32.whl", hash = "sha256:8cde76483ffe39edf747a7b1133e364546d2eca49e36975c27e92842f9499b72", size = 9062227, upload-time = "2025-09-01T13:58:53.994Z" },
 ]
 
 [[package]]
@@ -3676,7 +3685,7 @@ name = "wetext"
 version = "0.0.9"
 source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
 dependencies = [
-    { name = "kaldifst", marker = "sys_platform == 'darwin'" },
+    { name = "kaldifst", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
 ]
 sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/89/90/8e830c0f12da09981d20ed36a4625ffc5fb16f7addf64d60893aaff23cc3/wetext-0.0.9.tar.gz", hash = "sha256:7bae42acae5515653497bd2e783799a12cc48694de6497d50da45850d7d2ebd9", size = 1457134, upload-time = "2025-08-21T11:32:07.33Z" }
 wheels = [
