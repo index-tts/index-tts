@@ -12,14 +12,13 @@ dataset:
         normalize: false
 
 gpt:
-    model_dim: 1024
-    max_mel_tokens: 605
-    max_text_tokens: 402
-    heads: 16
+    model_dim: 1280
+    max_mel_tokens: 1815
+    max_text_tokens: 600
+    heads: 20
     use_mel_codes_as_input: true
     mel_length_compression: 1024
-    layers: 20
-    activation_function: "gelu_pytorch_tanh"
+    layers: 24
     number_text_tokens: 12000
     number_mel_codes: 8194
     start_mel_token: 8192
@@ -35,79 +34,87 @@ gpt:
         num_blocks: 6
         input_layer: "conv2d2"
         perceiver_mult: 2
+    emo_condition_module:
+        output_size: 512
+        linear_units: 1024
+        attention_heads: 4
+        num_blocks: 4
+        input_layer: "conv2d2"
+        perceiver_mult: 2
 
-vqvae:
-    channels: 100
-    num_tokens: 8192
-    hidden_dim: 512
-    num_resnet_blocks: 3
-    codebook_dim: 512
-    num_layers: 2
-    positional_dims: 1
-    kernel_size: 3
-    smooth_l1_loss: true
-    use_transposed_convs: false
+semantic_codec:
+    codebook_size: 8192
+    hidden_size: 1024
+    codebook_dim: 8
+    vocos_dim: 384
+    vocos_intermediate_dim: 2048
+    vocos_num_layers: 12
 
-bigvgan:
-    adam_b1: 0.8
-    adam_b2: 0.99
-    lr_decay: 0.999998
-    seed: 1234
+s2mel:
+    preprocess_params:
+        sr: 22050
+        spect_params:
+            n_fft: 1024
+            win_length: 1024
+            hop_length: 256
+            n_mels: 80
+            fmin: 0
+            fmax: "None"
 
-    resblock: "1"
-    upsample_rates: [4,4,4,4,2,2]
-    upsample_kernel_sizes: [8,8,4,4,4,4]
-    upsample_initial_channel: 1536
-    resblock_kernel_sizes: [3,7,11]
-    resblock_dilation_sizes: [[1,3,5], [1,3,5], [1,3,5]]
-    feat_upsample: false
-    speaker_embedding_dim: 512
-    cond_d_vector_in_each_upsampling_layer: true
+    dit_type: "DiT"
+    reg_loss_type: "l1"
+    style_encoder:
+        dim: 192
+    length_regulator:
+        channels: 512
+        is_discrete: false
+        in_channels: 1024
+        content_codebook_size: 2048
+        sampling_ratios: [1, 1, 1, 1]
+        vector_quantize: false
+        n_codebooks: 1
+        quantizer_dropout: 0.0
+        f0_condition: false
+        n_f0_bins: 512
+    DiT:
+        hidden_dim: 512
+        num_heads: 8
+        depth: 13
+        class_dropout_prob: 0.1
+        block_size: 8192
+        in_channels: 80
+        style_condition: true
+        final_layer_type: 'wavenet'
+        target: 'mel'
+        content_dim: 512
+        content_codebook_size: 1024
+        content_type: 'discrete'
+        f0_condition: false
+        n_f0_bins: 512
+        content_codebooks: 1
+        is_causal: false
+        long_skip_connection: true
+        zero_prompt_speech_token: false
+        time_as_token: false
+        style_as_token: false
+        uvit_skip_connection: true
+        add_resblock_in_transformer: false
+    wavenet:
+        hidden_dim: 512
+        num_layers: 8
+        kernel_size: 5
+        dilation_rate: 1
+        p_dropout: 0.2
+        style_condition: true
 
-    gpt_dim: 1024
-
-    activation: "snakebeta"
-    snake_logscale: true
-
-    use_cqtd_instead_of_mrd: true
-    cqtd_filters: 128
-    cqtd_max_filters: 1024
-    cqtd_filters_scale: 1
-    cqtd_dilations: [1, 2, 4]
-    cqtd_hop_lengths: [512, 256, 256]
-    cqtd_n_octaves: [9, 9, 9]
-    cqtd_bins_per_octaves: [24, 36, 48]
-
-    resolutions: [[1024, 120, 600], [2048, 240, 1200], [512, 50, 240]]
-    mpd_reshapes: [2, 3, 5, 7, 11]
-    use_spectral_norm: false
-    discriminator_channel_mult: 1
-
-    use_multiscale_melloss: true
-    lambda_melloss: 15
-
-    clip_grad_norm: 1000
-
-    segment_size: 16384
-    num_mels: 100
-    num_freq: 1025
-    n_fft: 1024
-    hop_size: 256
-    win_size: 1024
-
-    sampling_rate: 24000
-
-    fmin: 0
-    fmax: null
-    fmax_for_loss: null
-    mel_type: "pytorch"
-
-    num_workers: 2
-    dist_config:
-        dist_backend: "nccl"
-        dist_url: "tcp://localhost:54321"
-        world_size: 1
-
-dvae_checkpoint: dvae.pth
 gpt_checkpoint: gpt.pth
-bigvgan_checkpoint: bigvgan_generator.pth
+w2v_stat: wav2vec2bert_stats.pt
+s2mel_checkpoint: s2mel.pth
+emo_matrix: feat2.pt 
+spk_matrix: feat1.pt
+emo_num: [3, 17, 2, 8, 4, 5, 10, 24]
+qwen_emo_path: qwen0.6bemo4-merge/ 
+vocoder:
+    type: "bigvgan"
+    name: "nvidia/bigvgan_v2_22khz_80band_256x"
+version: 2.0

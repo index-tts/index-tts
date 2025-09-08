@@ -1,0 +1,15 @@
+examples/voice_02.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_04.wav filter=lfs diff=lfs merge=lfs -text
+examples/emo_sad.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_03.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_06.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_08.wav filter=lfs diff=lfs merge=lfs -text
+tests/sample_prompt.wav filter=lfs diff=lfs merge=lfs -text
+examples/emo_hate.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_01.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_05.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_09.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_10.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_12.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_07.wav filter=lfs diff=lfs merge=lfs -text
+examples/voice_11.wav filter=lfs diff=lfs merge=lfs -text

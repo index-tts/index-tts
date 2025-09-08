@@ -18,7 +18,7 @@ def scan_language_list():
 class I18nAuto:
     def __init__(self, language=None):
         if language in ["Auto", None]:
-            language = locale.getdefaultlocale()[0]  
+            language = locale.getdefaultlocale()[0]
             # getlocale can't identify the system's language ((None, None))
         if not os.path.exists(os.path.join(I18N_JSON_DIR, f"{language}.json")):
             language = "en_US"

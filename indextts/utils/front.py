@@ -91,7 +91,7 @@ class TextNormalizer:
         import platform
         if self.zh_normalizer is not None and self.en_normalizer is not None:
             return
-        if platform.system() == "Darwin":
+        if platform.system() == "Darwin" or platform.system() == "Windows":
             from wetext import Normalizer
 
             self.zh_normalizer = Normalizer(remove_erhua=False, lang="zh", operator="tn")
@@ -111,7 +111,6 @@ class TextNormalizer:
             self.en_normalizer = NormalizerEn(overwrite_cache=False)
 
     def normalize(self, text: str) -> str:
-        text = text.replace("嗯", "恩").replace("呣", "母")
         if not self.zh_normalizer or not self.en_normalizer:
             print("Error, text normalizer is not initialized !!!")
             return ""
