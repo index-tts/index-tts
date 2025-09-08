@@ -37,4 +37,4 @@ dependencies = [
 ]
 
 [tool.uv]
-extra-index-url = ["https://pypi.bilibili.co/repository/pypi-public/simple/"]
+extra-index-url = ["https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"]
