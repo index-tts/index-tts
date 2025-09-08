@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import sys
 import threading
@@ -42,10 +41,8 @@ for file in [
         sys.exit(1)
 
 import gradio as gr
-from indextts import infer
 from indextts.infer_v2 import IndexTTS2
 from tools.i18n.i18n import I18nAuto
-from modelscope.hub import api
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
