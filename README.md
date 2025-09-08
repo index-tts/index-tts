@@ -48,7 +48,7 @@ Existing autoregressive large-scale text-to-speech (TTS) models have advantages 
 
 **IndexTTS2: The Future of Voice, Now Generating**
 
-[![IndexTTS2 Demo](assets/IndexTTS2-video-pic.png)](assets/IndexTTS2.mp4)
+[![IndexTTS2 Demo](assets/IndexTTS2-video-pic.png)](https://www.bilibili.com/video/BV136a9zqEk5)
 
 *Click the image to watch IndexTTS2 video*
 
@@ -130,6 +130,11 @@ wget https://huggingface.co/IndexTeam/IndexTTS-2/resolve/main/wav2vec2bert_stats
 Recommended for China users. 如果下载速度慢，可以使用镜像：
 ```bash
 export HF_ENDPOINT="https://hf-mirror.com"
+```
+
+Or download by `modelscope`
+```bash
+modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
 
 
