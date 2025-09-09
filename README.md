@@ -155,7 +155,7 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 
 **Important:** If you see an error about CUDA during the installation, please ensure
 that you have installed NVIDIA's [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
-version 12.9 (or newer) on your system.
+version 12.8 (or newer) on your system.
 
 5. Download the required models:
 
