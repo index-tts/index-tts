@@ -56,6 +56,10 @@ class IndexTTS2:
             self.device = "cuda:0"
             self.use_fp16 = use_fp16
             self.use_cuda_kernel = use_cuda_kernel is None or use_cuda_kernel
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            self.device = "xpu"
+            self.use_fp16 = use_fp16
+            self.use_cuda_kernel = False
         elif hasattr(torch, "mps") and torch.backends.mps.is_available():
             self.device = "mps"
             self.use_fp16 = False  # Use float16 on MPS is overhead than float32
