@@ -25,6 +25,7 @@ parser.add_argument("--port", type=int, default=7860, help="Port to run the web 
 parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="./checkpoints", help="Model checkpoints directory")
 parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
+parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use cuda kernel for inference if available")
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
@@ -50,7 +51,12 @@ from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
-tts = IndexTTS2(model_dir=cmd_args.model_dir, cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),use_fp16=cmd_args.fp16)
+tts = IndexTTS2(
+    model_dir=cmd_args.model_dir, 
+    cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
+    use_fp16=cmd_args.fp16, 
+    use_cuda_kernel=cmd_args.cuda_kernel,
+)
 
 # 支持的语言列表
 LANGUAGES = {
