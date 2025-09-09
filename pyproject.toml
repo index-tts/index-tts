@@ -3,7 +3,6 @@ name = "indextts"
 version = "2.0.0"
 description = "IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech"
 authors = [{ name = "Bilibili IndexTTS Team" }]
-license = "Apache-2.0"
 license-files = ["LICEN[CS]E*", "INDEX_MODEL_LICENSE*"]
 readme = "README.md"
 classifiers = [
