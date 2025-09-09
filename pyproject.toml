@@ -2,9 +2,26 @@
 name = "indextts"
 version = "2.0.0"
 description = "IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech"
+authors = [{ name = "Bilibili IndexTTS Team" }]
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*", "INDEX_MODEL_LICENSE*"]
 readme = "README.md"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+
+  "Natural Language :: English",
+  "Natural Language :: Chinese (Simplified)",
+
+  "Programming Language :: Python :: 3",
+
+  "Operating System :: OS Independent",
+]
 requires-python = ">=3.10"
 dependencies = [
   # IMPORTANT: Always run `uv lock` or `uv lock --upgrade` to resolve dependencies
