@@ -144,7 +144,7 @@ class IndexTTS2:
         print(">> campplus_model weights restored from:", campplus_ckpt_path)
 
         bigvgan_name = self.cfg.vocoder.name
-        self.bigvgan = bigvgan.BigVGAN.from_pretrained(bigvgan_name, use_cuda_kernel=False)
+        self.bigvgan = bigvgan.BigVGAN.from_pretrained(bigvgan_name, use_cuda_kernel=True if self.use_cuda_kernel else False)
         self.bigvgan = self.bigvgan.to(self.device)
         self.bigvgan.remove_weight_norm()
         self.bigvgan.eval()
