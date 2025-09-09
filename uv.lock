@@ -1169,7 +1169,6 @@ dependencies = [
     { name = "descript-audiotools" },
     { name = "ffmpeg-python" },
     { name = "g2p-en" },
-    { name = "gradio" },
     { name = "jieba" },
     { name = "json5" },
     { name = "keras" },
@@ -1198,6 +1197,11 @@ dependencies = [
     { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
 
+[package.optional-dependencies]
+webui = [
+    { name = "gradio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = "==1.8.1" },
@@ -1207,7 +1211,7 @@ requires-dist = [
     { name = "descript-audiotools", specifier = "==0.7.2" },
     { name = "ffmpeg-python", specifier = "==0.2.0" },
     { name = "g2p-en", specifier = "==2.1.0" },
-    { name = "gradio", specifier = ">=5.44.1" },
+    { name = "gradio", marker = "extra == 'webui'", specifier = ">=5.44.1" },
     { name = "jieba", specifier = "==0.42.1" },
     { name = "json5", specifier = "==0.10.0" },
     { name = "keras", specifier = "==2.9.0" },
@@ -1234,6 +1238,7 @@ requires-dist = [
     { name = "wetext", marker = "sys_platform != 'linux'", specifier = ">=0.0.9" },
     { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
+provides-extras = ["webui"]
 
 [[package]]
 name = "inflect"

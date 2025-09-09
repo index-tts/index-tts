@@ -142,14 +142,16 @@ We use `uv` to manage the project's dependency environment. The following comman
 will install the correct versions of all dependencies into your `.venv` directory.
 
 ```bash
-uv sync
+uv sync --all-extras
 ```
 
 If the download is slow, please try a *local mirror*, for example China:
 
 ```bash
-uv sync --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ```
+
+**Tip:** You can remove the `--all-extras` flag if you don't want to install the WebUI support.
 
 **Important:** If you see an error about CUDA during the installation, please ensure
 that you have installed NVIDIA's [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)

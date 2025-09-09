@@ -35,7 +35,6 @@ dependencies = [
   "descript-audiotools==0.7.2",
   "ffmpeg-python==0.2.0",
   "g2p-en==2.1.0",
-  "gradio>=5.44.1",
   "jieba==0.42.1",
   "json5==0.10.0",
   "keras==2.9.0",
@@ -61,6 +60,12 @@ dependencies = [
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
+]
+
+[project.optional-dependencies]
+# To install the WebUI support, use `uv sync --extra webui` (or `--all-extras`).
+webui = [
+  "gradio>=5.44.1",
 ]
 
 [project.urls]
