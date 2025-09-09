@@ -1,5 +1,5 @@
 [project]
-name = "index-tts"
+name = "indextts"
 version = "2.0.0"
 description = "IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech"
 license = "Apache-2.0"
@@ -7,48 +7,58 @@ license-files = ["LICEN[CS]E*", "INDEX_MODEL_LICENSE*"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    # IMPORTANT: Always run `uv lock` or `uv lock --upgrade` to resolve dependencies
-    # and update the lockfile after editing anything below.
-    # WARNING: Ensure that you don't have a local `uv.toml` which overrides PyPI
-    # while generating the lockfile: https://github.com/astral-sh/uv/issues/15741
-    "accelerate==1.8.1",
-    "cn2an==0.5.22",
-    "cython==3.0.7",
-    "deepspeed==0.17.1",
-    "descript-audiotools==0.7.2",
-    "ffmpeg-python==0.2.0",
-    "g2p-en==2.1.0",
-    "gradio>=5.44.1",
-    "jieba==0.42.1",
-    "json5==0.10.0",
-    "keras==2.9.0",
-    "librosa==0.10.2.post1",
-    "matplotlib==3.8.2",
-    "modelscope==1.27.0",
-    "munch==4.0.0",
-    "numba==0.58.1",
-    "numpy==1.26.2",
-    "omegaconf>=2.3.0",
-    "opencv-python==4.9.0.80",
-    "pandas==2.3.2",
-    "safetensors==0.5.2",
-    "sentencepiece>=0.2.1",
-    "tensorboard==2.9.1",
-    "textstat>=0.7.10",
-    "tokenizers==0.21.0",
-    "torch==2.8.*",
-    "torchaudio==2.8.*",
-    "tqdm>=4.67.1",
-    "transformers==4.52.1",
+  # IMPORTANT: Always run `uv lock` or `uv lock --upgrade` to resolve dependencies
+  # and update the lockfile after editing anything below.
+  # WARNING: Ensure that you don't have a local `uv.toml` which overrides PyPI
+  # while generating the lockfile: https://github.com/astral-sh/uv/issues/15741
+  "accelerate==1.8.1",
+  "cn2an==0.5.22",
+  "cython==3.0.7",
+  "deepspeed==0.17.1",
+  "descript-audiotools==0.7.2",
+  "ffmpeg-python==0.2.0",
+  "g2p-en==2.1.0",
+  "gradio>=5.44.1",
+  "jieba==0.42.1",
+  "json5==0.10.0",
+  "keras==2.9.0",
+  "librosa==0.10.2.post1",
+  "matplotlib==3.8.2",
+  "modelscope==1.27.0",
+  "munch==4.0.0",
+  "numba==0.58.1",
+  "numpy==1.26.2",
+  "omegaconf>=2.3.0",
+  "opencv-python==4.9.0.80",
+  "pandas==2.3.2",
+  "safetensors==0.5.2",
+  "sentencepiece>=0.2.1",
+  "tensorboard==2.9.1",
+  "textstat>=0.7.10",
+  "tokenizers==0.21.0",
+  "torch==2.8.*",
+  "torchaudio==2.8.*",
+  "tqdm>=4.67.1",
+  "transformers==4.52.1",
 
-    # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
-    "wetext>=0.0.9; sys_platform != 'linux'",
-    "WeTextProcessing; sys_platform == 'linux'",
+  # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
+  "wetext>=0.0.9; sys_platform != 'linux'",
+  "WeTextProcessing; sys_platform == 'linux'",
 ]
 
 [project.urls]
 Homepage = "https://github.com/index-tts/index-tts"
 Repository = "https://github.com/index-tts/index-tts.git"
+
+[project.scripts]
+# Set the installed binary names and entry points.
+indextts = "indextts.cli:main"
+
+[build-system]
+# How to build the project as a CLI tool or PyPI package.
+# NOTE: Use `uv tool install -e .` to install the package as a CLI tool.
+requires = ["hatchling >= 1.27.0"]
+build-backend = "hatchling.build"
 
 [tool.uv]
 # Disable build isolation when building DeepSpeed from source.
