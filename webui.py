@@ -26,6 +26,7 @@ parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the
 parser.add_argument("--model_dir", type=str, default="./checkpoints", help="Model checkpoints directory")
 parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
 parser.add_argument("--use_deepspeed", action="store_true", default=False, help="Use Deepspeed to accelerate if available")
+parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use cuda kernel for inference if available")
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
@@ -55,8 +56,8 @@ tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
                 use_fp16=cmd_args.fp16,
                 use_deepspeed=cmd_args.use_deepspeed,
+                use_cuda_kernel=cmd_args.cuda_kernel,
                 )
-
 # 支持的语言列表
 LANGUAGES = {
     "中文": "zh_CN",
