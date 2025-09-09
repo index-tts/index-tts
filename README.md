@@ -210,15 +210,15 @@ Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
 #### 📝 Using IndexTTS2 in Python
 
-To run scripts, you *must* use the `uv run python <file.py>` command to ensure
-that the code runs inside your current "uv" environment. It *may* also be necessary
+To run scripts, you *must* use the `uv run <file.py>` command to ensure that
+the code runs inside your current "uv" environment. It *may* also be necessary
 to add the current directory to your `PYTHONPATH`, to help it find the IndexTTS
 modules.
 
 Example of running a script via `uv`:
 
 ```bash
-PYTHONPATH="$PYTHONPATH:." uv run python indextts/infer_v2.py
+PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2.py
 ```
 
 Here are several examples of how to use IndexTTS2 in your own scripts:
