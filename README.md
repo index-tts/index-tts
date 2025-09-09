@@ -187,6 +187,16 @@ modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 > ```
 
 
+#### 🖥️ Checking PyTorch GPU Acceleration
+
+If you need to diagnose your environment to see which GPUs are detected,
+you can use our included utility to check your system:
+
+```bash
+uv run tools/gpu_check.py
+```
+
+
 ### 🔥 IndexTTS2 Quickstart
 
 #### 🌐 Web Demo
