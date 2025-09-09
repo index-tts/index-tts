@@ -17,7 +17,7 @@
   "惊喜": "Surprised",
   "平静": "Calm",
   "情感描述文本": "Emotion description",
-  "请输入情感描述文本": "Please input the emotion description",
+  "请输入情绪描述（或留空以自动使用目标文本作为情绪描述）": "Please input an emotion description (or leave blank to automatically use the main text prompt)",
   "高级生成参数设置": "Advanced generation parameter settings",
   "情感向量之和不能超过1.5，请调整后重试。": "The sum of the emotion vectors cannot exceed 1.5. Please adjust and try again.",
   "音色参考音频": "Voice Reference",

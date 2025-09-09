@@ -134,6 +134,10 @@ def gen_single(emo_control_method,prompt, text,
     else:
         vec = None
 
+    if emo_text == "":
+        # erase empty emotion descriptions; `infer()` will then automatically use the main prompt
+        emo_text = None
+
     print(f"Emo control mode:{emo_control_method},vec:{vec}")
     output = tts.infer(spk_audio_prompt=prompt, text=text,
                        output_path=output_path,
@@ -205,7 +209,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 
         with gr.Group(visible=False) as emo_text_group:
             with gr.Row():
-                emo_text = gr.Textbox(label=i18n("情感描述文本"), placeholder=i18n("请输入情感描述文本"), value="", info=i18n("例如：高兴，愤怒，悲伤等"))
+                emo_text = gr.Textbox(label=i18n("情感描述文本"), placeholder=i18n("请输入情绪描述（或留空以自动使用目标文本作为情绪描述）"), value="", info=i18n("例如：高兴，愤怒，悲伤等"))
 
         with gr.Accordion(i18n("高级生成参数设置"), open=False):
             with gr.Row():
