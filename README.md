@@ -207,6 +207,26 @@ uv run webui.py
 
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
+#### API Demo
+```bash
+pip install -e ".[webui]"
+python api.py
+```
+Open your browser and visit `http://127.0.0.1:8000/docs` to see the docs.
+
+#### Note for Windows Users
+
+On Windows, you may encounter [an error](https://github.com/index-tts/index-tts/issues/61) when installing `pynini`:
+`ERROR: Failed building wheel for pynini`
+
+In this case, please install `pynini` via `conda`:
+
+```bash
+# after conda activate index-tts
+conda install -c conda-forge pynini==2.1.5
+pip install WeTextProcessing==1.0.3
+pip install -e ".[webui]"
+```
 
 #### 📝 Using IndexTTS2 in Python
 
