@@ -75,23 +75,23 @@ def bits_to_string(bits_array):
     return output_string
 
 
-def split_sentence(text, min_len=10, language_str='[EN]'):
+def split_segment(text, min_len=10, language_str='[EN]'):
     if language_str in ['EN']:
-        sentences = split_sentences_latin(text, min_len=min_len)
+        segments = split_segments_latin(text, min_len=min_len)
     else:
-        sentences = split_sentences_zh(text, min_len=min_len)
-    return sentences
+        segments = split_segments_zh(text, min_len=min_len)
+    return segments
 
-def split_sentences_latin(text, min_len=10):
-    """Split Long sentences into list of short ones
+def split_segments_latin(text, min_len=10):
+    """Split Long sentences into list of short segments.
 
     Args:
         str: Input sentences.
 
     Returns:
-        List[str]: list of output sentences.
+        List[str]: list of output segments.
     """
-    # deal with dirty sentences
+    # deal with dirty text characters
     text = re.sub('[。！？；]', '.', text)
     text = re.sub('[，]', ',', text)
     text = re.sub('[“”]', '"', text)
@@ -100,36 +100,36 @@ def split_sentences_latin(text, min_len=10):
     text = re.sub('[\n\t ]+', ' ', text)
     text = re.sub('([,.!?;])', r'\1 $#!', text)
     # split
-    sentences = [s.strip() for s in text.split('$#!')]
-    if len(sentences[-1]) == 0: del sentences[-1]
+    segments = [s.strip() for s in text.split('$#!')]
+    if len(segments[-1]) == 0: del segments[-1]
 
-    new_sentences = []
+    new_segments = []
     new_sent = []
     count_len = 0
-    for ind, sent in enumerate(sentences):
+    for ind, sent in enumerate(segments):
         # print(sent)
         new_sent.append(sent)
         count_len += len(sent.split(" "))
-        if count_len > min_len or ind == len(sentences) - 1:
+        if count_len > min_len or ind == len(segments) - 1:
             count_len = 0
-            new_sentences.append(' '.join(new_sent))
+            new_segments.append(' '.join(new_sent))
             new_sent = []
-    return merge_short_sentences_latin(new_sentences)
+    return merge_short_segments_latin(new_segments)
 
 
-def merge_short_sentences_latin(sens):
-    """Avoid short sentences by merging them with the following sentence.
+def merge_short_segments_latin(sens):
+    """Avoid short segments by merging them with the following segment.
 
     Args:
-        List[str]: list of input sentences.
+        List[str]: list of input segments.
 
     Returns:
-        List[str]: list of output sentences.
+        List[str]: list of output segments.
     """
     sens_out = []
     for s in sens:
-        # If the previous sentence is too short, merge them with
-        # the current sentence.
+        # If the previous segment is too short, merge them with
+        # the current segment.
         if len(sens_out) > 0 and len(sens_out[-1].split(" ")) <= 2:
             sens_out[-1] = sens_out[-1] + " " + s
         else:
@@ -142,7 +142,7 @@ def merge_short_sentences_latin(sens):
         pass
     return sens_out
 
-def split_sentences_zh(text, min_len=10):
+def split_segments_zh(text, min_len=10):
     text = re.sub('[。！？；]', '.', text)
     text = re.sub('[，]', ',', text)
     # 将文本中的换行符、空格和制表符替换为空格
@@ -150,37 +150,37 @@ def split_sentences_zh(text, min_len=10):
     # 在标点符号后添加一个空格
     text = re.sub('([,.!?;])', r'\1 $#!', text)
     # 分隔句子并去除前后空格
-    # sentences = [s.strip() for s in re.split('(。|！|？|；)', text)]
-    sentences = [s.strip() for s in text.split('$#!')]
-    if len(sentences[-1]) == 0: del sentences[-1]
+    # segments = [s.strip() for s in re.split('(。|！|？|；)', text)]
+    segments = [s.strip() for s in text.split('$#!')]
+    if len(segments[-1]) == 0: del segments[-1]
 
-    new_sentences = []
+    new_segments = []
     new_sent = []
     count_len = 0
-    for ind, sent in enumerate(sentences):
+    for ind, sent in enumerate(segments):
         new_sent.append(sent)
         count_len += len(sent)
-        if count_len > min_len or ind == len(sentences) - 1:
+        if count_len > min_len or ind == len(segments) - 1:
             count_len = 0
-            new_sentences.append(' '.join(new_sent))
+            new_segments.append(' '.join(new_sent))
             new_sent = []
-    return merge_short_sentences_zh(new_sentences)
+    return merge_short_segments_zh(new_segments)
 
 
-def merge_short_sentences_zh(sens):
+def merge_short_segments_zh(sens):
     # return sens
-    """Avoid short sentences by merging them with the following sentence.
+    """Avoid short segments by merging them with the following segment.
 
     Args:
-        List[str]: list of input sentences.
+        List[str]: list of input segments.
 
     Returns:
-        List[str]: list of output sentences.
+        List[str]: list of output segments.
     """
     sens_out = []
     for s in sens:
         # If the previous sentense is too short, merge them with
-        # the current sentence.
+        # the current segment.
         if len(sens_out) > 0 and len(sens_out[-1]) <= 2:
             sens_out[-1] = sens_out[-1] + " " + s
         else:

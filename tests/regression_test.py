@@ -2,7 +2,7 @@ from indextts.infer import IndexTTS
 
 if __name__ == "__main__":
     prompt_wav="tests/sample_prompt.wav"
-    tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", is_fp16=True, use_cuda_kernel=False)
+    tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=True, use_cuda_kernel=False)
     # 单音频推理测试
     text="晕 XUAN4 是 一 种 GAN3 觉"
     tts.infer(audio_prompt=prompt_wav, text=text, output_path=f"outputs/{text[:20]}.wav", verbose=True)

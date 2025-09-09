@@ -37,38 +37,38 @@ import torch.nn.functional as F
 
 class IndexTTS2:
     def __init__(
-            self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", is_fp16=False, device=None,
+            self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, device=None,
             use_cuda_kernel=None,
     ):
         """
         Args:
             cfg_path (str): path to the config file.
             model_dir (str): path to the model directory.
-            is_fp16 (bool): whether to use fp16.
+            use_fp16 (bool): whether to use fp16.
             device (str): device to use (e.g., 'cuda:0', 'cpu'). If None, it will be set automatically based on the availability of CUDA or MPS.
             use_cuda_kernel (None | bool): whether to use BigVGan custom fused activation CUDA kernel, only for CUDA device.
         """
         if device is not None:
             self.device = device
-            self.is_fp16 = False if device == "cpu" else is_fp16
+            self.use_fp16 = False if device == "cpu" else use_fp16
             self.use_cuda_kernel = use_cuda_kernel is not None and use_cuda_kernel and device.startswith("cuda")
         elif torch.cuda.is_available():
             self.device = "cuda:0"
-            self.is_fp16 = is_fp16
+            self.use_fp16 = use_fp16
             self.use_cuda_kernel = use_cuda_kernel is None or use_cuda_kernel
         elif hasattr(torch, "mps") and torch.backends.mps.is_available():
             self.device = "mps"
-            self.is_fp16 = False  # Use float16 on MPS is overhead than float32
+            self.use_fp16 = False  # Use float16 on MPS is overhead than float32
             self.use_cuda_kernel = False
         else:
             self.device = "cpu"
-            self.is_fp16 = False
+            self.use_fp16 = False
             self.use_cuda_kernel = False
             print(">> Be patient, it may take a while to run in CPU mode.")
 
         self.cfg = OmegaConf.load(cfg_path)
         self.model_dir = model_dir
-        self.dtype = torch.float16 if self.is_fp16 else None
+        self.dtype = torch.float16 if self.use_fp16 else None
         self.stop_mel_token = self.cfg.gpt.stop_mel_token
 
         self.qwen_emo = QwenEmotion(os.path.join(self.model_dir, self.cfg.qwen_emo_path))
@@ -77,7 +77,7 @@ class IndexTTS2:
         self.gpt_path = os.path.join(self.model_dir, self.cfg.gpt_checkpoint)
         load_checkpoint(self.gpt, self.gpt_path)
         self.gpt = self.gpt.to(self.device)
-        if self.is_fp16:
+        if self.use_fp16:
             self.gpt.eval().half()
         else:
             self.gpt.eval()
@@ -90,7 +90,7 @@ class IndexTTS2:
             use_deepspeed = False
             print(f">> DeepSpeed加载失败，回退到标准推理: {e}")
 
-        self.gpt.post_init_gpt2_config(use_deepspeed=use_deepspeed, kv_cache=True, half=self.is_fp16)
+        self.gpt.post_init_gpt2_config(use_deepspeed=use_deepspeed, kv_cache=True, half=self.use_fp16)
 
         if self.use_cuda_kernel:
             # preload the CUDA kernel for BigVGAN
@@ -262,7 +262,7 @@ class IndexTTS2:
 
     def insert_interval_silence(self, wavs, sampling_rate=22050, interval_silence=200):
         """
-        Insert silences between sentences.
+        Insert silences between generated segments.
         wavs: List[torch.tensor]
         """
 
@@ -292,7 +292,7 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_sentence=120, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, **generation_kwargs):
         print(">> start inference...")
         self._set_gr_progress(0, "start inference...")
         if verbose:
@@ -394,12 +394,12 @@ class IndexTTS2:
 
         self._set_gr_progress(0.1, "text processing...")
         text_tokens_list = self.tokenizer.tokenize(text)
-        sentences = self.tokenizer.split_sentences(text_tokens_list, max_text_tokens_per_sentence)
+        segments = self.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment)
         if verbose:
             print("text_tokens_list:", text_tokens_list)
-            print("sentences count:", len(sentences))
-            print("max_text_tokens_per_sentence:", max_text_tokens_per_sentence)
-            print(*sentences, sep="\n")
+            print("segments count:", len(segments))
+            print("max_text_tokens_per_segment:", max_text_tokens_per_segment)
+            print(*segments, sep="\n")
         do_sample = generation_kwargs.pop("do_sample", True)
         top_p = generation_kwargs.pop("top_p", 0.8)
         top_k = generation_kwargs.pop("top_k", 30)
@@ -418,7 +418,7 @@ class IndexTTS2:
         bigvgan_time = 0
         progress = 0
         has_warned = False
-        for sent in sentences:
+        for sent in segments:
             text_tokens = self.tokenizer.convert_tokens_to_ids(sent)
             text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=self.device).unsqueeze(0)
             if verbose:
@@ -426,7 +426,7 @@ class IndexTTS2:
                 print(f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}")
                 # debug tokenizer
                 text_token_syms = self.tokenizer.convert_ids_to_tokens(text_tokens[0].tolist())
-                print("text_token_syms is same as sentence tokens", text_token_syms == sent)
+                print("text_token_syms is same as segment tokens", text_token_syms == sent)
 
             m_start_time = time.perf_counter()
             with torch.no_grad():
@@ -467,7 +467,7 @@ class IndexTTS2:
                     warnings.warn(
                         f"WARN: generation stopped due to exceeding `max_mel_tokens` ({max_mel_tokens}). "
                         f"Input text tokens: {text_tokens.shape[1]}. "
-                        f"Consider reducing `max_text_tokens_per_sentence`({max_text_tokens_per_sentence}) or increasing `max_mel_tokens`.",
+                        f"Consider reducing `max_text_tokens_per_segment`({max_text_tokens_per_segment}) or increasing `max_mel_tokens`.",
                         category=RuntimeWarning
                     )
                     has_warned = True

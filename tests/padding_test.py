@@ -21,7 +21,7 @@ if __name__ == "__main__":
     else:
         model_dir = "checkpoints"
     audio_prompt="tests/sample_prompt.wav"
-    tts = IndexTTS(cfg_path=f"{model_dir}/config.yaml", model_dir=model_dir, is_fp16=False, use_cuda_kernel=False)
+    tts = IndexTTS(cfg_path=f"{model_dir}/config.yaml", model_dir=model_dir, use_fp16=False, use_cuda_kernel=False)
     text = "晕 XUAN4 是 一 种 not very good GAN3 觉"
     text_tokens = tts.tokenizer.encode(text)
     text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=tts.device).unsqueeze(0) # [1, L]
