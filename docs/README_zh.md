@@ -221,6 +221,13 @@ uv run webui.py -h
 
 祝使用愉快！
 
+> [!IMPORTANT]
+> 1. **DeepSpeed** 在 *一些* 情况能加快生成速度, 但也有可能更慢。
+> 具体情况可能随硬件、DeepSpeed版本、Cuda版本、操作系统等产生不同。
+> 推荐尝试开启和关闭DeepSpeed两种情况，以找到在您的环境下最快的设置。
+> 2. 对于显存较小的用户，推荐开启FP16推理模式，可以降低显存占用，减少显存交换，从而提高推理速度。
+
+
 #### 📝 Python脚本调用
 
 用`uv run <file.py>`保证程序在uv创建的虚拟环境下运行。部分情况需要指定`PYTHONPATH`。
@@ -251,7 +258,10 @@ text = "酒楼丧尽天良，开始借机竞拍房间，哎，一群蠢货。"
 tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav", emo_audio_prompt="examples/emo_sad.wav", verbose=True)
 ```
 
-3. 可调节情感参考音频的权重（`emo_alpha`，范围0.0-1.0，默认1.0）：
+3. 可调节情感参考音频的权重（`emo_alpha`，范围0.0-1.0，默认1.0）。：
+
+> [!NOTE]
+> `emo_alpha`支持更高的值作为输入，但会降低生成效果。
 
 ```python
 from indextts.infer_v2 import IndexTTS2
@@ -260,7 +270,7 @@ text = "酒楼丧尽天良，开始借机竞拍房间，哎，一群蠢货。"
 tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav", emo_audio_prompt="examples/emo_sad.wav", emo_alpha=0.9, verbose=True)
 ```
 
-4. 可直接指定8维情感向量 `[高兴, 愤怒, 悲伤, 害怕, 厌恶, 忧郁, 惊讶, 平静]`，可用`use_random`开启随机情感采样（默认False）：
+4. 可直接指定8维情感向量 `[喜, 怒, 哀, 惧, 厌恶, 低落, 惊喜, 平静]`，可用`use_random`开启随机情感采样（默认False）：
 
 > [!NOTE]
 > 开启随机采样会降低音色的还原度。
@@ -272,7 +282,7 @@ text = "哇塞！这个爆率也太高了！欧皇附体了！"
 tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0, 0, 0, 0, 0.45, 0], use_random=False, verbose=True)
 ```
 
-5. 可用`use_emo_text`根据文本自动生成情感向量，可用`use_random`开启随机情感采样：
+5. 可用`use_emo_text`根据`text`内容自动生成情感向量，用于控制语音的情感。在使用该模式时，推荐`emo_alpha`的取值不高于0.6，以获得更自然的效果。这个模式同样可以用`use_random`开启随机情感采样：
 
 ```python
 from indextts.infer_v2 import IndexTTS2
@@ -281,7 +291,7 @@ text = "快躲起来！是他要来了！他要来抓我们了！"
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
-6. 可直接指定情感文本描述（`emo_text`），实现文本与情感分离控制：
+6. 可使用`emo_text`字段输入对所需情感的描述，实现文本与情感分离控制：
 
 ```python
 from indextts.infer_v2 import IndexTTS2
