@@ -264,7 +264,10 @@ uv run webui.py -h
 Have fun!
 
 > [!IMPORTANT]
-> **DeepSpeed** *may* speed up inference on some systems, but it could also
+> It can be very helpful to use **FP16** (half-precision) inference. It is faster
+> and uses less VRAM, with a very small quality loss.
+> 
+> **DeepSpeed** *may* also speed up inference on some systems, but it could also
 > make it slower. The performance impact is highly dependent on your specific
 > hardware, drivers and operating system. Please try with and without it,
 > to discover what works best on your personal system.
