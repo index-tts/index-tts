@@ -310,9 +310,9 @@ class IndexTTS:
                 - 越大，bucket数量越少，batch越多，推理速度越*快*，占用内存更多，可能影响质量
                 - 越小，bucket数量越多，batch越少，推理速度越*慢*，占用内存和质量更接近于非快速推理
         """
-        print(">> start fast inference...")
+        print(">> starting fast inference...")
 
-        self._set_gr_progress(0, "start fast inference...")
+        self._set_gr_progress(0, "starting fast inference...")
         if verbose:
             print(f"origin text:{text}")
         start_time = time.perf_counter()
@@ -403,7 +403,7 @@ class IndexTTS:
             processed_num += batch_num
             # gpt speech
             self._set_gr_progress(0.2 + 0.3 * processed_num / all_batch_num,
-                                  f"gpt inference speech... {processed_num}/{all_batch_num}")
+                                  f"gpt speech inference {processed_num}/{all_batch_num}...")
             m_start_time = time.perf_counter()
             with torch.no_grad():
                 with torch.amp.autocast(batch_text_tokens.device.type, enabled=self.dtype is not None,
@@ -425,7 +425,7 @@ class IndexTTS:
             gpt_gen_time += time.perf_counter() - m_start_time
 
         # gpt latent
-        self._set_gr_progress(0.5, "gpt inference latents...")
+        self._set_gr_progress(0.5, "gpt latents inference...")
         all_idxs = []
         all_latents = []
         has_warned = False
@@ -474,7 +474,7 @@ class IndexTTS:
         latent_length = len(all_latents)
 
         # bigvgan chunk decode
-        self._set_gr_progress(0.7, "bigvgan decode...")
+        self._set_gr_progress(0.7, "bigvgan decoding...")
         tqdm_progress = tqdm(total=latent_length, desc="bigvgan")
         for items in chunk_latents:
             tqdm_progress.update(len(items))
@@ -496,7 +496,7 @@ class IndexTTS:
         self.torch_empty_cache()
 
         # wav audio output
-        self._set_gr_progress(0.9, "save audio...")
+        self._set_gr_progress(0.9, "saving audio...")
         wav = torch.cat(wavs, dim=1)
         wav_length = wav.shape[-1] / sampling_rate
         print(f">> Reference audio length: {cond_mel_frame * 256 / sampling_rate:.2f} seconds")
@@ -527,8 +527,8 @@ class IndexTTS:
     # 原始推理模式
     def infer(self, audio_prompt, text, output_path, verbose=False, max_text_tokens_per_segment=120,
               **generation_kwargs):
-        print(">> start inference...")
-        self._set_gr_progress(0, "start inference...")
+        print(">> starting inference...")
+        self._set_gr_progress(0, "starting inference...")
         if verbose:
             print(f"origin text:{text}")
         start_time = time.perf_counter()
@@ -595,7 +595,7 @@ class IndexTTS:
             # print(text_len)
             progress += 1
             self._set_gr_progress(0.2 + 0.4 * (progress - 1) / len(segments),
-                                  f"gpt inference latent... {progress}/{len(segments)}")
+                                  f"gpt latents inference {progress}/{len(segments)}...")
             m_start_time = time.perf_counter()
             with torch.no_grad():
                 with torch.amp.autocast(text_tokens.device.type, enabled=self.dtype is not None, dtype=self.dtype):
@@ -637,7 +637,7 @@ class IndexTTS:
                     print(f"fix codes shape: {codes.shape}, codes type: {codes.dtype}")
                     print(f"code len: {code_lens}")
                 self._set_gr_progress(0.2 + 0.4 * progress / len(segments),
-                                      f"gpt inference speech... {progress}/{len(segments)}")
+                                      f"gpt speech inference {progress}/{len(segments)}...")
                 m_start_time = time.perf_counter()
                 # latent, text_lens_out, code_lens_out = \
                 with torch.amp.autocast(text_tokens.device.type, enabled=self.dtype is not None, dtype=self.dtype):
@@ -661,7 +661,7 @@ class IndexTTS:
                 # wavs.append(wav[:, :-512])
                 wavs.append(wav.cpu())  # to cpu before saving
         end_time = time.perf_counter()
-        self._set_gr_progress(0.9, "save audio...")
+        self._set_gr_progress(0.9, "saving audio...")
         wav = torch.cat(wavs, dim=1)
         wav_length = wav.shape[-1] / sampling_rate
         print(f">> Reference audio length: {cond_mel_frame * 256 / sampling_rate:.2f} seconds")

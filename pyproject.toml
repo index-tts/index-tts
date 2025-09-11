@@ -65,7 +65,7 @@ dependencies = [
 [project.optional-dependencies]
 # To install the WebUI support, use `uv sync --extra webui` (or `--all-extras`).
 webui = [
-  "gradio>=5.44.1",
+  "gradio==5.44.1",
 ]
 # To install the DeepSpeed support, use `uv sync --extra deepspeed` (or `--all-extras`).
 deepspeed = [

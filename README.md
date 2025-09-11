@@ -5,7 +5,7 @@
 </div>
 
 <div align="center">
-<a href="doc/README_zh.md" style="font-size: 24px">简体中文</a> | 
+<a href="docs/README_zh.md" style="font-size: 24px">简体中文</a> | 
 <a href="README.md" style="font-size: 24px">English</a>
 </div>
 
@@ -174,9 +174,12 @@ will install the correct versions of all dependencies into your `.venv` director
 uv sync --all-extras
 ```
 
-If the download is slow, please try a *local mirror*, for example China:
+If the download is slow, please try a *local mirror*, for example any of these
+local mirrors in China (choose one mirror from the list below):
 
 ```bash
+uv sync --all-extras --default-index "https://mirrors.aliyun.com/pypi/simple"
+
 uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ```
 
@@ -186,7 +189,8 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 > - `--all-extras`: Automatically adds *every* extra feature listed below. You can
 >   remove this flag if you want to customize your installation choices.
 > - `--extra webui`: Adds WebUI support (recommended).
-> - `--extra deepspeed`: Adds DeepSpeed support (faster inference).
+> - `--extra deepspeed`: Adds DeepSpeed support (may speed up inference on some
+>   systems).
 
 > [!IMPORTANT]
 > **Important (Windows):** The DeepSpeed library may be difficult to install for
@@ -259,6 +263,12 @@ uv run webui.py -h
 
 Have fun!
 
+> [!IMPORTANT]
+> **DeepSpeed** *may* speed up inference on some systems, but it could also
+> make it slower. The performance impact is highly dependent on your specific
+> hardware, drivers and operating system. Please try with and without it,
+> to discover what works best on your personal system.
+
 
 #### 📝 Using IndexTTS2 in Python
 
@@ -311,6 +321,10 @@ tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.
    during inference; the default is `False`, and setting it to `True` enables
    randomness:
 
+> [!NOTE]
+> Enabling random sampling will reduce the voice cloning fidelity of the speech
+> synthesis.
+
 ```python
 from indextts.infer_v2 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
@@ -321,6 +335,8 @@ tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.
 5. Alternatively, you can enable `use_emo_text` to guide the emotions based on
    your provided `text` script. Your text script will then automatically
    be converted into emotion vectors.
+   It's recommended to use `emo_alpha` around 0.6 (or lower) when using the text
+   emotion modes, for more natural sounding speech.
    You can introduce randomness with `use_random` (default: `False`;
    `True` enables randomness):
 
@@ -328,7 +344,7 @@ tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.
 from indextts.infer_v2 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
 6. It's also possible to directly provide a specific text emotion description
@@ -341,7 +357,7 @@ from indextts.infer_v2 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
 emo_text = "你吓死我了！你是鬼吗？"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
 

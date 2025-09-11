@@ -25,7 +25,7 @@ parser.add_argument("--port", type=int, default=7860, help="Port to run the web 
 parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="./checkpoints", help="Model checkpoints directory")
 parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
-parser.add_argument("--use_deepspeed", action="store_true", default=False, help="Use DeepSpeed to accelerate if available")
+parser.add_argument("--deepspeed", action="store_true", default=False, help="Use DeepSpeed to accelerate if available")
 parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use CUDA kernel for inference if available")
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
@@ -55,7 +55,7 @@ MODE = 'local'
 tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
                 use_fp16=cmd_args.fp16,
-                use_deepspeed=cmd_args.use_deepspeed,
+                use_deepspeed=cmd_args.deepspeed,
                 use_cuda_kernel=cmd_args.cuda_kernel,
                 )
 # 支持的语言列表
@@ -126,25 +126,26 @@ def gen_single(emo_control_method,prompt, text,
     }
     if type(emo_control_method) is not int:
         emo_control_method = emo_control_method.value
-    if emo_control_method == 0:
-        emo_ref_path = None
+    if emo_control_method == 0:  # emotion from speaker
+        emo_ref_path = None  # remove external reference audio
         emo_weight = 1.0
-    if emo_control_method == 1:
-        emo_weight = emo_weight
-    if emo_control_method == 2:
+    if emo_control_method == 1:  # emotion from reference audio
+        # emo_weight = emo_weight
+        pass
+    if emo_control_method == 2:  # emotion from custom vectors
         vec = [vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
-        vec_sum = sum([vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8])
-        if vec_sum > 1.5:
+        if sum(vec) > 1.5:
             gr.Warning(i18n("情感向量之和不能超过1.5，请调整后重试。"))
             return
     else:
+        # don't use the emotion vector inputs for the other modes
         vec = None
 
     if emo_text == "":
         # erase empty emotion descriptions; `infer()` will then automatically use the main prompt
         emo_text = None
 
-    print(f"Emo control mode:{emo_control_method},vec:{vec}")
+    print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
     output = tts.infer(spk_audio_prompt=prompt, text=text,
                        output_path=output_path,
                        emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
@@ -167,6 +168,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 <a href='https://arxiv.org/abs/2506.21619'><img src='https://img.shields.io/badge/ArXiv-2506.21619-red'></a>
 </p>
     ''')
+
     with gr.Tab(i18n("音频生成")):
         with gr.Row():
             os.makedirs("prompts",exist_ok=True)
@@ -192,12 +194,9 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             with gr.Row():
                 emo_upload = gr.Audio(label=i18n("上传情感参考音频"), type="filepath")
 
-            with gr.Row():
-                emo_weight = gr.Slider(label=i18n("情感权重"), minimum=0.0, maximum=1.6, value=0.8, step=0.01)
-
         # 情感随机采样
-        with gr.Row():
-            emo_random = gr.Checkbox(label=i18n("情感随机采样"),value=False,visible=False)
+        with gr.Row(visible=False) as emotion_randomize_group:
+            emo_random = gr.Checkbox(label=i18n("情感随机采样"), value=False)
 
         # 情感向量控制部分
         with gr.Group(visible=False) as emotion_vector_group:
@@ -216,6 +215,9 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         with gr.Group(visible=False) as emo_text_group:
             with gr.Row():
                 emo_text = gr.Textbox(label=i18n("情感描述文本"), placeholder=i18n("请输入情绪描述（或留空以自动使用目标文本作为情绪描述）"), value="", info=i18n("例如：高兴，愤怒，悲伤等"))
+
+        with gr.Row(visible=False) as emo_weight_group:
+            emo_weight = gr.Slider(label=i18n("情感权重"), minimum=0.0, maximum=1.6, value=0.8, step=0.01)
 
         with gr.Accordion(i18n("高级生成参数设置"), open=False):
             with gr.Row():
@@ -287,26 +289,30 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                 segments_preview: gr.update(value=df),
             }
     def on_method_select(emo_control_method):
-        if emo_control_method == 1:
+        if emo_control_method == 1:  # emotion reference audio
             return (gr.update(visible=True),
                     gr.update(visible=False),
                     gr.update(visible=False),
-                    gr.update(visible=False)
+                    gr.update(visible=False),
+                    gr.update(visible=True)
                     )
-        elif emo_control_method == 2:
+        elif emo_control_method == 2:  # emotion vectors
             return (gr.update(visible=False),
                     gr.update(visible=True),
-                    gr.update(visible=True),
-                    gr.update(visible=False)
-                    )
-        elif emo_control_method == 3:
-            return (gr.update(visible=False),
                     gr.update(visible=True),
                     gr.update(visible=False),
                     gr.update(visible=True)
                     )
-        else:
+        elif emo_control_method == 3:  # emotion text description
             return (gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(visible=True)
+                    )
+        else:  # 0: same as speaker voice
+            return (gr.update(visible=False),
+                    gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False),
                     gr.update(visible=False)
@@ -315,9 +321,10 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     emo_control_method.select(on_method_select,
         inputs=[emo_control_method],
         outputs=[emotion_reference_group,
-                 emo_random,
+                 emotion_randomize_group,
                  emotion_vector_group,
-                 emo_text_group]
+                 emo_text_group,
+                 emo_weight_group]
     )
 
     input_text_single.change(

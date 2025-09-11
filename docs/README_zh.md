@@ -153,6 +153,8 @@ uv sync --all-extras
 如中国大陆地区用户下载缓慢，可选用国内镜像：
 
 ```bash
+uv sync --all-extras --default-index "https://mirrors.aliyun.com/pypi/simple"
+
 uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ```
 
@@ -259,9 +261,9 @@ tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.
 ```
 
 4. 可直接指定8维情感向量 `[高兴, 愤怒, 悲伤, 害怕, 厌恶, 忧郁, 惊讶, 平静]`，可用`use_random`开启随机情感采样（默认False）：
+
 > [!NOTE]
 > 开启随机采样会降低音色的还原度。
-> 
 
 ```python
 from indextts.infer_v2 import IndexTTS2
@@ -276,7 +278,7 @@ tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.
 from indextts.infer_v2 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
 6. 可直接指定情感文本描述（`emo_text`），实现文本与情感分离控制：
@@ -286,7 +288,7 @@ from indextts.infer_v2 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
 emo_text = "你吓死我了！你是鬼吗？"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
 ### 旧版IndexTTS1使用指南

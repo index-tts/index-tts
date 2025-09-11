@@ -318,37 +318,45 @@ class IndexTTS2:
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
               verbose=False, max_text_tokens_per_segment=120, **generation_kwargs):
-        print(">> start inference...")
-        self._set_gr_progress(0, "start inference...")
+        print(">> starting inference...")
+        self._set_gr_progress(0, "starting inference...")
         if verbose:
-            print(f"origin text:{text}, spk_audio_prompt:{spk_audio_prompt},"
-                  f" emo_audio_prompt:{emo_audio_prompt}, emo_alpha:{emo_alpha}, "
+            print(f"origin text:{text}, spk_audio_prompt:{spk_audio_prompt}, "
+                  f"emo_audio_prompt:{emo_audio_prompt}, emo_alpha:{emo_alpha}, "
                   f"emo_vector:{emo_vector}, use_emo_text:{use_emo_text}, "
                   f"emo_text:{emo_text}")
         start_time = time.perf_counter()
 
-        if use_emo_text:
+        if use_emo_text or emo_vector is not None:
+            # we're using a text or emotion vector guidance; so we must remove
+            # "emotion reference voice", to ensure we use correct emotion mixing!
             emo_audio_prompt = None
-            emo_alpha = 1.0
-            # assert emo_audio_prompt is None
-            # assert emo_alpha == 1.0
+
+        if use_emo_text:
+            # automatically generate emotion vectors from text prompt
             if emo_text is None:
-                emo_text = text
+                emo_text = text  # use main text prompt
             emo_dict = self.qwen_emo.inference(emo_text)
-            print(emo_dict)
+            print(f"detected emotion vectors from text: {emo_dict}")
             # convert ordered dict to list of vectors; the order is VERY important!
             emo_vector = list(emo_dict.values())
 
         if emo_vector is not None:
-            emo_audio_prompt = None
-            emo_alpha = 1.0
-            # assert emo_audio_prompt is None
-            # assert emo_alpha == 1.0
+            # we have emotion vectors; they can't be blended via alpha mixing
+            # in the main inference process later, so we must pre-calculate
+            # their new strengths here based on the alpha instead!
+            emo_vector_scale = max(0.0, min(1.0, emo_alpha))
+            if emo_vector_scale != 1.0:
+                # scale each vector and truncate to 4 decimals (for nicer printing)
+                emo_vector = [int(x * emo_vector_scale * 10000) / 10000 for x in emo_vector]
+                print(f"scaled emotion vectors to {emo_vector_scale}x: {emo_vector}")
 
         if emo_audio_prompt is None:
+            # we are not using any external "emotion reference voice"; use
+            # speaker's voice as the main emotion reference audio.
             emo_audio_prompt = spk_audio_prompt
+            # must always use alpha=1.0 when we don't have an external reference voice
             emo_alpha = 1.0
-            # assert emo_alpha == 1.0
 
         if isinstance(spk_audio_prompt, AudioPromptFeaturesV2):
             # 用户传入预提取的特征，直接使用
@@ -402,9 +410,10 @@ class IndexTTS2:
         self._set_gr_progress(0.1, "text processing...")
         text_tokens_list = self.tokenizer.tokenize(text)
         segments = self.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment)
+        segments_count = len(segments)
         if verbose:
             print("text_tokens_list:", text_tokens_list)
-            print("segments count:", len(segments))
+            print("segments count:", segments_count)
             print("max_text_tokens_per_segment:", max_text_tokens_per_segment)
             print(*segments, sep="\n")
         do_sample = generation_kwargs.pop("do_sample", True)
@@ -423,9 +432,11 @@ class IndexTTS2:
         gpt_forward_time = 0
         s2mel_time = 0
         bigvgan_time = 0
-        progress = 0
         has_warned = False
-        for sent in segments:
+        for seg_idx, sent in enumerate(segments):
+            self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
+                                  f"speech synthesis {seg_idx + 1}/{segments_count}...")
+
             text_tokens = self.tokenizer.convert_tokens_to_ids(sent)
             text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=self.device).unsqueeze(0)
             if verbose:
@@ -555,7 +566,8 @@ class IndexTTS2:
                 # wavs.append(wav[:, :-512])
                 wavs.append(wav.cpu())  # to cpu before saving
         end_time = time.perf_counter()
-        self._set_gr_progress(0.9, "save audio...")
+
+        self._set_gr_progress(0.9, "saving audio...")
         wavs = self.insert_interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
         wav = torch.cat(wavs, dim=1)
         wav_length = wav.shape[-1] / sampling_rate
