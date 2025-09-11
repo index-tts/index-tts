@@ -9,6 +9,8 @@ import librosa
 import torch
 import torchaudio
 from torch.nn.utils.rnn import pad_sequence
+from dataclasses import dataclass
+from typing import Optional
 
 import warnings
 
@@ -16,6 +18,23 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 from omegaconf import OmegaConf
+
+
+@dataclass
+class AudioPromptFeaturesV2:
+    """说话人音频提示的特征数据"""
+    prompt_condition: torch.Tensor
+    ref_mel: torch.Tensor
+    spk_cond_emb: torch.Tensor
+    style: torch.Tensor
+    audio_path: Optional[str] = None  # 可选的原始音频路径，用于调试或缓存键生成
+
+
+@dataclass
+class EmotionFeatures:
+    """情感音频的特征数据"""
+    emo_cond_emb: torch.Tensor
+    audio_path: Optional[str] = None  # 可选的原始音频路径，用于调试或缓存键生成
 
 from indextts.gpt.model_v2 import UnifiedVoice
 from indextts.utils.maskgct_utils import build_semantic_model, build_semantic_codec
@@ -34,6 +53,7 @@ import safetensors
 from transformers import SeamlessM4TFeatureExtractor
 import random
 import torch.nn.functional as F
+
 
 class IndexTTS2:
     def __init__(
@@ -330,40 +350,25 @@ class IndexTTS2:
             emo_alpha = 1.0
             # assert emo_alpha == 1.0
 
-        # 如果参考音频改变了，才需要重新生成, 提升速度
-        if self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
-            audio, sr = librosa.load(spk_audio_prompt)
-            audio = torch.tensor(audio).unsqueeze(0)
-            audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
-            audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
-
-            inputs = self.extract_features(audio_16k, sampling_rate=16000, return_tensors="pt")
-            input_features = inputs["input_features"]
-            attention_mask = inputs["attention_mask"]
-            input_features = input_features.to(self.device)
-            attention_mask = attention_mask.to(self.device)
-            spk_cond_emb = self.get_emb(input_features, attention_mask)
-
-            _, S_ref = self.semantic_codec.quantize(spk_cond_emb)
-            ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
-            ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
-            feat = torchaudio.compliance.kaldi.fbank(audio_16k.to(ref_mel.device),
-                                                     num_mel_bins=80,
-                                                     dither=0,
-                                                     sample_frequency=16000)
-            feat = feat - feat.mean(dim=0, keepdim=True)  # feat2另外一个滤波器能量组特征[922, 80]
-            style = self.campplus_model(feat.unsqueeze(0))  # 参考音频的全局style2[1,192]
-
-            prompt_condition = self.s2mel.models['length_regulator'](S_ref,
-                                                                     ylens=ref_target_lengths,
-                                                                     n_quantizers=3,
-                                                                     f0=None)[0]
-
-            self.cache_spk_cond = spk_cond_emb
-            self.cache_s2mel_style = style
-            self.cache_s2mel_prompt = prompt_condition
+        if isinstance(spk_audio_prompt, AudioPromptFeaturesV2):
+            # 用户传入预提取的特征，直接使用
+            audio_features = spk_audio_prompt
+            prompt_condition = audio_features.prompt_condition
+            ref_mel = audio_features.ref_mel
+            spk_cond_emb = audio_features.spk_cond_emb
+            style = audio_features.style
+        elif self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
+            # 如果参考音频改变了，才需要重新生成, 提升速度
+            audio_features = self.extract_audio_prompt(spk_audio_prompt)
+            self.cache_spk_cond = audio_features.spk_cond_emb
+            self.cache_s2mel_style = audio_features.style
+            self.cache_s2mel_prompt = audio_features.prompt_condition
             self.cache_spk_audio_prompt = spk_audio_prompt
-            self.cache_mel = ref_mel
+            self.cache_mel = audio_features.ref_mel
+            prompt_condition = audio_features.prompt_condition
+            ref_mel = audio_features.ref_mel
+            spk_cond_emb = audio_features.spk_cond_emb
+            style = audio_features.style
         else:
             style = self.cache_s2mel_style
             prompt_condition = self.cache_s2mel_prompt
@@ -383,17 +388,14 @@ class IndexTTS2:
             emovec_mat = torch.sum(emovec_mat, 0)
             emovec_mat = emovec_mat.unsqueeze(0)
 
-        if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
-            emo_audio, _ = librosa.load(emo_audio_prompt, sr=16000)
-            emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
-            emo_input_features = emo_inputs["input_features"]
-            emo_attention_mask = emo_inputs["attention_mask"]
-            emo_input_features = emo_input_features.to(self.device)
-            emo_attention_mask = emo_attention_mask.to(self.device)
-            emo_cond_emb = self.get_emb(emo_input_features, emo_attention_mask)
-
-            self.cache_emo_cond = emo_cond_emb
+        if isinstance(emo_audio_prompt, EmotionFeatures):
+            # 用户传入预提取的情感特征，直接使用
+            emo_cond_emb = emo_audio_prompt.emo_cond_emb
+        elif self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
+            emo_features = self.extract_emo_cond_emb(emo_audio_prompt)
+            self.cache_emo_cond = emo_features.emo_cond_emb
             self.cache_emo_audio_prompt = emo_audio_prompt
+            emo_cond_emb = emo_features.emo_cond_emb
         else:
             emo_cond_emb = self.cache_emo_cond
 
@@ -582,6 +584,51 @@ class IndexTTS2:
             wav_data = wav.type(torch.int16)
             wav_data = wav_data.numpy().T
             return (sampling_rate, wav_data)
+
+    def extract_audio_prompt(self, spk_audio_prompt):
+        audio, sr = librosa.load(spk_audio_prompt)
+        audio = torch.tensor(audio).unsqueeze(0)
+        audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
+        audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
+        inputs = self.extract_features(audio_16k, sampling_rate=16000, return_tensors="pt")
+        input_features = inputs["input_features"]
+        attention_mask = inputs["attention_mask"]
+        input_features = input_features.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        spk_cond_emb = self.get_emb(input_features, attention_mask)
+        _, S_ref = self.semantic_codec.quantize(spk_cond_emb)
+        ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
+        ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
+        feat = torchaudio.compliance.kaldi.fbank(audio_16k.to(ref_mel.device),
+                                                 num_mel_bins=80,
+                                                 dither=0,
+                                                 sample_frequency=16000)
+        feat = feat - feat.mean(dim=0, keepdim=True)  # feat2另外一个滤波器能量组特征[922, 80]
+        style = self.campplus_model(feat.unsqueeze(0))  # 参考音频的全局style2[1,192]
+        prompt_condition = self.s2mel.models['length_regulator'](S_ref,
+                                                                 ylens=ref_target_lengths,
+                                                                 n_quantizers=3,
+                                                                 f0=None)[0]
+        return AudioPromptFeaturesV2(
+            prompt_condition=prompt_condition,
+            ref_mel=ref_mel,
+            spk_cond_emb=spk_cond_emb,
+            style=style,
+            audio_path=spk_audio_prompt if isinstance(spk_audio_prompt, str) else None
+        )
+
+    def extract_emo_cond_emb(self, emo_audio_prompt):
+        emo_audio, _ = librosa.load(emo_audio_prompt, sr=16000)
+        emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
+        emo_input_features = emo_inputs["input_features"]
+        emo_attention_mask = emo_inputs["attention_mask"]
+        emo_input_features = emo_input_features.to(self.device)
+        emo_attention_mask = emo_attention_mask.to(self.device)
+        emo_cond_emb = self.get_emb(emo_input_features, emo_attention_mask)
+        return EmotionFeatures(
+            emo_cond_emb=emo_cond_emb,
+            audio_path=emo_audio_prompt if isinstance(emo_audio_prompt, str) else None
+        )
 
 
 def find_most_similar_cosine(query_vector, matrix):
