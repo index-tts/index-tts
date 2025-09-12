@@ -354,7 +354,13 @@ class IndexTTS2:
         if emo_audio_prompt is None:
             # we are not using any external "emotion reference voice"; use
             # speaker's voice as the main emotion reference audio.
-            emo_audio_prompt = spk_audio_prompt
+            if isinstance(spk_audio_prompt, AudioPromptFeaturesV2):
+                emo_audio_prompt = EmotionFeatures(
+                    emo_cond_emb=spk_audio_prompt.spk_cond_emb,
+                    audio_path=spk_audio_prompt.audio_path
+                )
+            else:
+                emo_audio_prompt = spk_audio_prompt
             # must always use alpha=1.0 when we don't have an external reference voice
             emo_alpha = 1.0
 
