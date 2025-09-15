@@ -42,7 +42,8 @@
   "请上传情感参考音频": "Please upload the emotion reference audio",
   "当前模型版本": "Current model version: ",
   "请输入目标文本": "Please input the text to synthesize",
-  "例如：高兴，愤怒，悲伤等": "e.g., happy, angry, sad, etc.",
+  "例如：委屈巴巴、危险在悄悄逼近": "e.g. deeply sad, danger is creeping closer",
   "与音色参考音频相同": "Same as the voice reference",
-  "情感随机采样": "Randomize emotion sampling"
+  "情感随机采样": "Randomize emotion sampling",
+  "显示实验功能": "Show experimental features"
 }

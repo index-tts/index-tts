@@ -120,12 +120,12 @@ class IndexTTS2:
         if self.use_cuda_kernel:
             # preload the CUDA kernel for BigVGAN
             try:
-                from indextts.BigVGAN.alias_free_activation.cuda import load
+                from indextts.s2mel.modules.bigvgan.alias_free_activation.cuda import activation1d
 
-                anti_alias_activation_cuda = load.load()
-                print(">> Preload custom CUDA kernel for BigVGAN", anti_alias_activation_cuda)
-            except:
+                print(">> Preload custom CUDA kernel for BigVGAN", activation1d.anti_alias_activation_cuda)
+            except Exception as e:
                 print(">> Failed to load custom CUDA kernel for BigVGAN. Falling back to torch.")
+                print(f"{e!r}")
                 self.use_cuda_kernel = False
 
         self.extract_features = SeamlessM4TFeatureExtractor.from_pretrained("facebook/w2v-bert-2.0")
@@ -312,6 +312,20 @@ class IndexTTS2:
         if self.gr_progress is not None:
             self.gr_progress(value, desc=desc)
 
+    def _load_and_cut_audio(self,audio_path,max_audio_length_seconds,verbose=False,sr=None):
+        if not sr:
+            audio, sr = librosa.load(audio_path)
+        else:
+            audio, _ = librosa.load(audio_path,sr=sr)
+        audio = torch.tensor(audio).unsqueeze(0)
+        max_audio_samples = int(max_audio_length_seconds * sr)
+
+        if audio.shape[1] > max_audio_samples:
+            if verbose:
+                print(f"Audio too long ({audio.shape[1]} samples), truncating to {max_audio_samples} samples")
+            audio = audio[:, :max_audio_samples]
+        return audio, sr
+
     # 原始推理模式
     def infer(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
@@ -373,7 +387,7 @@ class IndexTTS2:
             style = audio_features.style
         elif self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
             # 如果参考音频改变了，才需要重新生成, 提升速度
-            audio_features = self.extract_audio_prompt(spk_audio_prompt)
+            audio_features = self.extract_audio_prompt(spk_audio_prompt=spk_audio_prompt, verbose=verbose)
             self.cache_spk_cond = audio_features.spk_cond_emb
             self.cache_s2mel_style = audio_features.style
             self.cache_s2mel_prompt = audio_features.prompt_condition
@@ -406,7 +420,7 @@ class IndexTTS2:
             # 用户传入预提取的情感特征，直接使用
             emo_cond_emb = emo_audio_prompt.emo_cond_emb
         elif self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
-            emo_features = self.extract_emo_cond_emb(emo_audio_prompt)
+            emo_features = self.extract_emo_cond_emb(emo_audio_prompt=emo_audio_prompt, verbose=verbose)
             self.cache_emo_cond = emo_features.emo_cond_emb
             self.cache_emo_audio_prompt = emo_audio_prompt
             emo_cond_emb = emo_features.emo_cond_emb
@@ -603,17 +617,18 @@ class IndexTTS2:
             wav_data = wav_data.numpy().T
             return (sampling_rate, wav_data)
 
-    def extract_audio_prompt(self, spk_audio_prompt):
-        audio, sr = librosa.load(spk_audio_prompt)
-        audio = torch.tensor(audio).unsqueeze(0)
+    def extract_audio_prompt(self, spk_audio_prompt, verbose=False):
+        audio,sr = self._load_and_cut_audio(spk_audio_prompt,15,verbose)
         audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
         audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
+
         inputs = self.extract_features(audio_16k, sampling_rate=16000, return_tensors="pt")
         input_features = inputs["input_features"]
         attention_mask = inputs["attention_mask"]
         input_features = input_features.to(self.device)
         attention_mask = attention_mask.to(self.device)
         spk_cond_emb = self.get_emb(input_features, attention_mask)
+        
         _, S_ref = self.semantic_codec.quantize(spk_cond_emb)
         ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
         ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
@@ -623,6 +638,7 @@ class IndexTTS2:
                                                  sample_frequency=16000)
         feat = feat - feat.mean(dim=0, keepdim=True)  # feat2另外一个滤波器能量组特征[922, 80]
         style = self.campplus_model(feat.unsqueeze(0))  # 参考音频的全局style2[1,192]
+
         prompt_condition = self.s2mel.models['length_regulator'](S_ref,
                                                                  ylens=ref_target_lengths,
                                                                  n_quantizers=3,
@@ -635,14 +651,15 @@ class IndexTTS2:
             audio_path=spk_audio_prompt if isinstance(spk_audio_prompt, str) else None
         )
 
-    def extract_emo_cond_emb(self, emo_audio_prompt):
-        emo_audio, _ = librosa.load(emo_audio_prompt, sr=16000)
+    def extract_emo_cond_emb(self, emo_audio_prompt, verbose=False):
+        emo_audio, _ = self._load_and_cut_audio(emo_audio_prompt,15,verbose,sr=16000)
         emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
         emo_input_features = emo_inputs["input_features"]
         emo_attention_mask = emo_inputs["attention_mask"]
         emo_input_features = emo_input_features.to(self.device)
         emo_attention_mask = emo_attention_mask.to(self.device)
         emo_cond_emb = self.get_emb(emo_input_features, emo_attention_mask)
+
         return EmotionFeatures(
             emo_cond_emb=emo_cond_emb,
             audio_path=emo_audio_prompt if isinstance(emo_audio_prompt, str) else None
