@@ -82,6 +82,12 @@ Email：indexspeech@bilibili.com  \
 You are welcome to join our community! 🌏  \
 欢迎大家来交流讨论！
 
+> [!CAUTION]
+> Thank you for your support of the bilibili indextts project!
+> Please note that the **only official channel** maintained by the core team is: [https://github.com/index-tts/index-tts](https://github.com/index-tts/index-tts).
+> ***Any other websites or services are not official***, and we cannot guarantee their security, accuracy, or timeliness.
+> For the latest updates, please always refer to this official repository.
+
 
 ## 📣 Updates
 
@@ -408,6 +414,31 @@ or visit the IndexTTS1 repository at <a href="https://github.com/index-tts/index
 5. [icefall](https://github.com/k2-fsa/icefall)
 6. [maskgct](https://github.com/open-mmlab/Amphion/tree/main/models/tts/maskgct)
 7. [seed-vc](https://github.com/Plachtaa/seed-vc)
+
+## Contributors in Bilibili
+We sincerely thank colleagues from different levels at Bilibili, whose combined efforts made the IndexTTS series possible.
+
+### Technical Guidance
+ - **Huyang Sun** - Provided strong support for the IndexTTS project, ensuring strategic alignment and resource backing.
+ - **Bin Xia** - Contributed to the review, optimization, and follow-up of technical solutions, focusing on ensuring model effectiveness.
+
+### Core Authors
+ - **Siyi Zhou** – Core author; in IndexTTS2, led model architecture design and training pipeline optimization, focusing on key features such as multilingual and emotional synthesis.
+ - **Wei Deng** - Core author; in IndexTTS1, led model architecture design and training pipeline, focusing on fundamental capability building and performance optimization.
+ - **Jingchen Shu** - Core author; worked on overall architecture design, cross-lingual modeling solutions, and training strategy optimization, driving model iteration.
+ - **Xun Zhou** - worked on cross-lingual data processing and experiments, explored multilingual training strategies, and contributed to audio quality improvement and stability evaluation.
+ - **Jinchao Wang** - Core author; worked on model development and deployment, building the inference framework and supporting system integration.
+ - **Yiquan Zhou** - Core author; contributed to model experiments and validation, and proposed and implemented text-based emotion control.
+ - **Yi He** - Core author; contributed to model experiments and validation.
+ - **Lu Wang** – Core author; worked on data processing and model evaluation, supporting model training and performance verification.
+
+### Technical Contributors
+ - **Yining Wang** - Core contributor; contributed to open-source code implementation and maintenance, supporting feature adaptation and community release.
+ - **Yong Wu** - Supporting contributor; worked on data processing and experimental support, ensuring data quality and efficiency for model training and iteration.
+
+### Community Contributors
+ - **Yihuang Liang** - Engaged in community operations, documentation writing, and project promotion, helping IndexTTS reach a wider audience.
+ - **Yunhan Xu** – Deeply familiar with model usage, provided key feedback on improving usability and making the model smoother to apply in practice.
 
 
 ## 📚 Citation

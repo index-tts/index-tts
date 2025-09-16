@@ -77,6 +77,13 @@ Discord：https://discord.gg/uT32E7KDmy  \
 欢迎加入我们的社区！🌏  \
 欢迎大家交流讨论！
 
+> [!CAUTION]
+> 感谢大家对bilibili indextts项目的支持与关注！
+> 请注意，目前由核心团队直接维护的**官方渠道仅有**: [https://github.com/index-tts/index-tts](https://github.com/index-tts/index-tts).
+> ***其他任何网站或服务均非官方提供***，我们对其内容及安全性、准确性和及时性不作任何担保。
+> 为了保障您的权益，建议通过上述官方渠道获取bilibili indextts项目的最新进展与更新。
+
+
 ## 📣 更新日志
 
 - `2025/09/08` 🔥🔥🔥  IndexTTS-2全球发布！
@@ -336,6 +343,31 @@ tts.infer(voice, text, 'gen.wav')
 5. [icefall](https://github.com/k2-fsa/icefall)
 6. [maskgct](https://github.com/open-mmlab/Amphion/tree/main/models/tts/maskgct)
 7. [seed-vc](https://github.com/Plachtaa/seed-vc)
+
+## Bilibili 贡献者名录
+我们诚挚感谢来自Bilibili的同事们，是大家的共同努力让IndexTTS系列得以实现。
+
+### 技术指导
+ - **Huyang Sun** – 对IndexTTS项目给予了大力支持，确保了项目的战略方向与资源保障。
+ - **Bin Xia** – 参与技术方案的评审、优化与跟进，重点关注模型效果的保障。
+
+### 核心作者
+ - **Siyi Zhou** – 核心作者；在IndexTTS2中主导模型架构设计与训练流程优化，重点推动多语言、多情感合成等关键功能。
+ - **Wei Deng** – 核心作者；在IndexTTS1中主导模型架构设计与训练流程，负责基础能力建设与性能优化。
+ - **Jingchen Shu** – 核心作者；负责整体架构设计、跨语种建模方案与训练策略优化，推动模型迭代。
+ - **Xun Zhou** – 核心作者；负责跨语言数据处理与实验，探索多语种训练策略，并在音质提升与稳定性评估方面作出贡献。
+ - **Jinchao Wang** – 核心作者；负责模型开发与部署，构建推理框架并支持系统落地。
+ - **Yiquan Zhou** – 核心作者；参与模型实验与验证，并提出并实现了基于文本的情感控制。
+ - **Yi He** – 核心作者；参与模型实验与验证。
+ - **Lu Wang** – 核心作者；负责数据处理与模型评测，支持模型训练与性能验证。
+
+### 技术贡献者
+ - **Yining Wang** – 技术贡献者；负责开源代码的实现与维护，支持功能适配与社区发布。
+ - **Yong Wu** – 技术贡献者；参与数据处理与实验支持，保障模型训练的数据质量与迭代效率。
+
+### 社区贡献者
+ - **Yihuang Liang** – 参与社区运营、文档撰写与项目推广，帮助IndexTTS项目触达更广泛的用户。
+ - **Yunhan Xu** – 对模型使用有深入理解，提出关键改进建议，使模型更易用并顺畅应用于实际场景。
 
 ## 📚 论文引用
 
