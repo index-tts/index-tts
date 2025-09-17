@@ -422,7 +422,7 @@ We sincerely thank colleagues from different roles at Bilibili, whose combined e
  - **Siyi Zhou** – Core author; in IndexTTS2, led model architecture design and training pipeline optimization, focusing on key features such as multilingual and emotional synthesis.
  - **Wei Deng** - Core author; in IndexTTS1, led model architecture design and training pipeline, focusing on fundamental capability building and performance optimization.
  - **Jingchen Shu** - Core author; worked on overall architecture design, cross-lingual modeling solutions, and training strategy optimization, driving model iteration.
- - **Xun Zhou** - worked on cross-lingual data processing and experiments, explored multilingual training strategies, and contributed to audio quality improvement and stability evaluation.
+ - **Xun Zhou** - Core author; worked on cross-lingual data processing and experiments, explored multilingual training strategies, and contributed to audio quality improvement and stability evaluation.
  - **Jinchao Wang** - Core author; worked on model development and deployment, building the inference framework and supporting system integration.
  - **Yiquan Zhou** - Core author; contributed to model experiments and validation, and proposed and implemented text-based emotion control.
  - **Yi He** - Core author; contributed to model experiments and validation.
