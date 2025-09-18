@@ -355,7 +355,10 @@ class IndexTTS2:
         # 如果参考音频改变了，才需要重新生成, 提升速度
         if self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
             if self.cache_spk_cond is not None:
-                del self.cache_spk_cond, self.cache_s2mel_style, self.cache_s2mel_prompt, self.cache_mel
+                self.cache_spk_cond = None
+                self.cache_s2mel_style = None
+                self.cache_s2mel_prompt = None
+                self.cache_mel = None
                 torch.cuda.empty_cache()
             audio,sr = self._load_and_cut_audio(spk_audio_prompt,15,verbose)
             audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
@@ -409,7 +412,7 @@ class IndexTTS2:
 
         if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
             if self.cache_emo_cond is not None:
-                del self.cache_emo_cond
+                self.cache_emo_cond = None
                 torch.cuda.empty_cache()
             emo_audio, _ = self._load_and_cut_audio(emo_audio_prompt,15,verbose,sr=16000)
             emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
