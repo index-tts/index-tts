@@ -174,7 +174,8 @@ git lfs pull  # download large repository files
 4. Install required dependencies:
 
 We use `uv` to manage the project's dependency environment. The following command
-will install the correct versions of all dependencies into your `.venv` directory:
+will *automatically* create a `.venv` project-directory and then installs the correct
+versions of Python and all required dependencies:
 
 ```bash
 uv sync --all-extras
@@ -208,12 +209,12 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 > please ensure that you have installed NVIDIA's [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
 > version **12.8** (or newer) on your system.
 
-5. Download the required models:
+5. Download the required models via [uv tool](https://docs.astral.sh/uv/guides/tools/#installing-tools):
 
 Download via `huggingface-cli`:
 
 ```bash
-uv tool install "huggingface_hub[cli]"
+uv tool install "huggingface-hub[cli,hf_xet]"
 
 hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 ```
@@ -226,13 +227,15 @@ uv tool install "modelscope"
 modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
 
+> [!IMPORTANT]
+> If the commands above aren't available, please carefully read the `uv tool`
+> output. It will tell you how to add the tools to your system's path.
+
 > [!NOTE]
 > In addition to the above models, some small models will also be automatically
 > downloaded when the project is run for the first time. If your network environment
 > has slow access to HuggingFace, it is recommended to execute the following
 > command before running the code:
-> 
-> 除了以上模型外，项目初次运行时还会自动下载一些小模型，如果您的网络环境访问HuggingFace的速度较慢，推荐执行：
 > 
 > ```bash
 > export HF_ENDPOINT="https://hf-mirror.com"
@@ -277,6 +280,10 @@ Have fun!
 > make it slower. The performance impact is highly dependent on your specific
 > hardware, drivers and operating system. Please try with and without it,
 > to discover what works best on your personal system.
+> 
+> Lastly, be aware that *all* `uv` commands will **automatically activate** the correct
+> per-project virtual environments. Do *not* manually activate any environments
+> before running `uv` commands, since that could lead to dependency conflicts!
 
 
 #### 📝 Using IndexTTS2 in Python
