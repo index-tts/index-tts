@@ -1,6 +1,6 @@
 """
 IndexTTS2 API
-版本: v1.0.0
+版本: v1.0.2
 """
 
 import os
@@ -69,6 +69,18 @@ tts = IndexTTS2(
 # 创建输出目录
 os.makedirs("outputs/tasks", exist_ok=True)
 os.makedirs("prompts", exist_ok=True)
+
+# 清空历史生成音频
+import shutil
+for filename in os.listdir("outputs/tasks"):
+    file_path = os.path.join("outputs/tasks", filename)
+    try:
+        if os.path.isfile(file_path) or os.path.islink(file_path):
+            os.unlink(file_path)
+        elif os.path.isdir(file_path):
+            shutil.rmtree(file_path)
+    except Exception as e:
+        print(f'Failed to delete {file_path}. Reason: {e}')
 
 # 任务状态存储
 tasks = {}
