@@ -244,22 +244,40 @@ async def create_tts_task_sync(text: str, prompt_audio: str = "tests/sample_prom
     if not os.path.exists(prompt_audio):
         raise HTTPException(status_code=400, detail="Prompt audio file does not exist")
     
+    # 创建任务ID
+    task_id = str(uuid.uuid4())
+    output_path = os.path.join("outputs/tasks", f"{task_id}.wav")
+    
     try:
-        # 创建任务ID
-        task_id = str(uuid.uuid4())
-        output_path = os.path.join("outputs/tasks", f"{task_id}.wav")
+        # 使用线程池执行器设置超时时间
+        import concurrent.futures
+        import functools
         
-        # 调用TTS推理
-        tts.infer(
+        # 创建带超时的推理函数
+        infer_with_timeout = functools.partial(
+            tts.infer,
             spk_audio_prompt=prompt_audio,
             text=text,
             output_path=output_path
         )
         
+        # 使用线程池执行，设置120秒超时
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(infer_with_timeout)
+            future.result(timeout=120)  # 120秒超时限制
+        
         # 返回音频文件
         return FileResponse(output_path, media_type='audio/wav', filename=f"{task_id}.wav")
         
+    except concurrent.futures.TimeoutError:
+        # 清理可能已创建的文件
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise HTTPException(status_code=408, detail="Task processing timeout (120 seconds)")
     except Exception as e:
+        # 清理可能已创建的文件
+        if os.path.exists(output_path):
+            os.remove(output_path)
         raise HTTPException(status_code=500, detail=f"Failed to generate audio: {str(e)}")
 
 @app.get("/api/v1/tts/tasks/{task_id}", response_model=TaskStatus)
