@@ -1,314 +1,275 @@
-# file: api_test.py
-import os
-import time
 import requests
-import json
-from pathlib import Path
+import time
 
-# API 基础URL
-BASE_URL = "http://127.0.0.1:8000/api/v1/tts/tasks"
+# API 服务器地址
+BASE_URL = "http://localhost:8000"
 
-def test_create_tts_task():
-    """
-    测试创建TTS任务
-    """
-    # 准备测试数据
-    test_prompt = "tests/sample_prompt.wav"  # 请确保这个文件存在
-    
-    # 如果测试音频文件不存在，则创建一个占位文件
-    if not os.path.exists(test_prompt):
-        os.makedirs("prompts", exist_ok=True)
-        Path(test_prompt).touch()
-        print(f"Created placeholder prompt file: {test_prompt}")
-    
-    payload = {
-        "prompt_audio": test_prompt,
-        "text": "你好，这是一个测试语音合成任务。欢迎使用Index T T S API！",
-        "infer_mode": "批次推理",
-        "max_text_tokens_per_sentence": 120,
-        "sentences_bucket_max_size": 4,
-        "do_sample": True,
-        "top_p": 0.8,
-        "top_k": 30,
-        "temperature": 1.0,
-        "length_penalty": 0.0,
-        "num_beams": 3,
-        "repetition_penalty": 10.0,
-        "max_mel_tokens": 600
-    }
-    
+# 测试用的音频文件
+TEST_PROMPT_AUDIO = "tests/sample_prompt.wav"
+
+def test_create_task_async():
+    """测试异步创建 TTS 任务"""
+    print("\n测试异步创建 TTS 任务...")
     try:
-        response = requests.post(BASE_URL, json=payload)
-        if response.status_code == 200:
-            result = response.json()
-            print("✓ 创建TTS任务成功")
-            print(f"  Task ID: {result['task_id']}")
-            print(f"  Status: {result['status']}")
-            return result['task_id']
-        else:
-            print(f"✗ 创建TTS任务失败: {response.status_code}")
-            print(f"  Error: {response.text}")
-            return None
+        # 准备测试数据
+        payload = {
+            "text": "这是异步创建TTS任务的测试。",
+            "prompt_audio": TEST_PROMPT_AUDIO,
+            "return_audio": False
+        }
+        
+        # 发送 POST 请求创建任务
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 200, f"创建任务失败，状态码: {response.status_code}"
+        
+        # 解析响应
+        task_data = response.json()
+        task_id = task_data["task_id"]
+        assert task_data["status"] == "pending", f"任务状态应为 pending，实际为: {task_data['status']}"
+        
+        print(f"✓ 异步任务创建成功，任务ID: {task_id}")
+        return task_id
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 异步任务创建测试失败: {e}")
         return None
-    
-def test_create_tts_task_with_audio_return():
-    """
-    测试创建TTS任务并直接返回音频
-    """
-    # 准备测试数据
-    test_prompt = "tests/sample_prompt.wav"
-    
-    # 如果测试音频文件不存在，则创建一个占位文件
-    if not os.path.exists(test_prompt):
-        os.makedirs("prompts", exist_ok=True)
-        Path(test_prompt).touch()
-        print(f"Created placeholder prompt file: {test_prompt}")
-    
-    payload = {
-        "prompt_audio": test_prompt,
-        "text": "这是测试直接返回音频功能的语音合成任务。",
-        "return_audio": True  # 设置为True以直接返回音频
-    }
-    
+
+def test_create_task_sync():
+    """测试同步创建 TTS 任务并返回音频"""
+    print("\n测试同步创建 TTS 任务...")
     try:
-        response = requests.post(BASE_URL, json=payload)
-        if response.status_code == 200 and response.headers.get('content-type', '').startswith('audio/'):
-            # 保存音频文件
-            output_file = "test_output_direct_audio.wav"
-            with open(output_file, "wb") as f:
-                f.write(response.content)
-            print("✓ 创建TTS任务并直接返回音频成功")
-            print(f"  音频文件已保存为: {output_file}")
-            return True
-        elif response.status_code == 408:
-            print("✗ 请求超时，任务未在规定时间内完成")
-            return False
-        elif response.status_code == 500:
-            print(f"✗ 任务执行失败: {response.text}")
-            return False
-        else:
-            print(f"✗ 创建TTS任务并直接返回音频失败: {response.status_code}")
-            print(f"  Response headers: {response.headers}")
-            print(f"  Response content: {response.text[:200]}...")
-            return False
+        # 发送 GET 请求创建任务并直接获取音频
+        params = {
+            "text": "这是同步创建TTS任务并返回音频的测试。",
+            "prompt_audio": TEST_PROMPT_AUDIO
+        }
+        response = requests.get(f"{BASE_URL}/api/v1/tts/tasks", params=params)
+        
+        # 检查响应
+        assert response.status_code == 200, f"同步任务创建失败，状态码: {response.status_code}"
+        assert response.headers['content-type'] in ['audio/wav', 'application/octet-stream'], \
+            f"返回内容类型不正确: {response.headers.get('content-type')}"
+        
+        # 保存音频文件
+        with open("test_sync_output.wav", "wb") as f:
+            f.write(response.content)
+        
+        print("✓ 同步任务创建成功，音频已保存为 test_sync_output.wav")
+        return True
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
-        return False
-    
-def test_create_tts_task_get():
-    """
-    测试通过GET请求创建TTS任务并直接返回音频
-    """
-    # 准备测试数据
-    test_prompt = "tests/sample_prompt.wav"
-    
-    # 如果测试音频文件不存在，则创建一个占位文件
-    if not os.path.exists(test_prompt):
-        os.makedirs("prompts", exist_ok=True)
-        Path(test_prompt).touch()
-        print(f"Created placeholder prompt file: {test_prompt}")
-    
-    # 构造查询参数
-    params = {
-        "prompt_audio": test_prompt,
-        "text": "这是通过GET请求创建的测试语音合成任务。",
-        "infer_mode": "批次推理",
-        "max_text_tokens_per_sentence": 120,
-        "sentences_bucket_max_size": 4,
-        "do_sample": True,
-        "top_p": 0.8,
-        "top_k": 30,
-        "temperature": 1.0,
-        "length_penalty": 0.0,
-        "num_beams": 3,
-        "repetition_penalty": 10.0,
-        "max_mel_tokens": 600
-    }
-    
-    try:
-        response = requests.get(BASE_URL, params=params)
-        if response.status_code == 200 and response.headers.get('content-type', '').startswith('audio/'):
-            # 保存音频文件
-            output_file = "test_output_get_request.wav"
-            with open(output_file, "wb") as f:
-                f.write(response.content)
-            print("✓ 通过GET请求创建TTS任务并返回音频成功")
-            print(f"  音频文件已保存为: {output_file}")
-            return True
-        elif response.status_code == 408:
-            print("✗ GET请求超时，任务未在规定时间内完成")
-            return False
-        elif response.status_code == 500:
-            print(f"✗ GET请求任务执行失败: {response.text}")
-            return False
-        else:
-            print(f"✗ 通过GET请求创建TTS任务失败: {response.status_code}")
-            print(f"  Response headers: {response.headers}")
-            print(f"  Response content: {response.text[:200]}...")
-            return False
-    except Exception as e:
-        print(f"✗ GET请求失败: {e}")
+        print(f"✗ 同步任务创建测试失败: {e}")
         return False
 
 def test_get_task_status(task_id):
-    """
-    测试获取任务状态
-    """
-    if not task_id:
-        print("无效的任务ID")
-        return None
-        
+    """测试获取任务状态"""
+    print("\n测试获取任务状态...")
     try:
-        response = requests.get(f"{BASE_URL}/{task_id}")
-        if response.status_code == 200:
-            result = response.json()
-            print(f"✓ 获取任务状态成功")
-            print(f"  Task ID: {result['task_id']}")
-            print(f"  Status: {result['status']}")
-            print(f"  Message: {result['message']}")
-            return result
-        else:
-            print(f"✗ 获取任务状态失败: {response.status_code}")
-            print(f"  Error: {response.text}")
-            return None
+        # 发送 GET 请求获取任务状态
+        response = requests.get(f"{BASE_URL}/api/v1/tts/tasks/{task_id}")
+        assert response.status_code == 200, f"获取任务状态失败，状态码: {response.status_code}"
+        
+        # 解析响应
+        task_data = response.json()
+        assert task_data["task_id"] == task_id, "返回的任务ID不匹配"
+        assert "status" in task_data, "响应中缺少 status 字段"
+        
+        print(f"✓ 获取任务状态成功，当前状态: {task_data['status']}")
+        return task_data["status"]
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 获取任务状态测试失败: {e}")
         return None
 
 def test_get_task_result(task_id):
-    """
-    测试获取任务结果
-    """
-    if not task_id:
-        print("无效的任务ID")
-        return False
-        
+    """测试获取任务结果"""
+    print("\n测试获取任务结果...")
     try:
-        response = requests.get(f"{BASE_URL}/{task_id}/result")
+        # 发送 GET 请求获取任务结果
+        response = requests.get(f"{BASE_URL}/api/v1/tts/tasks/{task_id}/result")
+        
+        # 如果任务已完成，应该返回音频文件
         if response.status_code == 200:
+            assert response.headers['content-type'] in ['audio/wav', 'application/octet-stream'], \
+                f"返回内容类型不正确: {response.headers.get('content-type')}"
+            
             # 保存音频文件
-            output_file = f"test_output_{task_id}.wav"
-            with open(output_file, "wb") as f:
+            with open(f"test_task_{task_id}.wav", "wb") as f:
                 f.write(response.content)
-            print(f"✓ 下载音频文件成功: {output_file}")
+            
+            print(f"✓ 获取任务结果成功，音频已保存为 test_task_{task_id}.wav")
             return True
+        elif response.status_code == 400:
+            # 任务尚未完成
+            print("⚠ 任务尚未完成，无法获取结果")
+            return False
         else:
-            print(f"✗ 下载音频文件失败: {response.status_code}")
-            print(f"  Error: {response.text}")
+            print(f"✗ 获取任务结果失败，状态码: {response.status_code}")
             return False
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 获取任务结果测试失败: {e}")
         return False
 
-def test_invalid_task():
-    """
-    测试无效任务ID
-    """
-    print("测试无效任务ID...")
+def test_emotion_control_methods():
+    """测试不同的情感控制方法"""
+    print("\n=== 测试情感控制方法 ===")
+    
+    # 测试情感控制方法 0: 与音色参考音频相同
+    print("\n测试情感控制方法 0 (与音色参考音频相同)...")
     try:
-        response = requests.get(f"{BASE_URL}/invalid_task_id")
-        if response.status_code == 404:
-            print("✓ 正确处理无效任务ID")
-        else:
-            print(f"✗ 未正确处理无效任务ID: {response.status_code}")
+        payload = {
+            "text": "这是情感控制的测试，控制方法是与音色参考音频相同。",
+            "prompt_audio": TEST_PROMPT_AUDIO,
+            "return_audio": False,
+            "emo_control_method": 0
+        }
+        
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 200
+        print("✓ 情感控制方法 0 测试成功")
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 情感控制方法 0 测试失败: {e}")
+    
+    # 测试情感控制方法 1: 使用情感参考音频
+    print("\n测试情感控制方法 1 (使用情感参考音频)...")
+    try:
+        payload = {
+            "text": "这是情感控制的测试，控制方法是使用情感参考音频。",
+            "prompt_audio": TEST_PROMPT_AUDIO,
+            "return_audio": False,
+            "emo_control_method": 1,
+            "emo_ref_path": TEST_PROMPT_AUDIO  # 使用相同音频作为情感参考
+        }
+        
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 200
+        print("✓ 情感控制方法 1 测试成功")
+    except Exception as e:
+        print(f"✗ 情感控制方法 1 测试失败: {e}")
+    
+    # 测试情感控制方法 2: 使用情感向量控制
+    print("\n测试情感控制方法 2 (使用情感向量控制)...")
+    try:
+        payload = {
+            "text": "这是情感控制的测试，控制方法是使用情感向量控制。",
+            "prompt_audio": TEST_PROMPT_AUDIO,
+            "return_audio": False,
+            "emo_control_method": 2,
+            "emo_vec": [0, 0, 0, 0.4, 0, 0, 0, 0]  # 8个情感维度
+        }
+        
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 200
+        print("✓ 情感控制方法 2 测试成功")
+    except Exception as e:
+        print(f"✗ 情感控制方法 2 测试失败: {e}")
 
-def test_invalid_prompt():
-    """
-    测试无效的参考音频路径
-    """
-    print("测试无效参考音频路径...")
-    payload = {
-        "prompt_audio": "nonexistent.wav",
-        "text": "测试无效音频路径",
-        "infer_mode": "普通推理"
-    }
+def test_advanced_parameters():
+    """测试高级参数设置"""
+    print("\n=== 测试高级参数设置 ===")
     
     try:
-        response = requests.post(BASE_URL, json=payload)
-        if response.status_code == 400:
-            print("✓ 正确处理无效音频路径")
-        else:
-            print(f"✗ 未正确处理无效音频路径: {response.status_code}")
+        payload = {
+            "text": "这是高级参数设置测试。",
+            "prompt_audio": TEST_PROMPT_AUDIO,
+            "return_audio": False,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "num_beams": 2,
+            "repetition_penalty": 1.2,
+            "length_penalty": 0.5,
+            "max_mel_tokens": 1000,
+            "max_text_tokens_per_segment": 100
+        }
+        
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 200
+        print("✓ 高级参数设置测试成功")
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 高级参数设置测试失败: {e}")
 
-def test_invalid_infer_mode():
-    """
-    测试无效的推理模式
-    """
-    print("测试无效推理模式...")
-    payload = {
-        "prompt_audio": "prompts/sample_prompt.wav",
-        "text": "测试无效推理模式",
-        "infer_mode": "无效模式"
-    }
+def test_task_lifecycle():
+    """测试完整的任务生命周期"""
+    print("\n=== 测试完整的任务生命周期 ===")
     
+    # 1. 创建异步任务
+    task_id = test_create_task_async()
+    if not task_id:
+        return
+    
+    # 2. 轮询任务状态直到完成或失败
+    max_attempts = 30  # 最多尝试30次
+    attempt = 0
+    while attempt < max_attempts:
+        status = test_get_task_status(task_id)
+        if not status:
+            return
+            
+        if status == "completed":
+            print("✓ 任务已完成")
+            break
+        elif status == "failed":
+            print("✗ 任务执行失败")
+            return
+        elif status == "processing":
+            print(f"... 任务处理中，第 {attempt + 1} 次检查")
+        
+        attempt += 1
+        time.sleep(2)  # 等待2秒后再次检查
+    
+    if attempt >= max_attempts:
+        print("⚠ 任务处理超时")
+        return
+    
+    # 3. 获取任务结果
+    test_get_task_result(task_id)
+
+def test_error_cases():
+    """测试错误情况处理"""
+    print("\n=== 测试错误情况处理 ===")
+    
+    # 测试不存在的任务ID
+    print("\n测试不存在的任务ID...")
     try:
-        response = requests.post(BASE_URL, json=payload)
-        if response.status_code == 400:
-            print("✓ 正确处理无效推理模式")
-        else:
-            print(f"✗ 未正确处理无效推理模式: {response.status_code}")
+        response = requests.get(f"{BASE_URL}/api/v1/tts/tasks/nonexistent_task_id")
+        assert response.status_code == 404, f"应该返回404状态码，实际: {response.status_code}"
+        print("✓ 正确处理不存在的任务ID")
     except Exception as e:
-        print(f"✗ 请求失败: {e}")
+        print(f"✗ 错误处理测试失败: {e}")
+    
+    # 测试无效的参考音频文件
+    print("\n测试无效的参考音频文件...")
+    try:
+        payload = {
+            "text": "这是无效参考音频文件测试。",
+            "prompt_audio": "nonexistent_audio.wav",
+            "return_audio": False
+        }
+        response = requests.post(f"{BASE_URL}/api/v1/tts/tasks", json=payload)
+        assert response.status_code == 400, f"应该返回400状态码，实际: {response.status_code}"
+        print("✓ 正确处理无效的参考音频文件")
+    except Exception as e:
+        print(f"✗ 错误处理测试失败: {e}")
 
 def main():
-    """
-    主测试函数
-    """
+    """主测试函数"""
     print("开始测试 IndexTTS API...")
-    print("=" * 50)
     
-    # 测试1: 创建TTS任务
-    print("1. 测试创建TTS任务:")
-    task_id = test_create_tts_task()
-    print()
+    # 测试同步任务创建
+    test_create_task_sync()
     
-    if task_id:
-        # 测试2: 获取任务状态
-        print("2. 测试获取任务状态:")
-        status = test_get_task_status(task_id)
-        print()
-        
-        # 等待一段时间让任务完成（模拟）
-        print("等待任务处理完成...")
-        time.sleep(10)
-        
-        # 再次检查状态
-        status = test_get_task_status(task_id)
-        print()
-        
-        # 如果任务完成，测试获取结果
-        if status and status.get('status') == 'completed':
-            print("3. 测试获取任务结果:")
-            test_get_task_result(task_id)
-            print()
-        else:
-            print("任务未完成，跳过结果下载测试")
-            print()
+    # 测试情感控制方法
+    test_emotion_control_methods()
     
-    # 测试直接返回音频功能
-    print("4. 测试创建TTS任务并直接返回音频:")
-    test_create_tts_task_with_audio_return()
-    print()
+    # 测试高级参数设置
+    test_advanced_parameters()
     
-    # 测试GET请求版本
-    print("5. 测试通过GET请求创建TTS任务并返回音频:")
-    test_create_tts_task_get()
-    print()
+    # 测试完整的任务生命周期
+    test_task_lifecycle()
     
-    # 测试错误情况
-    print("6. 测试错误处理:")
-    test_invalid_task()
-    test_invalid_prompt()
-    test_invalid_infer_mode()
-    print()
+    # 测试错误情况处理
+    test_error_cases()
     
-    print("测试完成!")
+    print("\n=== 测试完成 ===")
 
 if __name__ == "__main__":
     main()
