@@ -265,6 +265,20 @@ class IndexTTS2:
         code_lens = torch.tensor(code_lens, dtype=torch.long, device=device)
         return codes, code_lens
 
+    def interval_silence(self, wavs, sampling_rate=22050, interval_silence=200):
+        """
+        Silences to be insert between generated segments.
+        """
+
+        if not wavs or interval_silence <= 0:
+            return wavs
+
+        # get channel_size
+        channel_size = wavs[0].size(0)
+        # get silence tensor
+        sil_dur = int(sampling_rate * interval_silence / 1000.0)
+        return torch.zeros(channel_size, sil_dur)
+
     def insert_interval_silence(self, wavs, sampling_rate=22050, interval_silence=200):
         """
         Insert silences between generated segments.
@@ -327,7 +341,7 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, **generation_kwargs):
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
         if verbose:
@@ -445,7 +459,7 @@ class IndexTTS2:
 
         self._set_gr_progress(0.1, "text processing...")
         text_tokens_list = self.tokenizer.tokenize(text)
-        segments = self.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment)
+        segments = self.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment, more_segment_before = more_segment_before)
         segments_count = len(segments)
         if verbose:
             print("text_tokens_list:", text_tokens_list)
@@ -469,6 +483,7 @@ class IndexTTS2:
         s2mel_time = 0
         bigvgan_time = 0
         has_warned = False
+        silence = None # for stream_return
         for seg_idx, sent in enumerate(segments):
             self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
                                   f"speech synthesis {seg_idx + 1}/{segments_count}...")
@@ -601,6 +616,12 @@ class IndexTTS2:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
                 # wavs.append(wav[:, :-512])
                 wavs.append(wav.cpu())  # to cpu before saving
+                if stream_return:
+                    yield wav.cpu()
+                    # the silence sounds weird
+                    # if silence == None:
+                    #     silence = self.interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
+                    # yield silence
         end_time = time.perf_counter()
 
         self._set_gr_progress(0.9, "saving audio...")
@@ -626,8 +647,12 @@ class IndexTTS2:
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
             torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
             print(">> wav file saved to:", output_path)
+            if stream_return:
+                return None
             return output_path
         else:
+            if stream_return:
+                return None
             # 返回以符合Gradio的格式要求
             wav_data = wav.type(torch.int16)
             wav_data = wav_data.numpy().T
