@@ -1,0 +1,50 @@
+# Build via NVIDIA's CUDA Toolkit container.
+# NOTE: Using their development container, since we need `nvcc`.
+# SEE: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/cuda
+ARG CUDA_VERSION=13.3.1
+ARG CUDA_VARIANT=devel
+ARG CUDA_UBUNTU=26.04
+FROM docker.io/nvidia/cuda:${CUDA_VERSION}-${CUDA_VARIANT}-ubuntu${CUDA_UBUNTU}
+
+# Install the `uv` Python package manager.
+# NOTE: `uv` automatically installs Python versions on-demand.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install extra utilities:
+# - The `ffmpeg` binary is required by the `ffmpeg-python` package.
+# - `git`, `git-lfs` and `curl` enables pulling code inside the container.
+# - `ssh` is sometimes required for Git LFS file transfers.
+# NOTE: We install certain packages without "recommends" to reduce the size.
+# UPSTREAM_LFS: Set to "yes" to use the upstream Git-LFS repository instead
+# of the distro's package. Defaults to "no" because upstream may lack builds
+# for newer distro releases.
+ARG UPSTREAM_LFS=no
+RUN apt-get -qq update && apt-get -qq install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && if [ "${UPSTREAM_LFS}" = "yes" ]; then \
+        curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash; \
+    fi \
+    && apt-get -qq update && apt-get -qq install -y \
+    git \
+    git-lfs \
+    openssh-client \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the entire scripts directory from the build context into the image.
+# NOTE: The source path is relative to the Containerfile's location.
+COPY scripts /opt/scripts
+
+# Create `/app`, and mark all entrypoint scripts as executable.
+RUN mkdir -p /app \
+    && find /opt/scripts -name "*.sh" -exec chmod +x {} \;
+
+# Set up the entrypoint.
+WORKDIR /app
+
+ENTRYPOINT ["/opt/scripts/entrypoint.sh"]
+
+# Set the default command if none is provided.
+# NOTE: This will be passed to ENTRYPOINT.
+CMD ["webui"]
