@@ -530,7 +530,7 @@ if __name__ == "__main__":
                 if len(segments[j]) > max_text_tokens_per_segment:
                     print(f"Warning: segment {j} is too long, length: {len(segments[j])}")
         #print(f"Token IDs (first 10): {codes[i][:10]}")
-        if tokenizer.unk_token in codes[i]:
+        if tokenizer.unk_token_id in codes[i]:
             print(f"Warning: `{cases[i]}` contains UNKNOWN token")
         print(f"Decoded: {tokenizer.decode(codes[i], do_lower_case=True)}")
         print("-" * 50)
