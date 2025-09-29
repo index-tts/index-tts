@@ -79,6 +79,7 @@ Repository = "https://github.com/index-tts/index-tts.git"
 [project.scripts]
 # Set the installed binary names and entry points.
 indextts = "indextts.cli:main"
+create_audiobook = "tools.create_audiobook:main"
 
 [build-system]
 # How to build the project as a CLI tool or PyPI package.
