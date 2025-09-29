@@ -403,20 +403,13 @@ class MyModel(nn.Module):
             f0_condition=args.length_regulator.f0_condition if hasattr(args.length_regulator, "f0_condition") else False,
             n_f0_bins=args.length_regulator.n_f0_bins if hasattr(args.length_regulator, "n_f0_bins") else 512,
         )
-
+        self.models = nn.ModuleDict({"cfm": CFM(args), "length_regulator": length_regulator})
         if use_gpt_latent:
-            self.models = nn.ModuleDict({
-                'cfm': CFM(args),
-                'length_regulator': length_regulator,
-                'gpt_layer': torch.nn.Sequential(torch.nn.Linear(1280, 256), torch.nn.Linear(256, 128), torch.nn.Linear(128, 1024))
-            })
+            self.models.add_module(
+                "gpt_layer",
+                torch.nn.Sequential(torch.nn.Linear(1280, 256), torch.nn.Linear(256, 128), torch.nn.Linear(128, 1024)),
+            )
 
-        else:
-            self.models = nn.ModuleDict({
-                'cfm': CFM(args),
-                'length_regulator': length_regulator
-            })
-    
     def forward(self, x, target_lengths, prompt_len, cond, y):
         x = self.models['cfm'](x, target_lengths, prompt_len, cond, y)
         return x
@@ -566,7 +559,7 @@ def load_checkpoint(
     return model, optimizer, epoch, iters
 
 def load_checkpoint2(
-    model,
+    model: MyModel,
     optimizer,
     path,
     load_only_params=True,
