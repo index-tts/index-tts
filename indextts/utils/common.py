@@ -61,24 +61,20 @@ def de_tokenized_by_CJK_char(line: str, do_lower_case=False) -> str:
       input = "SEE YOU!"
       output = "see you!"
     """
-    # replace english words in the line with placeholders
-    english_word_pattern = re.compile(r"([A-Z]+(?:[\s-][A-Z-]+)*)", re.IGNORECASE)
-    english_sents = english_word_pattern.findall(line)
-    for i, sent in enumerate(english_sents):
-        line = line.replace(sent, f"<sent_{i}>")
+    
+    # A comprehensive pattern for CJK characters.
+    CJK_RANGE_PATTERN = (
+        r"([\u1100-\u11ff\u2e80-\ua4cf\ua840-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF65-\uFFDC\U00020000-\U0002FFFF])"
+    )
+    
+    if do_lower_case:
+        line = line.lower()
 
-    words = line.split()
-    # restore english sentences
-    sent_placeholder_pattern = re.compile(r"^.*?(<sent_(\d+)>)")
-    for i in range(len(words)):
-        m = sent_placeholder_pattern.match(words[i])
-        if m:
-            # restore the english word
-            placeholder_index = int(m.group(2))
-            words[i] = words[i].replace(m.group(1), english_sents[placeholder_index])
-            if do_lower_case:
-                words[i] = words[i].lower()
-    return "".join(words)
+    # Remove spaces between CJK characters
+    pattern = f"({CJK_RANGE_PATTERN})\\s+(?={CJK_RANGE_PATTERN})"
+    line = re.sub(pattern, r"\1", line)
+
+    return line
 
 
 def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
