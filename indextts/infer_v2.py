@@ -352,13 +352,16 @@ class IndexTTS2:
             )
         else:
             try:
-                return list(self.infer_generator(
-                    spk_audio_prompt, text, output_path,
-                    emo_audio_prompt, emo_alpha,
-                    emo_vector,
-                    use_emo_text, emo_text, use_random, interval_silence,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
-                ))[0]
+              # 执行 infer_generator 完整推理流程，确保音频被写入到文件（使用 list(...) 的目的是强制遍历以触发推理过程，但不关心其中 yield 的值）
+              # 如果删去list(...)则可能会跳过推理过程
+              list(self.infer_generator(
+                  spk_audio_prompt, text, output_path,
+                  emo_audio_prompt, emo_alpha,
+                  emo_vector,
+                  use_emo_text, emo_text, use_random, interval_silence,
+                  verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+              ))
+              return output_path
             except IndexError:
                 return None
 
