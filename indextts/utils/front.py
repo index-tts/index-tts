@@ -343,7 +343,10 @@ class TextTokenizer:
 
     @staticmethod
     def split_segments_by_token(
-        tokenized_str: List[str], split_tokens: List[str], max_text_tokens_per_segment: int
+        tokenized_str: List[str],
+        split_tokens: List[str],
+        max_text_tokens_per_segment: int,
+        quick_streaming_tokens: int = 0
     ) -> List[List[str]]:
         """
         将tokenize后的结果按特定token进一步分割
@@ -358,7 +361,17 @@ class TextTokenizer:
             token = tokenized_str[i]
             current_segment.append(token)
             current_segment_tokens_len += 1
-            if current_segment_tokens_len <= max_text_tokens_per_segment:
+            if not  ("," in split_tokens or "▁," in split_tokens ) and ("," in current_segment or "▁," in current_segment): 
+                # 如果当前tokens中有,，则按,分割
+                sub_segments = TextTokenizer.split_segments_by_token(
+                    current_segment, [",", "▁,"], max_text_tokens_per_segment=max_text_tokens_per_segment, quick_streaming_tokens = quick_streaming_tokens
+                )
+            elif "-" not in split_tokens and "-" in current_segment:
+                # 没有,，则按-分割
+                sub_segments = TextTokenizer.split_segments_by_token(
+                    current_segment, ["-"], max_text_tokens_per_segment=max_text_tokens_per_segment, quick_streaming_tokens = quick_streaming_tokens
+                )
+            elif current_segment_tokens_len <= max_text_tokens_per_segment:
                 if token in split_tokens and current_segment_tokens_len > 2:
                     if i < len(tokenized_str) - 1:
                         if tokenized_str[i + 1] in ["'", "▁'"]:
@@ -370,16 +383,6 @@ class TextTokenizer:
                     current_segment_tokens_len = 0
                 continue
             # 如果当前tokens的长度超过最大限制
-            if not  ("," in split_tokens or "▁," in split_tokens ) and ("," in current_segment or "▁," in current_segment): 
-                # 如果当前tokens中有,，则按,分割
-                sub_segments = TextTokenizer.split_segments_by_token(
-                    current_segment, [",", "▁,"], max_text_tokens_per_segment=max_text_tokens_per_segment
-                )
-            elif "-" not in split_tokens and "-" in current_segment:
-                # 没有,，则按-分割
-                sub_segments = TextTokenizer.split_segments_by_token(
-                    current_segment, ["-"], max_text_tokens_per_segment=max_text_tokens_per_segment
-                )
             else:
                 # 按照长度分割
                 sub_segments = []
@@ -400,14 +403,19 @@ class TextTokenizer:
         if current_segment_tokens_len > 0:
             assert current_segment_tokens_len <= max_text_tokens_per_segment
             segments.append(current_segment)
-        # 如果相邻的句子加起来长度小于最大限制，则合并
+        # 如果相邻的句子加起来长度小于最大限制，且此前token总数超过quick_streaming_tokens，则合并
         merged_segments = []
+        total_token = 0
         for segment in segments:
+            total_token += len(segment)
             if len(segment) == 0:
                 continue
             if len(merged_segments) == 0:
                 merged_segments.append(segment)
-            elif len(merged_segments[-1]) + len(segment) <= max_text_tokens_per_segment:
+            elif len(merged_segments[-1]) + len(segment) <= max_text_tokens_per_segment and total_token > quick_streaming_tokens:
+                merged_segments[-1] = merged_segments[-1] + segment
+            # 或小于最大长度限制的一半，则合并
+            elif len(merged_segments[-1]) + len(segment) <= max_text_tokens_per_segment / 2:
                 merged_segments[-1] = merged_segments[-1] + segment
             else:
                 merged_segments.append(segment)
@@ -422,9 +430,9 @@ class TextTokenizer:
         "▁?",
         "▁...", # ellipsis
     ]
-    def split_segments(self, tokenized: List[str], max_text_tokens_per_segment=120) -> List[List[str]]:
+    def split_segments(self, tokenized: List[str], max_text_tokens_per_segment=120, quick_streaming_tokens = 0) -> List[List[str]]:
         return TextTokenizer.split_segments_by_token(
-            tokenized, self.punctuation_marks_tokens, max_text_tokens_per_segment=max_text_tokens_per_segment
+            tokenized, self.punctuation_marks_tokens, max_text_tokens_per_segment=max_text_tokens_per_segment, quick_streaming_tokens = quick_streaming_tokens
         )
 
 
