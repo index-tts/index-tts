@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import re
 
 import warnings
 
@@ -102,6 +103,45 @@ with open("examples/cases.jsonl", "r", encoding="utf-8") as f:
                              example.get("emo_vec_8",0),
                              ])
 
+
+def _format_srt_timestamp(seconds: float) -> str:
+    total_ms = max(0, int(round(float(seconds) * 1000.0)))
+    hours, remainder = divmod(total_ms, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    secs, milliseconds = divmod(remainder, 1_000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{milliseconds:03}"
+
+
+def _clean_segment_text(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = text.replace("▁", " ").replace("_", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def build_srt_content(segments_info: dict | None) -> str:
+    if not segments_info:
+        return ""
+    segments = segments_info.get("segments") or []
+    if not segments:
+        return ""
+
+    entries = []
+    for idx, segment in enumerate(sorted(segments, key=lambda s: s.get("index", 0)), start=1):
+        text = _clean_segment_text(segment.get("text", ""))
+        if not text:
+            continue
+        start_time = float(segment.get("start", 0.0) or 0.0)
+        end_time = float(segment.get("end", start_time + float(segment.get("duration", 0.0) or 0.0)))
+        duration = float(segment.get("duration", 0.0) or 0.0)
+        if end_time <= start_time:
+            end_time = start_time + max(duration, 0.01)
+        start_ts = _format_srt_timestamp(start_time)
+        end_ts = _format_srt_timestamp(end_time)
+        entries.append(f"{idx}\n{start_ts} --> {end_ts}\n{text}\n")
+    return "\n".join(entries).strip()
+
 def get_example_cases(include_experimental = False):
     if include_experimental:
         return example_cases  # show every example
@@ -152,15 +192,36 @@ def gen_single(emo_control_method,prompt, text,
         emo_text = None
 
     print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
-    output = tts.infer(spk_audio_prompt=prompt, text=text,
-                       output_path=output_path,
-                       emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
-                       emo_vector=vec,
-                       use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
-                       verbose=cmd_args.verbose,
-                       max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-                       **kwargs)
-    return gr.update(value=output,visible=True)
+    infer_result = tts.infer(spk_audio_prompt=prompt, text=text,
+                             output_path=output_path,
+                             emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
+                             emo_vector=vec,
+                             use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
+                             verbose=cmd_args.verbose,
+                             max_text_tokens_per_segment=int(max_text_tokens_per_segment),
+                             return_segments=True,
+                             **kwargs)
+    segments_info = None
+    if isinstance(infer_result, tuple) and len(infer_result) == 2:
+        output, maybe_segments = infer_result
+        if isinstance(maybe_segments, dict) and "segments" in maybe_segments:
+            segments_info = maybe_segments
+    else:
+        output = infer_result
+
+    srt_content = build_srt_content(segments_info)
+    download_update = gr.update(value=None, visible=False, interactive=False)
+    if srt_content and isinstance(output, str):
+        srt_path = os.path.splitext(output)[0] + ".srt"
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write(srt_content)
+        download_update = gr.update(value=srt_path, visible=True, interactive=True)
+
+    return (
+        gr.update(value=output, visible=True),
+        srt_content,
+        download_update,
+    )
 
 def update_prompt_audio():
     update_button = gr.update(interactive=True)
@@ -182,18 +243,22 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     ''')
 
     with gr.Tab(i18n("音频生成")):
+        os.makedirs("prompts",exist_ok=True)
+        prompt_list = os.listdir("prompts")
+        default = ''
+        if prompt_list:
+            default = prompt_list[0]
         with gr.Row():
-            os.makedirs("prompts",exist_ok=True)
-            prompt_audio = gr.Audio(label=i18n("音色参考音频"),key="prompt_audio",
-                                    sources=["upload","microphone"],type="filepath")
-            prompt_list = os.listdir("prompts")
-            default = ''
-            if prompt_list:
-                default = prompt_list[0]
-            with gr.Column():
+            with gr.Column(scale=1):
+                prompt_audio = gr.Audio(label=i18n("音色参考音频"),key="prompt_audio",
+                                        sources=["upload","microphone"],type="filepath")
+                output_audio = gr.Audio(label=i18n("生成结果"), visible=True,key="output_audio")
+            with gr.Column(scale=1):
                 input_text_single = gr.TextArea(label=i18n("文本"),key="input_text_single", placeholder=i18n("请输入目标文本"), info=f"{i18n('当前模型版本')}{tts.model_version or '1.0'}")
                 gen_button = gr.Button(i18n("生成语音"), key="gen_button",interactive=True)
-            output_audio = gr.Audio(label=i18n("生成结果"), visible=True,key="output_audio")
+            with gr.Column(scale=1):
+                srt_preview = gr.Textbox(label=i18n("自动生成字幕预览"), interactive=False, lines=12, elem_id="srt_preview")
+                srt_download = gr.DownloadButton(label=i18n("下载 SRT"), interactive=True, visible=False)
 
         experimental_checkbox = gr.Checkbox(label=i18n("显示实验功能"), value=False)
 
@@ -433,7 +498,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                              max_text_tokens_per_segment,
                              *advanced_params,
                      ],
-                     outputs=[output_audio])
+                     outputs=[output_audio, srt_preview, srt_download])
 
 
 
