@@ -2,6 +2,7 @@
 #   Licensed under the MIT license.
 
 import os
+import sys
 import pathlib
 import subprocess
 
@@ -24,6 +25,7 @@ def chinese_path_compile_support(sources, buildpath):
     pattern = re.compile(r'[\u4e00-\u9fff]')  
     if not bool(pattern.search(str(sources[0].resolve()))):
         return buildpath # 检测非中文路径跳过
+
     # Create build directory
     resolves = [ item.name for item in sources]
     ninja_compile_dir = os.path.join(tempfile.gettempdir(), "BigVGAN", "cuda")
@@ -45,7 +47,45 @@ def chinese_path_compile_support(sources, buildpath):
 
 
 
-def load():
+def load(force_rebuild=False):
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("Please install PyTorch with CUDA support to use the anti_alias_activation_cuda extension.")
+    try:
+        from indextts.BigVGAN.alias_free_activation.cuda import anti_alias_activation_cuda
+        if not force_rebuild:
+            return anti_alias_activation_cuda
+    except ImportError:
+        anti_alias_activation_cuda = None
+
+    module_name = "anti_alias_activation_cuda"
+    # Build path
+    srcpath = pathlib.Path(__file__).parent.absolute()
+    buildpath = srcpath / "build"
+
+    _create_build_dir(buildpath)
+    filepath = buildpath / f"{module_name}{cpp_extension.LIB_EXT}"
+    if not force_rebuild and os.path.exists(filepath):
+        import importlib.util
+        import importlib.abc
+        # If the file exists, we can load it directly
+        spec = importlib.util.spec_from_file_location(module_name, filepath)
+        if spec is not None:
+            module = importlib.util.module_from_spec(spec)
+            assert isinstance(spec.loader, importlib.abc.Loader)
+            spec.loader.exec_module(module)
+        return module
+
+    if platform.system() == "Windows" and "MINGW64" in os.environ.get("MSYSTEM", ""):
+        # 在 MinGW-w64 (如 Git Bash) 环境下编译 CUDA 扩展可能会阻塞或失败
+        # https://github.com/index-tts/index-tts/issues/172#issuecomment-2914995096
+        print("Warning: Detected running in MinGW-w64 (e.g., Git Bash). CUDA extension build is not supported in this environment.", file=sys.stderr)
+        raise RuntimeError(
+            "Please use Command Prompt (cmd) or PowerShell to compile the anti_alias_activation_cuda extension."
+        )
+    if not cpp_extension.CUDA_HOME:
+        raise RuntimeError(cpp_extension.CUDA_NOT_FOUND_MESSAGE)
+    cpp_extension.verify_ninja_availability()
     # Check if cuda 11 is installed for compute capability 8.0
     cc_flag = []
     _, bare_metal_major, _ = _get_cuda_bare_metal_version(cpp_extension.CUDA_HOME)
@@ -53,24 +93,18 @@ def load():
         cc_flag.append("-gencode")
         cc_flag.append("arch=compute_80,code=sm_80")
 
-    # Build path
-    srcpath = pathlib.Path(__file__).parent.absolute()
-    buildpath = srcpath / "build"
-    _create_build_dir(buildpath)
-
     # Helper function to build the kernels.
     def _cpp_extention_load_helper(name, sources, extra_cuda_flags):
+        is_windows = cpp_extension.IS_WINDOWS
         return cpp_extension.load(
             name=name,
             sources=sources,
             build_directory=buildpath,
             extra_cflags=[
-                "-O3",
+                "-O3" if not is_windows else "/O2",
             ],
             extra_cuda_cflags=[
                 "-O3",
-                "-gencode",
-                "arch=compute_70,code=sm_70",
                 "--use_fast_math",
             ]
             + extra_cuda_flags
@@ -101,8 +135,9 @@ def load():
 
 
 def _get_cuda_bare_metal_version(cuda_dir):
+    nvcc = os.path.join(cuda_dir, 'bin', 'nvcc')
     raw_output = subprocess.check_output(
-        [cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True
+        [nvcc, "-V"], universal_newlines=True
     )
     output = raw_output.split()
     release_idx = output.index("release") + 1
@@ -115,7 +150,8 @@ def _get_cuda_bare_metal_version(cuda_dir):
 
 def _create_build_dir(buildpath):
     try:
-        os.mkdir(buildpath)
+        if not os.path.isdir(buildpath):
+            os.mkdir(buildpath)
     except OSError:
         if not os.path.isdir(buildpath):
             print(f"Creation of the build directory {buildpath} failed")
