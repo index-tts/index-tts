@@ -1,3 +1,0 @@
-global-exclude *~ *.py[cod]
-include *.cu *.cpp
-include *.h *.hpp
