@@ -1,3 +1,8 @@
+## Unofficial IndexTTS v2 Training Repo
+> Loop and trainer implemented using Codex CLI and guided prompts
+  - Train a new tokenizer for langauges
+  - Preprocess data to train on
+  - Possible to train another language from scratch with enough data (need more testing)
 
 
 <div align="center">
