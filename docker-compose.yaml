@@ -1,0 +1,26 @@
+services:
+  index-tts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: index-tts
+    hostname: index-tts
+    ports:
+      - "7860:7860"
+    volumes:
+      # Volume for generated speech/audio
+      - ./outputs:/app/outputs
+      # Volume for input text/prompts
+      - ./prompts:/app/prompts 
+    restart: unless-stopped
+    # FIX: Use reliable public DNS server to prevent hostname resolution failures
+    dns: 8.8.8.8
+    # Use the NVIDIA container runtime to enable GPU access
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["compute", "utility", "graphics", "video"]
