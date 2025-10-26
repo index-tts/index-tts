@@ -1,18 +1,18 @@
 uv run python trainers/train_gpt_v2.py \
-    --train-manifest processed_data/train_manifest.jsonl \
-    --val-manifest processed_data/val_manifest.jsonl \
+    --train-manifest processed_data_2/gpt_pairs_train.jsonl \
+    --val-manifest processed_data_2/gpt_pairs_val.jsonl \
     --tokenizer checkpoints/japanese_bpe.model \
     --config checkpoints/config.yaml \
-    --base-checkpoint checkpoints/gpt.pth \
-    --output-dir trained_ckpts \
+    --base-checkpoint checkpoints/gpt_old.pth \
+    --output-dir trained_ckpts_paired \
     --batch-size 32 \
     --grad-accumulation 1 \
     --epochs 10 \
-    --learning-rate 2e-5 \
+    --learning-rate 1e-5 \
     --weight-decay 0.01 \
     --warmup-steps 1000 \
-    --log-interval 10 \
-    --val-interval 0 \
+    --log-interval 1 \
+    --val-interval 2000 \
     --grad-clip 1.0 \
     --text-loss-weight 0.2 \
     --mel-loss-weight 0.8 \

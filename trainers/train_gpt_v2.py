@@ -22,9 +22,10 @@ import argparse
 import json
 import math
 import os
+import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -86,41 +87,111 @@ class Sample:
     text_len: int
     code_len: int
     condition_len: int
+    sample_type: str = "single"
+    prompt_id: Optional[str] = None
+    target_id: Optional[str] = None
 
 
 class JapaneseGPTDataset(Dataset):
     def __init__(self, manifest_path: Path):
         self.samples: List[Sample] = []
         skipped = 0
+        skipped_missing = 0
+        skipped_empty = 0
+        missing_examples: List[str] = []
+        empty_examples: List[str] = []
         with open(manifest_path, "r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
                     continue
                 record = json.loads(line)
-                sample = Sample(
-                    id=record["id"],
-                    text_ids_path=Path(record["text_ids_path"]),
-                    codes_path=Path(record["codes_path"]),
-                    condition_path=Path(record["condition_path"]),
-                    emo_vec_path=Path(record["emo_vec_path"]),
-                    text_len=int(record["text_len"]),
-                    code_len=int(record["code_len"]),
-                    condition_len=int(record.get("condition_len", 32)),
+                is_paired = "prompt_condition_path" in record and "target_codes_path" in record
+                if is_paired:
+                    emo_path_value = record.get("prompt_emo_vec_path") or record.get("target_emo_vec_path")
+                    if not emo_path_value:
+                        raise RuntimeError(
+                            f"Paired manifest entry {record.get('id')} missing prompt_emo_vec_path."
+                        )
+                    sample = Sample(
+                        id=record["id"],
+                        text_ids_path=Path(record["target_text_ids_path"]),
+                        codes_path=Path(record["target_codes_path"]),
+                        condition_path=Path(record["prompt_condition_path"]),
+                        emo_vec_path=Path(emo_path_value),
+                        text_len=int(record["target_text_len"]),
+                        code_len=int(record["target_code_len"]),
+                        condition_len=int(record.get("prompt_condition_len", 32)),
+                        sample_type="paired",
+                        prompt_id=record.get("prompt_id"),
+                        target_id=record.get("target_id"),
+                    )
+                else:
+                    sample = Sample(
+                        id=record["id"],
+                        text_ids_path=Path(record["text_ids_path"]),
+                        codes_path=Path(record["codes_path"]),
+                        condition_path=Path(record["condition_path"]),
+                        emo_vec_path=Path(record["emo_vec_path"]),
+                        text_len=int(record["text_len"]),
+                        code_len=int(record["code_len"]),
+                        condition_len=int(record.get("condition_len", 32)),
+                        sample_type="single",
+                    )
+                file_checks = (
+                    ("text_ids_path", sample.text_ids_path),
+                    ("codes_path", sample.codes_path),
+                    ("condition_path", sample.condition_path),
+                    ("emo_vec_path", sample.emo_vec_path),
                 )
-                if not (
-                    sample.text_ids_path.exists()
-                    and sample.codes_path.exists()
-                    and sample.condition_path.exists()
-                    and sample.emo_vec_path.exists()
-                ):
-                    skipped += 1
+                invalid = False
+                for key, path in file_checks:
+                    if not path.exists():
+                        skipped += 1
+                        skipped_missing += 1
+                        if len(missing_examples) < 5:
+                            missing_examples.append(f"{record['id']} -> {key} missing ({path})")
+                        invalid = True
+                        break
+                    if path.stat().st_size == 0:
+                        skipped += 1
+                        skipped_empty += 1
+                        if len(empty_examples) < 5:
+                            empty_examples.append(f"{record['id']} -> {key} empty ({path})")
+                        invalid = True
+                        break
+                if invalid:
                     continue
                 self.samples.append(sample)
 
         if not self.samples:
             raise RuntimeError(f"No entries found in manifest: {manifest_path}")
         if skipped:
-            print(f"[Info] Skipped {skipped} entries in {manifest_path} due to missing feature files.")
+            print(f"[Info] Skipped {skipped} entries in {manifest_path} due to missing or invalid feature files.")
+        if skipped_missing:
+            print(f"[Warn] {skipped_missing} entries skipped (missing files). Examples:")
+            for example in missing_examples:
+                print(f"        - {example}")
+        if skipped_empty:
+            print(f"[Warn] {skipped_empty} entries skipped (empty files). Examples:")
+            for example in empty_examples:
+                print(f"        - {example}")
+
+        if self.samples:
+            sample_types = {sample.sample_type for sample in self.samples}
+            if len(sample_types) > 1:
+                raise RuntimeError(
+                    f"Mixed sample types encountered in manifest {manifest_path}: {sample_types}"
+                )
+            self.sample_type = next(iter(sample_types))
+            if self.sample_type != "paired":
+                raise RuntimeError(
+                    f"Manifest {manifest_path} contains '{self.sample_type}' entries.\n"
+                    "This trainer expects prompt/target pairs (see tools/build_gpt_prompt_pairs.py).\n"
+                    "Please generate a paired manifest and retry."
+                )
+            print(f"[Info] Loaded {len(self.samples)} samples ({self.sample_type}) from {manifest_path}")
+        else:
+            self.sample_type = "unknown"
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -141,6 +212,8 @@ class JapaneseGPTDataset(Dataset):
             "text_len": torch.tensor(sample.text_len, dtype=torch.long),
             "code_len": torch.tensor(sample.code_len, dtype=torch.long),
             "condition_len": torch.tensor(sample.condition_len, dtype=torch.long),
+            "prompt_id": sample.prompt_id if sample.prompt_id else sample.id,
+            "target_id": sample.target_id if sample.target_id else sample.id,
         }
 
 
@@ -160,9 +233,13 @@ def collate_batch(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tenso
     cond_lengths = torch.stack([item["condition_len"] for item in batch])
 
     ids = [item["id"] for item in batch]
+    prompt_ids = [item.get("prompt_id", item["id"]) for item in batch]
+    target_ids = [item.get("target_id", item["id"]) for item in batch]
 
     return {
         "ids": ids,
+        "prompt_ids": prompt_ids,
+        "target_ids": target_ids,
         "text_ids": text_padded,
         "codes": code_padded,
         "condition": condition_stacked,
@@ -348,7 +425,14 @@ def main() -> None:
 
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_dir = output_dir / "logs"
+    log_root = output_dir / "logs"
+    log_root.mkdir(parents=True, exist_ok=True)
+    run_name = (
+        f"run_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if os.environ.get("INDEXTTS_RUN_NAME") is None
+        else os.environ["INDEXTTS_RUN_NAME"]
+    )
+    log_dir = log_root / run_name
     writer = SummaryWriter(log_dir=str(log_dir))
 
     tokenizer = load_tokenizer(args.tokenizer)
@@ -420,6 +504,19 @@ def main() -> None:
     save_every = 1000
     best_val = math.inf
 
+    if args.val_interval > 0:
+        init_val_metrics = evaluate(model, val_loader, device)
+        writer.add_scalar("val/text_loss", init_val_metrics["text_loss"], global_step)
+        writer.add_scalar("val/mel_loss", init_val_metrics["mel_loss"], global_step)
+        writer.add_scalar("val/mel_top1", init_val_metrics["mel_top1"], global_step)
+        print(
+            f"[Val] epoch={start_epoch + 1} step={global_step} "
+            f"text_loss={init_val_metrics['text_loss']:.4f} mel_loss={init_val_metrics['mel_loss']:.4f} "
+            f"mel_top1={init_val_metrics['mel_top1']:.4f}"
+        )
+        if init_val_metrics["mel_loss"] < best_val:
+            best_val = init_val_metrics["mel_loss"]
+
     for epoch in range(start_epoch, args.epochs):
         for batch_idx, batch in enumerate(train_loader):
             with torch.cuda.amp.autocast(enabled=use_amp):
@@ -455,6 +552,19 @@ def main() -> None:
                         f"text_loss={text_loss.item():.4f} mel_loss={mel_loss.item():.4f} "
                         f"mel_top1={metrics['mel_top1']:.4f} lr={scheduler.get_last_lr()[0]:.2e}"
                     )
+
+                if args.val_interval > 0 and global_step % args.val_interval == 0:
+                    val_metrics = evaluate(model, val_loader, device)
+                    writer.add_scalar("val/text_loss", val_metrics["text_loss"], global_step)
+                    writer.add_scalar("val/mel_loss", val_metrics["mel_loss"], global_step)
+                    writer.add_scalar("val/mel_top1", val_metrics["mel_top1"], global_step)
+                    print(
+                        f"[Val] epoch={epoch + 1} step={global_step} "
+                        f"text_loss={val_metrics['text_loss']:.4f} mel_loss={val_metrics['mel_loss']:.4f} "
+                        f"mel_top1={val_metrics['mel_top1']:.4f}"
+                    )
+                    if val_metrics["mel_loss"] < best_val:
+                        best_val = val_metrics["mel_loss"]
 
                 if global_step % save_every == 0:
                     ckpt_path = output_dir / f"model_step{global_step}.pth"
@@ -499,7 +609,7 @@ def main() -> None:
         if args.max_steps and global_step >= args.max_steps:
             break
 
-        if args.val_interval == 0 or global_step % args.val_interval == 0:
+        if args.val_interval == 0:
             val_metrics = evaluate(model, val_loader, device)
             writer.add_scalar("val/text_loss", val_metrics["text_loss"], global_step)
             writer.add_scalar("val/mel_loss", val_metrics["mel_loss"], global_step)

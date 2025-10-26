@@ -47,6 +47,7 @@ dependencies = [
   "omegaconf>=2.3.0",
   "opencv-python==4.9.0.80",
   "pandas==2.3.2",
+  "pypdf2>=3.0.1",
   "safetensors==0.5.2",
   "sentencepiece>=0.2.1",
   "tensorboard==2.9.1",
@@ -56,7 +57,6 @@ dependencies = [
   "torchaudio==2.8.*",
   "tqdm>=4.67.1",
   "transformers==4.52.1",
-
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
