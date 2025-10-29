@@ -71,10 +71,17 @@ webui = [
 deepspeed = [
   "deepspeed==0.17.1",
 ]
+cu128 = [
+  "torch>=2.7.1",
+  "torchvision>=0.22.1",
+  "torchaudio>=2.7.1"
+]
+
 
 [project.urls]
 Homepage = "https://github.com/index-tts/index-tts"
 Repository = "https://github.com/index-tts/index-tts.git"
+
 
 [project.scripts]
 # Set the installed binary names and entry points.
@@ -99,14 +106,15 @@ no-build-isolation-package = ["deepspeed"]
 # NOTE: We must explicitly request them as `dependencies` above. These improved
 # versions will not be selected if they're only third-party dependencies.
 torch = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128"},
 ]
 torchaudio = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
 ]
 torchvision = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
 ]
+
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
