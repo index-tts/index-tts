@@ -22,10 +22,11 @@ import argparse
 import json
 import math
 import os
+import random
 import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import torch
@@ -44,8 +45,22 @@ from indextts.utils.front import TextNormalizer, TextTokenizer
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Finetune IndexTTS2 GPT on Japanese data.")
-    parser.add_argument("--train-manifest", type=Path, required=True, help="Training manifest JSONL.")
-    parser.add_argument("--val-manifest", type=Path, required=True, help="Validation manifest JSONL.")
+    parser.add_argument(
+        "--train-manifest",
+        dest="train_manifests",
+        action="append",
+        type=str,
+        required=True,
+        help="Training manifest JSONL. Repeat to mix multiple datasets; optionally suffix with '::lang' to force a language hint.",
+    )
+    parser.add_argument(
+        "--val-manifest",
+        dest="val_manifests",
+        action="append",
+        type=str,
+        required=True,
+        help="Validation manifest JSONL. Repeat to mix multiple datasets; optionally suffix with '::lang' to force a language hint.",
+    )
     parser.add_argument("--tokenizer", type=Path, required=True, help="SentencePiece model path.")
     parser.add_argument("--config", type=Path, default=Path("checkpoints/config.yaml"), help="Model config YAML.")
     parser.add_argument("--base-checkpoint", type=Path, default=Path("checkpoints/gpt.pth"), help="Base GPT checkpoint.")
@@ -69,10 +84,33 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+@dataclass
+class ManifestSpec:
+    path: Path
+    language: Optional[str] = None
+
+
+def parse_manifest_specs(entries: Sequence[str], flag_name: str) -> List[ManifestSpec]:
+    if not entries:
+        raise ValueError(f"{flag_name} requires at least one manifest path.")
+    specs: List[ManifestSpec] = []
+    for raw in entries:
+        value = raw.strip()
+        lang: Optional[str] = None
+        for separator in ("::", "@", "="):
+            if separator in value:
+                path_str, lang_part = value.rsplit(separator, 1)
+                value = path_str.strip()
+                lang = lang_part.strip().lower() or None
+                break
+        path = Path(value).expanduser()
+        specs.append(ManifestSpec(path=path, language=lang))
+    return specs
+
+
 def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     np.random.seed(seed)
-    import random
 
     random.seed(seed)
 
@@ -90,21 +128,72 @@ class Sample:
     sample_type: str = "single"
     prompt_id: Optional[str] = None
     target_id: Optional[str] = None
+    language: Optional[str] = None
+    prompt_language: Optional[str] = None
+    manifest_path: Optional[Path] = None
 
 
 class JapaneseGPTDataset(Dataset):
-    def __init__(self, manifest_path: Path):
+    def __init__(self, manifests: Sequence[ManifestSpec]):
+        if isinstance(manifests, ManifestSpec):
+            manifests = [manifests]
+        manifest_list = list(manifests)
+        if not manifest_list:
+            raise ValueError("No manifest paths supplied.")
+
         self.samples: List[Sample] = []
-        skipped = 0
-        skipped_missing = 0
-        skipped_empty = 0
-        missing_examples: List[str] = []
-        empty_examples: List[str] = []
-        with open(manifest_path, "r", encoding="utf-8") as handle:
+        self.sample_type: str = "unknown"
+        self.manifest_summaries: List[Dict[str, object]] = []
+        self.bad_indices: Set[int] = set()
+
+        for spec in manifest_list:
+            self._load_single_manifest(spec)
+
+        if not self.samples:
+            manifest_paths = ", ".join(str(spec.path) for spec in manifest_list)
+            raise RuntimeError(f"No entries found in the provided manifests: {manifest_paths}")
+        if self.sample_type != "paired":
+            raise RuntimeError(
+                "The GPT trainer expects prompt/target pair manifests.\n"
+                "Generate paired manifests with tools/build_gpt_prompt_pairs.py and retry."
+            )
+
+    @staticmethod
+    def _resolve_path(base_dir: Path, value: str) -> Path:
+        if not value:
+            raise ValueError("Empty path provided in manifest record.")
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return (base_dir / path).expanduser()
+
+    @staticmethod
+    def _normalize_language(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped.lower() if stripped else None
+
+    def _load_single_manifest(self, spec: ManifestSpec) -> None:
+        manifest_path = spec.path
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+
+        local_count = 0
+        local_languages: set[str] = set()
+        manifest_sample_type: Optional[str] = None
+        base_dir = manifest_path.parent
+
+        print(f"[Info] Parsing manifest {manifest_path} ...")
+        processed = 0
+        progress_interval = 10000
+
+        with manifest_path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if not line.strip():
                     continue
                 record = json.loads(line)
+                processed += 1
                 is_paired = "prompt_condition_path" in record and "target_codes_path" in record
                 if is_paired:
                     emo_path_value = record.get("prompt_emo_vec_path") or record.get("target_emo_vec_path")
@@ -112,109 +201,163 @@ class JapaneseGPTDataset(Dataset):
                         raise RuntimeError(
                             f"Paired manifest entry {record.get('id')} missing prompt_emo_vec_path."
                         )
+                    target_language = self._normalize_language(
+                        record.get("target_language") or record.get("language") or spec.language
+                    )
+                    prompt_language = self._normalize_language(record.get("prompt_language") or spec.language)
                     sample = Sample(
                         id=record["id"],
-                        text_ids_path=Path(record["target_text_ids_path"]),
-                        codes_path=Path(record["target_codes_path"]),
-                        condition_path=Path(record["prompt_condition_path"]),
-                        emo_vec_path=Path(emo_path_value),
+                        text_ids_path=self._resolve_path(base_dir, record["target_text_ids_path"]),
+                        codes_path=self._resolve_path(base_dir, record["target_codes_path"]),
+                        condition_path=self._resolve_path(base_dir, record["prompt_condition_path"]),
+                        emo_vec_path=self._resolve_path(base_dir, emo_path_value),
                         text_len=int(record["target_text_len"]),
                         code_len=int(record["target_code_len"]),
                         condition_len=int(record.get("prompt_condition_len", 32)),
                         sample_type="paired",
                         prompt_id=record.get("prompt_id"),
                         target_id=record.get("target_id"),
+                        language=target_language,
+                        prompt_language=prompt_language,
+                        manifest_path=manifest_path,
                     )
                 else:
+                    language = self._normalize_language(record.get("language") or spec.language)
                     sample = Sample(
                         id=record["id"],
-                        text_ids_path=Path(record["text_ids_path"]),
-                        codes_path=Path(record["codes_path"]),
-                        condition_path=Path(record["condition_path"]),
-                        emo_vec_path=Path(record["emo_vec_path"]),
+                        text_ids_path=self._resolve_path(base_dir, record["text_ids_path"]),
+                        codes_path=self._resolve_path(base_dir, record["codes_path"]),
+                        condition_path=self._resolve_path(base_dir, record["condition_path"]),
+                        emo_vec_path=self._resolve_path(base_dir, record["emo_vec_path"]),
                         text_len=int(record["text_len"]),
                         code_len=int(record["code_len"]),
                         condition_len=int(record.get("condition_len", 32)),
                         sample_type="single",
+                        manifest_path=manifest_path,
+                        language=language,
                     )
-                file_checks = (
-                    ("text_ids_path", sample.text_ids_path),
-                    ("codes_path", sample.codes_path),
-                    ("condition_path", sample.condition_path),
-                    ("emo_vec_path", sample.emo_vec_path),
-                )
-                invalid = False
-                for key, path in file_checks:
-                    if not path.exists():
-                        skipped += 1
-                        skipped_missing += 1
-                        if len(missing_examples) < 5:
-                            missing_examples.append(f"{record['id']} -> {key} missing ({path})")
-                        invalid = True
-                        break
-                    if path.stat().st_size == 0:
-                        skipped += 1
-                        skipped_empty += 1
-                        if len(empty_examples) < 5:
-                            empty_examples.append(f"{record['id']} -> {key} empty ({path})")
-                        invalid = True
-                        break
-                if invalid:
-                    continue
+
+                if manifest_sample_type is None:
+                    manifest_sample_type = sample.sample_type
+                elif manifest_sample_type != sample.sample_type:
+                    raise RuntimeError(
+                        f"Manifest {manifest_path} mixes sample types ({manifest_sample_type} vs {sample.sample_type})."
+                    )
+
                 self.samples.append(sample)
+                local_count += 1
+                if sample.language:
+                    local_languages.add(sample.language)
+                if sample.prompt_language:
+                    local_languages.add(sample.prompt_language)
 
-        if not self.samples:
-            raise RuntimeError(f"No entries found in manifest: {manifest_path}")
-        if skipped:
-            print(f"[Info] Skipped {skipped} entries in {manifest_path} due to missing or invalid feature files.")
-        if skipped_missing:
-            print(f"[Warn] {skipped_missing} entries skipped (missing files). Examples:")
-            for example in missing_examples:
-                print(f"        - {example}")
-        if skipped_empty:
-            print(f"[Warn] {skipped_empty} entries skipped (empty files). Examples:")
-            for example in empty_examples:
-                print(f"        - {example}")
+                if processed % progress_interval == 0:
+                    print(
+                        f"  • processed {processed:,} entries "
+                        f"(kept {local_count:,}) in {manifest_path.name}"
+                    )
 
-        if self.samples:
-            sample_types = {sample.sample_type for sample in self.samples}
-            if len(sample_types) > 1:
-                raise RuntimeError(
-                    f"Mixed sample types encountered in manifest {manifest_path}: {sample_types}"
+        if local_count:
+            if processed % progress_interval != 0:
+                print(
+                    f"  • processed {processed:,} entries "
+                    f"(kept {local_count:,}) in {manifest_path.name}"
                 )
-            self.sample_type = next(iter(sample_types))
-            if self.sample_type != "paired":
+            if manifest_sample_type and manifest_sample_type != "paired":
                 raise RuntimeError(
-                    f"Manifest {manifest_path} contains '{self.sample_type}' entries.\n"
-                    "This trainer expects prompt/target pairs (see tools/build_gpt_prompt_pairs.py).\n"
-                    "Please generate a paired manifest and retry."
+                    f"Manifest {manifest_path} contains '{manifest_sample_type}' entries. "
+                    "This trainer expects prompt/target pair manifests (see tools/build_gpt_prompt_pairs.py)."
                 )
-            print(f"[Info] Loaded {len(self.samples)} samples ({self.sample_type}) from {manifest_path}")
-        else:
-            self.sample_type = "unknown"
+            if self.sample_type == "unknown":
+                self.sample_type = manifest_sample_type or "unknown"
+            elif manifest_sample_type and self.sample_type != manifest_sample_type:
+                raise RuntimeError(
+                    f"Mixed sample types encountered across manifests: {self.sample_type} vs {manifest_sample_type} (from {manifest_path})"
+                )
+
+            languages_display = sorted(local_languages)
+            if not languages_display and spec.language:
+                languages_display = [spec.language]
+            language_text = ", ".join(languages_display) if languages_display else "unspecified"
+            print(
+                f"[Info] Loaded {local_count} samples ({manifest_sample_type}) from {manifest_path} "
+                f"(languages: {language_text})"
+            )
+            self.manifest_summaries.append(
+                {"path": manifest_path, "count": local_count, "languages": languages_display}
+            )
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        sample = self.samples[idx]
-        text_ids = np.load(sample.text_ids_path, allow_pickle=False).astype(np.int64)
-        codes = np.load(sample.codes_path, allow_pickle=False).astype(np.int64)
-        condition = np.load(sample.condition_path, allow_pickle=False).astype(np.float32)
-        emo_vec = np.load(sample.emo_vec_path, allow_pickle=False).astype(np.float32)
+        if not self.samples:
+            raise RuntimeError("Dataset is empty.")
 
-        return {
-            "id": sample.id,
-            "text_ids": torch.from_numpy(text_ids),
-            "codes": torch.from_numpy(codes),
-            "condition": torch.from_numpy(condition),  # [cond_len, dim]
-            "emo_vec": torch.from_numpy(emo_vec),
-            "text_len": torch.tensor(sample.text_len, dtype=torch.long),
-            "code_len": torch.tensor(sample.code_len, dtype=torch.long),
-            "condition_len": torch.tensor(sample.condition_len, dtype=torch.long),
-            "prompt_id": sample.prompt_id if sample.prompt_id else sample.id,
-            "target_id": sample.target_id if sample.target_id else sample.id,
-        }
+        if len(self.bad_indices) >= len(self.samples):
+            raise RuntimeError("All samples were marked invalid; cannot continue.")
+
+        attempts = 0
+        max_attempts = len(self.samples)
+        sample_count = len(self.samples)
+
+        while attempts < max_attempts:
+            current_idx = idx % sample_count
+
+            sample = self.samples[current_idx]
+            if sample is None:
+                idx += 1
+                attempts += 1
+                continue
+
+            try:
+                text_ids = np.load(sample.text_ids_path, allow_pickle=False)
+                codes = np.load(sample.codes_path, allow_pickle=False)
+                condition = np.load(sample.condition_path, allow_pickle=False)
+                emo_vec = np.load(sample.emo_vec_path, allow_pickle=False)
+
+                if text_ids.size == 0 or codes.size == 0 or condition.size == 0 or emo_vec.size == 0:
+                    raise ValueError("Encountered empty feature file.")
+
+                text_ids = text_ids.astype(np.int64, copy=False)
+                codes = codes.astype(np.int64, copy=False)
+                condition = condition.astype(np.float32, copy=False)
+                emo_vec = emo_vec.astype(np.float32, copy=False)
+
+                return {
+                    "id": sample.id,
+                    "text_ids": torch.from_numpy(text_ids),
+                    "codes": torch.from_numpy(codes),
+                    "condition": torch.from_numpy(condition),  # [cond_len, dim]
+                    "emo_vec": torch.from_numpy(emo_vec),
+                    "text_len": torch.tensor(sample.text_len, dtype=torch.long),
+                    "code_len": torch.tensor(sample.code_len, dtype=torch.long),
+                    "condition_len": torch.tensor(sample.condition_len, dtype=torch.long),
+                    "prompt_id": sample.prompt_id if sample.prompt_id else sample.id,
+                    "target_id": sample.target_id if sample.target_id else sample.id,
+                    "language": sample.language,
+                    "prompt_language": sample.prompt_language,
+                    "manifest_path": str(sample.manifest_path) if sample.manifest_path else "",
+                }
+
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                if current_idx not in self.bad_indices:
+                    message = (
+                        f"[Warn] Skipping sample '{sample.id}' due to load failure: {exc}. "
+                        "It will be removed from the dataset for this run."
+                    )
+                    print(message)
+                    self.bad_indices.add(current_idx)
+
+                self.samples[current_idx] = None
+                if len(self.bad_indices) >= len(self.samples):
+                    raise RuntimeError("All samples were marked invalid; cannot continue.")
+
+                idx = current_idx + 1
+                attempts += 1
+                continue
+
+        raise RuntimeError("Exceeded retry budget while sampling training data.")
 
 
 def collate_batch(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
@@ -235,6 +378,9 @@ def collate_batch(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tenso
     ids = [item["id"] for item in batch]
     prompt_ids = [item.get("prompt_id", item["id"]) for item in batch]
     target_ids = [item.get("target_id", item["id"]) for item in batch]
+    languages = [item.get("language") for item in batch]
+    prompt_languages = [item.get("prompt_language") for item in batch]
+    manifest_paths = [item.get("manifest_path") for item in batch]
 
     return {
         "ids": ids,
@@ -247,11 +393,14 @@ def collate_batch(batch: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tenso
         "text_lengths": text_lengths,
         "code_lengths": code_lengths,
         "condition_lengths": cond_lengths,
+        "languages": languages,
+        "prompt_languages": prompt_languages,
+        "manifest_paths": manifest_paths,
     }
 
 
 def load_tokenizer(tokenizer_path: Path) -> TextTokenizer:
-    normalizer = TextNormalizer(preferred_language="ja")
+    normalizer = TextNormalizer()
     tokenizer = TextTokenizer(str(tokenizer_path), normalizer)
     return tokenizer
 
@@ -438,8 +587,35 @@ def main() -> None:
     tokenizer = load_tokenizer(args.tokenizer)
     model = build_model(args.config, tokenizer, args.base_checkpoint, device)
 
-    train_dataset = JapaneseGPTDataset(args.train_manifest)
-    val_dataset = JapaneseGPTDataset(args.val_manifest)
+    train_specs = parse_manifest_specs(args.train_manifests, "--train-manifest")
+    val_specs = parse_manifest_specs(args.val_manifests, "--val-manifest")
+
+    print("[Info] Loading training manifests...")
+    train_dataset = JapaneseGPTDataset(train_specs)
+    print("[Info] Loading validation manifests...")
+    val_dataset = JapaneseGPTDataset(val_specs)
+
+    manifest_metadata = {
+        "train": [
+            {
+                "path": str(entry["path"]),
+                "count": entry["count"],
+                "languages": list(entry["languages"]),
+            }
+            for entry in train_dataset.manifest_summaries
+        ],
+        "val": [
+            {
+                "path": str(entry["path"]),
+                "count": entry["count"],
+                "languages": list(entry["languages"]),
+            }
+            for entry in val_dataset.manifest_summaries
+        ],
+    }
+
+    def checkpoint_extra(extra_type: str) -> Dict[str, object]:
+        return {"type": extra_type, "manifests": manifest_metadata}
 
     use_cuda = torch.cuda.is_available()
 
@@ -504,18 +680,10 @@ def main() -> None:
     save_every = 1000
     best_val = math.inf
 
-    if args.val_interval > 0:
-        init_val_metrics = evaluate(model, val_loader, device)
-        writer.add_scalar("val/text_loss", init_val_metrics["text_loss"], global_step)
-        writer.add_scalar("val/mel_loss", init_val_metrics["mel_loss"], global_step)
-        writer.add_scalar("val/mel_top1", init_val_metrics["mel_top1"], global_step)
-        print(
-            f"[Val] epoch={start_epoch + 1} step={global_step} "
-            f"text_loss={init_val_metrics['text_loss']:.4f} mel_loss={init_val_metrics['mel_loss']:.4f} "
-            f"mel_top1={init_val_metrics['mel_top1']:.4f}"
-        )
-        if init_val_metrics["mel_loss"] < best_val:
-            best_val = init_val_metrics["mel_loss"]
+    if args.val_interval > 0 and global_step > 0:
+        # If we resumed exactly on a validation boundary we postpone evaluation until
+        # after the next training step to avoid running validation before training.
+        print("[Info] Skipping startup validation; will evaluate after next training interval.")
 
     for epoch in range(start_epoch, args.epochs):
         for batch_idx, batch in enumerate(train_loader):
@@ -553,7 +721,7 @@ def main() -> None:
                         f"mel_top1={metrics['mel_top1']:.4f} lr={scheduler.get_last_lr()[0]:.2e}"
                     )
 
-                if args.val_interval > 0 and global_step % args.val_interval == 0:
+                if args.val_interval > 0 and global_step > 0 and global_step % args.val_interval == 0:
                     val_metrics = evaluate(model, val_loader, device)
                     writer.add_scalar("val/text_loss", val_metrics["text_loss"], global_step)
                     writer.add_scalar("val/mel_loss", val_metrics["mel_loss"], global_step)
@@ -578,7 +746,7 @@ def main() -> None:
                         epoch,
                         global_step,
                         recent_checkpoints,
-                        extra={"type": "step"},
+                        extra=checkpoint_extra("step"),
                     )
                     torch.save(
                         {
@@ -589,6 +757,7 @@ def main() -> None:
                             "epoch": epoch,
                             "step": global_step,
                             "recent_checkpoints": recent_checkpoints,
+                            "manifests": manifest_metadata,
                         },
                         output_dir / "latest.pth",
                     )
@@ -635,7 +804,7 @@ def main() -> None:
             epoch,
             global_step,
             recent_checkpoints,
-            extra={"type": "step-final"},
+            extra=checkpoint_extra("step-final"),
         )
         torch.save(
             {
@@ -646,6 +815,7 @@ def main() -> None:
                 "epoch": epoch,
                 "step": global_step,
                 "recent_checkpoints": recent_checkpoints,
+                "manifests": manifest_metadata,
             },
             output_dir / "latest.pth",
         )

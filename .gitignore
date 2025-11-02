@@ -29,3 +29,9 @@ desktop.ini
 /checkpoints/*
 !/checkpoints/*.yaml
 /outputs/
+*processed_data/
+DeepSpeed/
+*datasets/
+hf_cache/
+*_dataset/
+*trained_ckpts*

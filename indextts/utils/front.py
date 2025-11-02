@@ -17,7 +17,7 @@ class TextNormalizer:
     def __init__(self, preferred_language: str | None = None):
         self.zh_normalizer = None
         self.en_normalizer = None
-        self.preferred_language = preferred_language
+        self.preferred_language = preferred_language.lower() if preferred_language else None
         self.char_rep_map = {
             "：": ",",
             "；": ",",
@@ -62,6 +62,9 @@ class TextNormalizer:
         self.jp_char_rep_map = {
             **self.char_rep_map,
         }
+        self._base_cleanup_pattern = re.compile("|".join(re.escape(p) for p in self.char_rep_map.keys()))
+        self._zh_cleanup_pattern = re.compile("|".join(re.escape(p) for p in self.zh_char_rep_map.keys()))
+        self._jp_cleanup_pattern = re.compile("|".join(re.escape(p) for p in self.jp_char_rep_map.keys()))
 
     def match_email(self, email):
         # 正则表达式匹配邮箱格式：数字英文@数字英文.英文
@@ -119,6 +122,19 @@ class TextNormalizer:
             )
             self.en_normalizer = NormalizerEn(overwrite_cache=False)
 
+    def _ensure_normalizers(self) -> None:
+        if self.zh_normalizer is None or self.en_normalizer is None:
+            self.load()
+
+    def _basic_cleanup(self, text: str) -> str:
+        if not text:
+            return ""
+        text = unicodedata.normalize("NFKC", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return ""
+        return self._base_cleanup_pattern.sub(lambda x: self.char_rep_map[x.group()], text)
+
     def is_japanese(self, text: str) -> bool:
         if self._HIRAGANA_PATTERN.search(text) or self._KATAKANA_PATTERN.search(text):
             return True
@@ -136,45 +152,51 @@ class TextNormalizer:
         text = re.sub(r"^\s*(?:speaker|spk)\s*\d+\s*[:：]\s*", "", text, flags=re.IGNORECASE)
         text = unicodedata.normalize("NFKC", text)
         text = re.sub(r"\s+", " ", text)
-        pattern = re.compile("|".join(re.escape(p) for p in self.jp_char_rep_map.keys()))
-        text = pattern.sub(lambda x: self.jp_char_rep_map[x.group()], text)
+        text = self._jp_cleanup_pattern.sub(lambda x: self.jp_char_rep_map[x.group()], text)
         return text.strip()
 
     def normalize(self, text: str, language: str | None = None) -> str:
-        if not self.zh_normalizer or not self.en_normalizer:
-            print("Error, text normalizer is not initialized !!!")
+        if text is None:
             return ""
-        lang = language or self.preferred_language
-        if lang is None and self.is_japanese(text):
-            lang = "ja"
+        lang = language.strip().lower() if language else self.preferred_language
+        if lang is None:
+            if self.is_japanese(text):
+                lang = "ja"
+            elif self.use_chinese(text):
+                lang = "zh"
+            else:
+                lang = "en"
+
         if lang == "ja":
             return self.normalize_japanese(text)
-        if lang == "zh" or (lang is None and self.use_chinese(text)):
+
+        if lang == "zh":
+            self._ensure_normalizers()
             text = re.sub(TextNormalizer.ENGLISH_CONTRACTION_PATTERN, r"\1 is", text, flags=re.IGNORECASE)
             replaced_text, pinyin_list = self.save_pinyin_tones(text.rstrip())
-            
             replaced_text, original_name_list = self.save_names(replaced_text)
             try:
                 result = self.zh_normalizer.normalize(replaced_text)
             except Exception:
-                result = ""
+                result = replaced_text
                 print(traceback.format_exc())
-            # 恢复人名
             result = self.restore_names(result, original_name_list)
-            # 恢复拼音声调
             result = self.restore_pinyin_tones(result, pinyin_list)
-            pattern = re.compile("|".join(re.escape(p) for p in self.zh_char_rep_map.keys()))
-            result = pattern.sub(lambda x: self.zh_char_rep_map[x.group()], result)
-        else:
+            result = self._zh_cleanup_pattern.sub(lambda x: self.zh_char_rep_map[x.group()], result)
+            return result
+
+        if lang == "en":
+            self._ensure_normalizers()
+            text_processed = re.sub(TextNormalizer.ENGLISH_CONTRACTION_PATTERN, r"\1 is", text, flags=re.IGNORECASE)
             try:
-                text = re.sub(TextNormalizer.ENGLISH_CONTRACTION_PATTERN, r"\1 is", text, flags=re.IGNORECASE)
-                result = self.en_normalizer.normalize(text)
+                result = self.en_normalizer.normalize(text_processed)
             except Exception:
-                result = text
                 print(traceback.format_exc())
-            pattern = re.compile("|".join(re.escape(p) for p in self.char_rep_map.keys()))
-            result = pattern.sub(lambda x: self.char_rep_map[x.group()], result)
-        return result
+                return self._basic_cleanup(text_processed)
+            result = self._base_cleanup_pattern.sub(lambda x: self.char_rep_map[x.group()], result)
+            return result
+
+        return self._basic_cleanup(text)
 
     def correct_pinyin(self, pinyin: str):
         """

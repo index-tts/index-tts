@@ -35,6 +35,7 @@ dependencies = [
   "einops>=0.8.1",
   "ffmpeg-python==0.2.0",
   "g2p-en==2.1.0",
+  "gradio>=5.45.0",
   "jieba==0.42.1",
   "json5==0.10.0",
   "keras==2.9.0",
