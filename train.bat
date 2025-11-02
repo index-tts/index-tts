@@ -1,0 +1,30 @@
+uv run python trainers/train_gpt_v2.py `
+    --train-manifest ja_processed_data/gpt_pairs_train.jsonl::ja `
+    --train-manifest ko_processed_data/gpt_pairs_train.jsonl::ko `
+    --train-manifest en_processed_data/gpt_pairs_train.jsonl::en `
+    --train-manifest de_processed_data/gpt_pairs_train.jsonl::de `
+    --train-manifest zh_processed_data/gpt_pairs_train.jsonl::zh `
+    --train-manifest fr_processed_data/gpt_pairs_train.jsonl::fr `
+    --val-manifest ja_processed_data/gpt_pairs_val.jsonl::ja `
+    --val-manifest ko_processed_data/gpt_pairs_val.jsonl::ko `
+    --val-manifest en_processed_data/gpt_pairs_val.jsonl::en `
+    --val-manifest de_processed_data/gpt_pairs_val.jsonl::de `
+    --val-manifest zh_processed_data/gpt_pairs_val.jsonl::zh `
+    --val-manifest fr_processed_data/gpt_pairs_val.jsonl::fr `
+    --tokenizer checkpoints/bpe_multilingual.model `
+    --config checkpoints/config_finetune.yaml `
+    --base-checkpoint trained_ckpts_multilingual/latest.pth `
+    --output-dir trained_ckpts_multilingual `
+    --batch-size 32 `
+    --grad-accumulation 1 `
+    --epochs 5 `
+    --learning-rate 1e-5 `
+    --weight-decay 0.01 `
+    --warmup-steps 1000 `
+    --log-interval 1 `
+    --val-interval 2000 `
+    --grad-clip 1.0 `
+    --text-loss-weight 0.2 `
+    --mel-loss-weight 0.8 `
+    --amp `
+    --resume auto

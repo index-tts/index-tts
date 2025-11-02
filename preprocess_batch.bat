@@ -1,0 +1,14 @@
+uv run python tools/preprocess_multiproc.py `
+    --manifest datasets/FR_yodas_dataset/fr_yodas_train.jsonl `
+    --output-dir fr_processed_data `
+    --tokenizer checkpoints/bpe_multilingual.model `
+    --config checkpoints/config_finetune.yaml `
+    --gpt-checkpoint checkpoints/gpt_original.pth `
+    --language fr `
+    --device cuda `
+    --batch-size 1 `
+    --workers 1 `
+    --num-processes 1 `
+    --launch-delay 20 `
+    --skip-existing `
+    --val-ratio 0.01
