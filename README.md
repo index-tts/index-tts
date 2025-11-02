@@ -1,9 +1,17 @@
 ## Unofficial IndexTTS v2 Training Repo
 > Loop and trainer implemented using Codex CLI and guided prompts
-  - Train a new tokenizer for langauges
-  - Preprocess data to train on
-  - Possible to train another language from scratch with enough data (need more testing)
+  - Train new languages by extending existing tokenizer
+    - tools\tokenizer\train_bpe.py and tools\tokenizer\extend_bpe.py
+  - Preprocess data to extract speaker embeddings for timbre, emotion, text, and mel tokens
+    - tools\preprocess_data.py and tools\preprocess_multiproc.py (multiproc is an attempt to make it run faster, there are issues with it though crashing)
+  - Create prompt/target pairs which is required for how IndexTTS2 trains in order to learn how to speak with speaker timbre while separating emotion (emotion has not yet been investigated)
+    - tools\generate_gpt_pairs.py
+  - Train/finetune the gpt model to learn to predict tokens for the language
+    - trainers\train_gpt_v2.py and train.bat
 
+The code here works and Japanese was *mostly* correct shown here: https://www.youtube.com/watch?v=47V7lS-HUpo (this model was trained on 1100 hours of audio for about 1.5 epochs)
+
+The latest updates are done with a focus on training a multilingual model which shows promise, while mostly retaining the base model abilities to speak English and Chinese. Emotion finetuning has not been investigated yet and it seems that full finetuning does not mess up the base emotion capabilities of the model.
 
 <div align="center">
 <img src='assets/index_icon.png' width="250"/>
