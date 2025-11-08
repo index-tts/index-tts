@@ -13,11 +13,11 @@ uv run python trainers/train_gpt_v2.py `
     --val-manifest fr_processed_data/gpt_pairs_val.jsonl::fr `
     --tokenizer checkpoints/bpe_multilingual.model `
     --config checkpoints/config_finetune.yaml `
-    --base-checkpoint trained_ckpts_multilingual/latest.pth `
-    --output-dir trained_ckpts_multilingual `
-    --batch-size 32 `
+    --base-checkpoint trained_ckpts_multilingual_2/latest.pth `
+    --output-dir trained_ckpts_multilingual_dur `
+    --batch-size 24 `
     --grad-accumulation 1 `
-    --epochs 5 `
+    --epochs 2 `
     --learning-rate 1e-5 `
     --weight-decay 0.01 `
     --warmup-steps 1000 `
@@ -27,4 +27,4 @@ uv run python trainers/train_gpt_v2.py `
     --text-loss-weight 0.2 `
     --mel-loss-weight 0.8 `
     --amp `
-    --resume auto
+    --use-duration-control 

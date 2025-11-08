@@ -80,6 +80,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mel-loss-weight", type=float, default=0.8, help="Weight for semantic CE loss.")
     parser.add_argument("--amp", action="store_true", help="Enable CUDA AMP.")
     parser.add_argument("--resume", type=str, default="", help="Path to checkpoint to resume from, or 'auto'.")
+    parser.add_argument(
+        "--use-duration-control",
+        action="store_true",
+        help="Train GPT with duration embeddings derived from target semantic lengths.",
+    )
+    parser.add_argument(
+        "--duration-dropout",
+        type=float,
+        default=0.3,
+        help="Probability of zeroing duration embeddings when --use-duration-control is enabled.",
+    )
     parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
     return parser.parse_args()
 
@@ -457,6 +468,8 @@ def compute_losses(
     model: UnifiedVoice,
     batch: Dict[str, torch.Tensor],
     device: torch.device,
+    use_duration_control: bool = False,
+    duration_dropout: float = 0.3,
 ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, float]]:
     condition = batch["condition"].to(device)
     text_ids = batch["text_ids"].to(device)
@@ -480,10 +493,17 @@ def compute_losses(
         mel_inputs, model.start_mel_token, model.stop_mel_token
     )
 
-    duration_zero = model.speed_emb(torch.zeros_like(use_speed))
-    duration_one = model.speed_emb(torch.ones_like(use_speed))
+    duration_free = model.speed_emb(torch.zeros_like(use_speed))
+    if use_duration_control:
+        duration_ctrl = model.get_duration_embeddings(code_lengths)
+        if duration_dropout > 0.0:
+            drop_mask = torch.rand(code_lengths.size(0), device=device) < duration_dropout
+            if drop_mask.any():
+                duration_ctrl = torch.where(drop_mask.unsqueeze(1), duration_free, duration_ctrl)
+    else:
+        duration_ctrl = model.speed_emb(torch.ones_like(use_speed))
     conds = torch.cat(
-        (condition + emo_vec.unsqueeze(1), duration_one.unsqueeze(1), duration_zero.unsqueeze(1)),
+        (condition + emo_vec.unsqueeze(1), duration_ctrl.unsqueeze(1), duration_free.unsqueeze(1)),
         dim=1,
     )
 
@@ -549,13 +569,25 @@ def save_checkpoint(
     torch.save(state, path)
 
 
-def evaluate(model: UnifiedVoice, loader: DataLoader, device: torch.device) -> Dict[str, float]:
+def evaluate(
+    model: UnifiedVoice,
+    loader: DataLoader,
+    device: torch.device,
+    use_duration_control: bool = False,
+    duration_dropout: float = 0.3,
+) -> Dict[str, float]:
     model.eval()
     totals = {"text_loss": 0.0, "mel_loss": 0.0, "mel_top1": 0.0}
     count = 0
     with torch.no_grad():
         for batch in loader:
-            text_loss, mel_loss, metrics = compute_losses(model, batch, device)
+            text_loss, mel_loss, metrics = compute_losses(
+                model,
+                batch,
+                device,
+                use_duration_control=use_duration_control,
+                duration_dropout=duration_dropout,
+            )
             bsz = batch["text_ids"].size(0)
             totals["text_loss"] += text_loss.item() * bsz
             totals["mel_loss"] += mel_loss.item() * bsz
@@ -688,7 +720,13 @@ def main() -> None:
     for epoch in range(start_epoch, args.epochs):
         for batch_idx, batch in enumerate(train_loader):
             with torch.cuda.amp.autocast(enabled=use_amp):
-                text_loss, mel_loss, metrics = compute_losses(model, batch, device)
+                text_loss, mel_loss, metrics = compute_losses(
+                    model,
+                    batch,
+                    device,
+                    use_duration_control=args.use_duration_control,
+                    duration_dropout=args.duration_dropout,
+                )
                 loss = args.text_loss_weight * text_loss + args.mel_loss_weight * mel_loss
             if use_amp:
                 scaler.scale(loss / args.grad_accumulation).backward()
@@ -722,7 +760,13 @@ def main() -> None:
                     )
 
                 if args.val_interval > 0 and global_step > 0 and global_step % args.val_interval == 0:
-                    val_metrics = evaluate(model, val_loader, device)
+                    val_metrics = evaluate(
+                        model,
+                        val_loader,
+                        device,
+                        use_duration_control=args.use_duration_control,
+                        duration_dropout=args.duration_dropout,
+                    )
                     writer.add_scalar("val/text_loss", val_metrics["text_loss"], global_step)
                     writer.add_scalar("val/mel_loss", val_metrics["mel_loss"], global_step)
                     writer.add_scalar("val/mel_top1", val_metrics["mel_top1"], global_step)
@@ -779,7 +823,13 @@ def main() -> None:
             break
 
         if args.val_interval == 0:
-            val_metrics = evaluate(model, val_loader, device)
+            val_metrics = evaluate(
+                model,
+                val_loader,
+                device,
+                use_duration_control=args.use_duration_control,
+                duration_dropout=args.duration_dropout,
+            )
             writer.add_scalar("val/text_loss", val_metrics["text_loss"], global_step)
             writer.add_scalar("val/mel_loss", val_metrics["mel_loss"], global_step)
             writer.add_scalar("val/mel_top1", val_metrics["mel_top1"], global_step)

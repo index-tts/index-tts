@@ -36,3 +36,4 @@ hf_cache/
 *_dataset/
 *trained_ckpts*
 prompts/
+*.whl
