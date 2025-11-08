@@ -1,6 +1,9 @@
 import os
 
-os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+from .utils.hf_cache import set_hf_env
+
+set_hf_env()
+
 import time
 from subprocess import CalledProcessError
 from typing import Dict, List
