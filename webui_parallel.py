@@ -295,6 +295,7 @@ def build_primary_tts() -> IndexTTS2:
         cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
         is_fp16=cmd_args.is_fp16,
         use_cuda_kernel=False,
+        use_accel=True,
         gpt_checkpoint_path=_MODEL_SELECTION["gpt"],
         bpe_model_path=_MODEL_SELECTION["bpe"],
     )
@@ -401,6 +402,7 @@ class GenerationJob:
     max_tokens: int
     generation_kwargs: Dict[str, Any]
     verbose: bool
+    duration_seconds: Optional[float] = None
 
 
 def _normalize_seed(seed_value: Any) -> Optional[int]:
@@ -431,6 +433,22 @@ def _normalize_seed(seed_value: Any) -> Optional[int]:
     if seed < 0:
         seed = abs(seed)
     return seed
+
+
+def _normalize_duration_seconds(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if seconds <= 0:
+        return None
+    return seconds
 
 
 def _apply_seed(seed: Optional[int]) -> None:
@@ -475,6 +493,7 @@ def _worker_loop(job_queue: mp.Queue, result_queue: mp.Queue, config: Dict[str, 
             cfg_path=os.path.join(config["model_dir"], "config.yaml"),
             is_fp16=config.get("is_fp16", False),
             use_cuda_kernel=False,
+            use_accel=True,
             gpt_checkpoint_path=gpt_override,
             bpe_model_path=bpe_override,
         )
@@ -508,6 +527,7 @@ def _worker_loop(job_queue: mp.Queue, result_queue: mp.Queue, config: Dict[str, 
                 use_random=job["emo_random"],
                 verbose=job.get("verbose", False),
                 max_text_tokens_per_sentence=job["max_tokens"],
+                duration_seconds=job.get("duration_seconds"),
                 **generation_kwargs,
             )
             result_queue.put(
@@ -719,6 +739,14 @@ def create_demo() -> gr.Blocks:
                         step=2,
                         key="max_text_tokens_per_sentence",
                     )
+                    duration_seconds_input = gr.Number(
+                        label="Target duration (seconds)",
+                        value=None,
+                        precision=2,
+                        minimum=0,
+                        step=0.1,
+                        info="Optional: approximate overall audio length. Leave blank for free duration.",
+                    )
                     with gr.Accordion("Preview sentences", open=True):
                         sentences_preview = gr.Dataframe(
                             headers=["Index", "Sentence", "Token Count"],
@@ -836,6 +864,7 @@ def create_demo() -> gr.Blocks:
             emo_text_value,
             emo_random_value,
             max_text_tokens_per_sentence_value,
+            duration_seconds_value,
             *args,
             progress: gr.Progress = gr.Progress(),
         ):
@@ -869,6 +898,8 @@ def create_demo() -> gr.Blocks:
             else:
                 emo_vector = None
 
+            duration_seconds = _normalize_duration_seconds(duration_seconds_value)
+
             tts.infer(
                 spk_audio_prompt=prompt,
                 text=text,
@@ -881,6 +912,7 @@ def create_demo() -> gr.Blocks:
                 use_random=emo_random_value,
                 verbose=cmd_args.verbose,
                 max_text_tokens_per_sentence=int(max_text_tokens_per_sentence_value),
+                duration_seconds=duration_seconds,
                 **generation_kwargs,
             )
 
@@ -1201,7 +1233,7 @@ def create_demo() -> gr.Blocks:
             _update_progress(progress, 1.0, desc="Dataset load complete")
             return updated_rows, next_id, gr.update(value=dataset_path), table_update, dropdown_update, prompt_update, output_update, text_update, status_update
 
-        def generate_all_batch(rows, selected_value, worker_count_value, emo_control_method_value, emo_ref_path, emo_weight_value, vec1_value, vec2_value, vec3_value, vec4_value, vec5_value, vec6_value, vec7_value, vec8_value, emo_text_value, emo_random_value, max_text_tokens_per_sentence_value, *advanced_param_values, progress: Optional[gr.Progress] = None):
+        def generate_all_batch(rows, selected_value, worker_count_value, emo_control_method_value, emo_ref_path, emo_weight_value, vec1_value, vec2_value, vec3_value, vec4_value, vec5_value, vec6_value, vec7_value, vec8_value, emo_text_value, emo_random_value, max_text_tokens_per_sentence_value, duration_seconds_value, *advanced_param_values, progress: Optional[gr.Progress] = None):
             rows = rows or []
             if not rows:
                 gr.Warning("Add prompt audio files before generating.")
@@ -1229,6 +1261,10 @@ def create_demo() -> gr.Blocks:
                 max_tokens = int(max_text_tokens_per_sentence_value)
             except (TypeError, ValueError):
                 max_tokens = 120
+
+            duration_seconds = _normalize_duration_seconds(duration_seconds_value)
+
+            duration_seconds = _normalize_duration_seconds(duration_seconds_value)
 
             adv_values = list(advanced_param_values)
             expected_len = len(advanced_params)
@@ -1273,6 +1309,7 @@ def create_demo() -> gr.Blocks:
                         max_tokens=max_tokens,
                         generation_kwargs=dict(base_generation_kwargs),
                         verbose=cmd_args.verbose,
+                        duration_seconds=duration_seconds,
                     )
                 )
 
@@ -1307,7 +1344,7 @@ def create_demo() -> gr.Blocks:
             status_update = format_batch_status(selected_row, "Parallel generation finished.")
             return final_rows, table_update, dropdown_update, prompt_update, output_update, text_update, status_update
 
-        def regenerate_batch_entry(rows, selected_value, worker_count_value, emo_control_method_value, emo_ref_path, emo_weight_value, vec1_value, vec2_value, vec3_value, vec4_value, vec5_value, vec6_value, vec7_value, vec8_value, emo_text_value, emo_random_value, max_text_tokens_per_sentence_value, *advanced_param_values, progress: Optional[gr.Progress] = None):
+        def regenerate_batch_entry(rows, selected_value, worker_count_value, emo_control_method_value, emo_ref_path, emo_weight_value, vec1_value, vec2_value, vec3_value, vec4_value, vec5_value, vec6_value, vec7_value, vec8_value, emo_text_value, emo_random_value, max_text_tokens_per_sentence_value, duration_seconds_value, *advanced_param_values, progress: Optional[gr.Progress] = None):
             rows = rows or []
             dropdown_update, resolved_id, prompt_update, output_update, text_update, selected_row = prepare_batch_selection(rows, selected_value)
             if not selected_row:
@@ -1371,6 +1408,7 @@ def create_demo() -> gr.Blocks:
                 max_tokens=max_tokens,
                 generation_kwargs=dict(generation_kwargs),
                 verbose=cmd_args.verbose,
+                duration_seconds=duration_seconds,
             )
 
             _update_progress(progress, 0.0, desc="Regenerating entry")
@@ -1496,6 +1534,7 @@ def create_demo() -> gr.Blocks:
                 emo_text,
                 emo_random,
                 max_text_tokens_per_sentence,
+                duration_seconds_input,
                 *advanced_params,
             ],
             outputs=[output_audio],
@@ -1546,6 +1585,7 @@ def create_demo() -> gr.Blocks:
                 emo_text,
                 emo_random,
                 max_text_tokens_per_sentence,
+                duration_seconds_input,
                 *advanced_params,
             ],
             outputs=[batch_rows_state, batch_table, selected_entry, batch_prompt_player, batch_output_player, batch_text_input, batch_status],
@@ -1571,6 +1611,7 @@ def create_demo() -> gr.Blocks:
                 emo_text,
                 emo_random,
                 max_text_tokens_per_sentence,
+                duration_seconds_input,
                 *advanced_params,
             ],
             outputs=[batch_rows_state, batch_table, selected_entry, batch_prompt_player, batch_output_player, batch_text_input, batch_status],

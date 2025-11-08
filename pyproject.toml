@@ -34,6 +34,7 @@ dependencies = [
   "descript-audiotools==0.7.2",
   "einops>=0.8.1",
   "ffmpeg-python==0.2.0",
+  "flash-attn",
   "g2p-en==2.1.0",
   "gradio>=5.45.0",
   "jieba==0.42.1",
@@ -59,6 +60,7 @@ dependencies = [
   "tqdm>=4.67.1",
   "transformers==4.52.1",
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
+  "triton-windows<3.5",
   "wetext>=0.0.9; sys_platform != 'linux'",
   "WeTextProcessing; sys_platform == 'linux'",
 ]
@@ -115,6 +117,7 @@ torchaudio = [
 torchvision = [
   { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
 ]
+flash-attn = { path = "flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp310-cp310-win_amd64.whl" }
 
 
 [[tool.uv.index]]

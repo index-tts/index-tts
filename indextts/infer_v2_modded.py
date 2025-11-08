@@ -103,9 +103,14 @@ class IndexTTS2:
             self,
             cfg_path="checkpoints/config.yaml",
             model_dir="checkpoints",
-            is_fp16=False,
-            device=None,
-            use_cuda_kernel=None,
+            is_fp16: bool = False,
+            *,
+            use_fp16: Optional[bool] = None,
+            device: Optional[str] = None,
+            use_cuda_kernel: Optional[bool] = None,
+            use_deepspeed: Optional[bool] = None,
+            use_accel: bool = False,
+            use_torch_compile: bool = False,
             gpt_checkpoint_path: Optional[str] = None,
             bpe_model_path: Optional[str] = None,
     ):
@@ -113,18 +118,27 @@ class IndexTTS2:
         Args:
             cfg_path (str): path to the config file.
             model_dir (str): path to the model directory.
-            is_fp16 (bool): whether to use fp16.
-            device (str): device to use (e.g., 'cuda:0', 'cpu'). If None, it will be set automatically based on the availability of CUDA or MPS.
+            is_fp16 (bool): legacy alias for `use_fp16`.
+            use_fp16 (Optional[bool]): whether to run GPT in fp16 when the device supports it.
+            device (str): device to use (e.g., 'cuda:0', 'cpu'). If None, it will be set automatically based on the availability of CUDA/MPS/XPU.
             use_cuda_kernel (None | bool): whether to use BigVGan custom fused activation CUDA kernel, only for CUDA device.
+            use_deepspeed (Optional[bool]): explicitly enable/disable DeepSpeed (falls back to INDEXTTS_USE_DEEPSPEED when None).
+            use_accel (bool): whether to enable the custom GPT acceleration engine.
+            use_torch_compile (bool): toggle torch.compile optimizations for the S2Mel stack.
         """
+        fp16_requested = use_fp16 if use_fp16 is not None else is_fp16
         if device is not None:
             self.device = device
-            self.is_fp16 = False if device == "cpu" else is_fp16
-            self.use_cuda_kernel = use_cuda_kernel is not None and use_cuda_kernel and device.startswith("cuda")
+            self.is_fp16 = bool(fp16_requested) if device != "cpu" else False
+            self.use_cuda_kernel = bool(use_cuda_kernel) if use_cuda_kernel is not None else device.startswith("cuda")
         elif torch.cuda.is_available():
             self.device = "cuda:0"
-            self.is_fp16 = is_fp16
-            self.use_cuda_kernel = use_cuda_kernel is None or use_cuda_kernel
+            self.is_fp16 = bool(fp16_requested)
+            self.use_cuda_kernel = True if use_cuda_kernel is None else bool(use_cuda_kernel)
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            self.device = "xpu"
+            self.is_fp16 = bool(fp16_requested)
+            self.use_cuda_kernel = False
         elif hasattr(torch, "mps") and torch.backends.mps.is_available():
             self.device = "mps"
             self.is_fp16 = False  # Use float16 on MPS is overhead than float32
@@ -139,8 +153,14 @@ class IndexTTS2:
         self.model_dir = model_dir
         self.dtype = torch.float16 if self.is_fp16 else None
         self.stop_mel_token = self.cfg.gpt.stop_mel_token
+        self.use_accel = use_accel
+        self.use_torch_compile = use_torch_compile
 
         self.qwen_emo = QwenEmotion(os.path.join(self.model_dir, self.cfg.qwen_emo_path))
+
+        dataset_sr = float(OmegaConf.select(self.cfg, "dataset.sample_rate", default=24000))
+        mel_comp = float(OmegaConf.select(self.cfg, "gpt.mel_length_compression", default=1024))
+        self.tokens_per_second = dataset_sr / mel_comp if mel_comp > 0 else None
 
         if gpt_checkpoint_path is not None:
             self.gpt_path = os.path.abspath(gpt_checkpoint_path)
@@ -159,7 +179,7 @@ class IndexTTS2:
                 )
                 self.cfg.gpt.number_text_tokens = vocab_from_checkpoint
 
-        self.gpt = UnifiedVoice(**self.cfg.gpt)
+        self.gpt = UnifiedVoice(**self.cfg.gpt, use_accel=self.use_accel)
         self._load_gpt_weights(self.gpt, gpt_state)
         self.gpt = self.gpt.to(self.device)
         if self.is_fp16:
@@ -168,7 +188,10 @@ class IndexTTS2:
             self.gpt.eval()
         print(">> GPT weights restored from:", self.gpt_path)
 
-        use_deepspeed = os.environ.get("INDEXTTS_USE_DEEPSPEED", "1") != "0"
+        if use_deepspeed is None:
+            use_deepspeed = os.environ.get("INDEXTTS_USE_DEEPSPEED", "1") != "0"
+        else:
+            os.environ["INDEXTTS_USE_DEEPSPEED"] = "1" if use_deepspeed else "0"
         if use_deepspeed:
             try:
                 import deepspeed
@@ -218,6 +241,10 @@ class IndexTTS2:
         )
         self.s2mel = s2mel.to(self.device)
         self.s2mel.models['cfm'].estimator.setup_caches(max_batch_size=1, max_seq_length=8192)
+        if self.use_torch_compile:
+            print(">> Enabling torch.compile optimization")
+            self.s2mel.enable_torch_compile()
+            print(">> torch.compile optimization enabled successfully")
         self.s2mel.eval()
         print(">> s2mel weights restored from:", s2mel_path)
 
@@ -385,6 +412,7 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
+              duration_seconds=None,
               verbose=False, max_text_tokens_per_sentence=120, **generation_kwargs):
         print(">> start inference...")
         self._set_gr_progress(0, "start inference...")
@@ -511,7 +539,29 @@ class IndexTTS2:
         bigvgan_time = 0
         progress = 0
         has_warned = False
-        for sent in sentences:
+        duration_plan = None
+        target_duration_tokens = None
+        if duration_seconds is not None:
+            if duration_seconds > 0 and self.tokens_per_second:
+                est_tokens = int(duration_seconds * self.tokens_per_second)
+                max_len = getattr(self.gpt, "max_mel_tokens", None)
+                if max_len:
+                    est_tokens = min(est_tokens, max_len - 1)
+                target_duration_tokens = max(1, est_tokens)
+        if target_duration_tokens is not None and sentences:
+            per_sentence = max(1, target_duration_tokens // len(sentences))
+            duration_plan = [per_sentence for _ in sentences]
+            remainder = target_duration_tokens - per_sentence * len(sentences)
+            idx = 0
+            while remainder > 0 and duration_plan:
+                duration_plan[idx % len(duration_plan)] += 1
+                remainder -= 1
+                idx += 1
+            max_len = getattr(self.gpt, "max_mel_tokens", None)
+            if max_len:
+                duration_plan = [min(t, max_len - 1) for t in duration_plan]
+
+        for idx_sent, sent in enumerate(sentences):
             text_tokens = self.tokenizer.convert_tokens_to_ids(sent)
             text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=self.device).unsqueeze(0)
             if verbose:
@@ -536,6 +586,9 @@ class IndexTTS2:
                         emovec = emovec_mat + (1 - torch.sum(weight_vector)) * emovec
                         # emovec = emovec_mat
 
+                    sentence_duration_tokens = None
+                    if duration_plan:
+                        sentence_duration_tokens = duration_plan[min(idx_sent, len(duration_plan) - 1)]
                     codes, speech_conditioning_latent = self.gpt.inference_speech(
                         spk_cond_emb,
                         text_tokens,
@@ -552,6 +605,7 @@ class IndexTTS2:
                         num_beams=num_beams,
                         repetition_penalty=repetition_penalty,
                         max_generate_length=max_mel_tokens,
+                        target_duration_tokens=sentence_duration_tokens,
                         **generation_kwargs
                     )
 
@@ -616,17 +670,69 @@ class IndexTTS2:
                     S_infer = S_infer + latent
                     target_lengths = (code_lens * 1.72).long()
 
-                    cond = self.s2mel.models['length_regulator'](S_infer,
-                                                                 ylens=target_lengths,
-                                                                 n_quantizers=3,
-                                                                 f0=None)[0]
-                    cat_condition = torch.cat([prompt_condition, cond], dim=1)
-                    vc_target = self.s2mel.models['cfm'].inference(cat_condition,
-                                                                   torch.LongTensor([cat_condition.size(1)]).to(
-                                                                       cond.device),
-                                                                   ref_mel, style, None, diffusion_steps,
-                                                                   inference_cfg_rate=inference_cfg_rate)
-                    vc_target = vc_target[:, :, ref_mel.size(-1):]
+                    cond = self.s2mel.models['length_regulator'](
+                        S_infer,
+                        ylens=target_lengths,
+                        n_quantizers=3,
+                        f0=None,
+                    )[0]
+                    prompt_condition_batch = prompt_condition
+                    if prompt_condition_batch.size(0) != cond.size(0):
+                        if prompt_condition_batch.size(0) == 1:
+                            prompt_condition_batch = prompt_condition_batch.repeat(cond.size(0), 1, 1)
+                        elif cond.size(0) == 1:
+                            cond = cond.repeat(prompt_condition_batch.size(0), 1, 1)
+                        else:
+                            min_batch = min(prompt_condition_batch.size(0), cond.size(0))
+                            print(
+                                f">> Warning: cond batch {cond.size(0)} mismatch with prompt {prompt_condition_batch.size(0)}; "
+                                f"truncating to {min_batch}",
+                                flush=True,
+                            )
+                            prompt_condition_batch = prompt_condition_batch[:min_batch]
+                            cond = cond[:min_batch]
+                    if cond.size(0) > 1:
+                        print(
+                            f">> Warning: cond batch {cond.size(0)} exceeds 1; truncating to the first sample "
+                            "to satisfy CFM solver assumptions.",
+                            flush=True,
+                        )
+                        cond = cond[:1]
+                        prompt_condition_batch = prompt_condition_batch[:1]
+                    cat_condition = torch.cat([prompt_condition_batch, cond], dim=1)
+
+                    style_batch = style
+                    if style_batch.dim() == 1:
+                        style_batch = style_batch.unsqueeze(0)
+                    if style_batch.size(0) != cat_condition.size(0):
+                        if style_batch.size(0) == 1:
+                            style_batch = style_batch.repeat(cat_condition.size(0), 1)
+                        else:
+                            style_batch = style_batch[:cat_condition.size(0)]
+
+                    ref_mel_batch = ref_mel
+                    if ref_mel_batch.size(0) != cat_condition.size(0):
+                        if ref_mel_batch.size(0) == 1:
+                            ref_mel_batch = ref_mel_batch.repeat(cat_condition.size(0), 1, 1)
+                        else:
+                            ref_mel_batch = ref_mel_batch[:cat_condition.size(0)]
+
+                    mel_lengths = torch.full(
+                        (cat_condition.size(0),),
+                        cat_condition.size(1),
+                        dtype=torch.long,
+                        device=cond.device,
+                    )
+                    vc_target = self.s2mel.models['cfm'].inference(
+                        cat_condition,
+                        mel_lengths,
+                        ref_mel_batch,
+                        style_batch,
+                        None,
+                        diffusion_steps,
+                        inference_cfg_rate=inference_cfg_rate,
+                    )
+                    vc_target = vc_target[:, :, ref_mel_batch.size(-1):]
                     s2mel_time += time.perf_counter() - m_start_time
 
                     m_start_time = time.perf_counter()
