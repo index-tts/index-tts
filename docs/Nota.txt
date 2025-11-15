@@ -1,0 +1,93 @@
+
+#======== [ index-tts ] ==========
+# Link Tuto SEUTP : https://youtu.be/puPqhv52_3Y?t=1299
+# Link index-tts GitHub : https://github.com/index-tts/index-tts?tab=readme-ov-file
+
+# startup setup install requirements
+pip install uv
+uv sync --all-extras
+
+# show index-tts parameters "help"
+uv run webui.py -h
+
+# run index-tts
+uv run webui.py
+
+# run index-tts with parammeters port and host
+uv run webui.py --port 7860 -host 127.0.0.1
+
+# To create a public link, set `share=True` in `launch()`.
+
+# index-tts server url
+http://127.0.0.1:7860
+#================================
+
+
+#==== [ index-tts --help ] ======
+usage: webui.py [-h] [--verbose] [--port PORT] [--host HOST] [--model_dir MODEL_DIR] [--fp16] [--deepspeed] [--cuda_kernel] [--gui_seg_tokens GUI_SEG_TOKENS]
+
+IndexTTS WebUI
+
+options:
+  -h, --help            show this help message and exit
+  --verbose             Enable verbose mode (default: False)
+  --port PORT           Port to run the web UI on (default: 7860)
+  --host HOST           Host to run the web UI on (default: 0.0.0.0)
+  --model_dir MODEL_DIR
+                        Model checkpoints directory (default: ./checkpoints)
+  --fp16                Use FP16 for inference if available (default: False)
+  --deepspeed           Use DeepSpeed to accelerate if available (default: False)
+  --cuda_kernel         Use CUDA kernel for inference if available (default: False)
+  --gui_seg_tokens GUI_SEG_TOKENS
+                        GUI: Max tokens per generation segment (default: 120)
+#====================================
+
+
+#======== [ API ] ==========
+# API startup setup install requirements "you need to setup first index-tts"
+uv pip install flask flask_restx fastapi uvicorn
+
+# Run the API
+uv run tts_api.py
+
+# API Documentation URL
+http://127.0.0.1:5000/docs
+
+# API Endpoint URL
+http://127.0.0.1:5000/generate-audio-file
+#===========================
+
+
+#======== [ API TEST FROM CLIENT - Using curl ] ==========
+curl -X POST http://127.0.0.1:5000/generate-audio-file \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, this is an example of text to generate audio using IndexTTS.",
+    "audio_prompt": "voice_01.wav"
+  }'
+# ========================================================
+
+
+#======== [ API TEST FROM CLIENT - Using Postman ] ==========
+# POST to "http://127.0.0.1:5000/generate-audio-file"
+# in the HEADERS add : "Content-Type: application/json"
+# in the Body raw JSon add :
+{
+  "text": "Hello, this is an example of text to generate audio using IndexTTS.",
+  "audio_prompt": "voice_01.wav"
+}
+
+The result is a Hex "you can Preview and play the audio in Postman result body".
+# ===========================================================
+
+
+#======== [ API TEST FROM CLIENT - Using python ] ==========
+curl -X POST http://127.0.0.1:5000/generate-audio-file \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, this is an example of text to generate audio using IndexTTS.",
+    "audio_prompt": "voice_01.wav"
+  }'
+# ========================================================
+
+
