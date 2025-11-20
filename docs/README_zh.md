@@ -204,6 +204,12 @@ modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 > ```bash
 > export HF_ENDPOINT="https://hf-mirror.com"
 > ```
+> Windows 环境中使用如下命令：
+> ```bash
+> # CMD
+> set HF_ENDPOINT=https://hf-mirror.com
+> # PowerShell
+> $env:HF_ENDPOINT = "https://hf-mirror.com"
 
 #### 🖥️ PyTorch GPU 加速检测
 
