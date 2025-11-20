@@ -167,11 +167,17 @@ class IndexTTS2:
         print(">> bigvgan weights restored from:", bigvgan_name)
 
         self.bpe_path = os.path.join(self.model_dir, self.cfg.dataset["bpe_model"])
-        self.normalizer = TextNormalizer()
+        self.normalizer = TextNormalizer(enable_glossary=True)
         self.normalizer.load()
         print(">> TextNormalizer loaded")
         self.tokenizer = TextTokenizer(self.bpe_path, self.normalizer)
         print(">> bpe model loaded from:", self.bpe_path)
+
+        # 加载术语词汇表（如果存在）
+        self.glossary_path = os.path.join(self.model_dir, "glossary.yaml")
+        if os.path.exists(self.glossary_path):
+            self.normalizer.load_glossary_from_yaml(self.glossary_path)
+            print(">> Glossary loaded from:", self.glossary_path)
 
         emo_matrix = torch.load(os.path.join(self.model_dir, self.cfg.emo_matrix))
         self.emo_matrix = emo_matrix.to(self.device)
