@@ -317,6 +317,13 @@ class IndexTTS2:
         if self.gr_progress is not None:
             self.gr_progress(value, desc=desc)
 
+    def _empty_device_cache(self):
+        # Clear accelerator-specific caches without assuming CUDA only
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(torch, "mps") and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
     def _load_and_cut_audio(self,audio_path,max_audio_length_seconds,verbose=False,sr=None):
         if not sr:
             audio, sr = librosa.load(audio_path)
@@ -425,7 +432,7 @@ class IndexTTS2:
                 self.cache_s2mel_style = None
                 self.cache_s2mel_prompt = None
                 self.cache_mel = None
-                torch.cuda.empty_cache()
+                self._empty_device_cache()
             audio,sr = self._load_and_cut_audio(spk_audio_prompt,15,verbose)
             audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
             audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
@@ -479,7 +486,7 @@ class IndexTTS2:
         if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
             if self.cache_emo_cond is not None:
                 self.cache_emo_cond = None
-                torch.cuda.empty_cache()
+                self._empty_device_cache()
             emo_audio, _ = self._load_and_cut_audio(emo_audio_prompt,15,verbose,sr=16000)
             emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
             emo_input_features = emo_inputs["input_features"]
