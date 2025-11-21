@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import torch
 
 import warnings
 
@@ -53,11 +54,22 @@ from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
+
+# Prefer MPS on Apple Silicon; otherwise use CUDA if available
+use_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+use_cuda = torch.cuda.is_available() and not use_mps
+device = "mps" if use_mps else None
+
+# Disable fp16 / CUDA-only kernels on non-CUDA devices
+use_fp16 = bool(cmd_args.fp16 and use_cuda)
+use_cuda_kernel = bool(cmd_args.cuda_kernel and use_cuda)
+
 tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
-                use_fp16=cmd_args.fp16,
+                use_fp16=use_fp16,
                 use_deepspeed=cmd_args.deepspeed,
-                use_cuda_kernel=cmd_args.cuda_kernel,
+                use_cuda_kernel=use_cuda_kernel,
+                device=device,
                 )
 # 支持的语言列表
 LANGUAGES = {
