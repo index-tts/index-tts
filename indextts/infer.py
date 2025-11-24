@@ -279,6 +279,25 @@ class IndexTTS:
         if self.gr_progress is not None:
             self.gr_progress(value, desc=desc)
 
+    def fade_in_out(self, wav, fade_len=240):
+        """
+        Apply fade-in and fade-out to the waveform to avoid clicks.
+        wav: [C, T]
+        fade_len: number of samples for fade
+        """
+        if wav.size(-1) < 2 * fade_len:
+            fade_len = wav.size(-1) // 2
+
+        if fade_len == 0:
+            return wav
+
+        fade_in = torch.linspace(0, 1, fade_len, device=wav.device)
+        fade_out = torch.linspace(1, 0, fade_len, device=wav.device)
+
+        wav[..., :fade_len] *= fade_in
+        wav[..., -fade_len:] *= fade_out
+        return wav
+
     # 快速推理：对于“多句长文本”，可实现至少 2~10 倍以上的速度提升~ （First modified by sunnyboxs 2025-04-16）
     def infer_fast(self, audio_prompt, text, output_path, verbose=False, max_text_tokens_per_segment=100,
                    segments_bucket_max_size=4, **generation_kwargs):
@@ -478,6 +497,7 @@ class IndexTTS:
                     wav = wav.squeeze(1)
                     pass
             wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
+            wav = self.fade_in_out(wav)
             wavs.append(wav.cpu())  # to cpu before saving
 
         # clear cache
@@ -650,6 +670,8 @@ class IndexTTS:
                 wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
                 if verbose:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
+                    # Apply fade in/out
+                wav = self.fade_in_out(wav)
                 # wavs.append(wav[:, :-512])
                 wavs.append(wav.cpu())  # to cpu before saving
         end_time = time.perf_counter()
