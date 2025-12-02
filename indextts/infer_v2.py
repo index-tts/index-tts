@@ -296,6 +296,25 @@ class IndexTTS2:
         sil_dur = int(sampling_rate * interval_silence / 1000.0)
         return torch.zeros(channel_size, sil_dur)
 
+    def fade_in_out(self, wav, fade_len=240):
+        """
+        Apply fade-in and fade-out to the waveform to avoid clicks.
+        wav: [C, T]
+        fade_len: number of samples for fade
+        """
+        if wav.size(-1) < 2 * fade_len:
+            fade_len = wav.size(-1) // 2
+
+        if fade_len == 0:
+            return wav
+
+        fade_in = torch.linspace(0, 1, fade_len, device=wav.device)
+        fade_out = torch.linspace(1, 0, fade_len, device=wav.device)
+
+        wav[..., :fade_len] *= fade_in
+        wav[..., -fade_len:] *= fade_out
+        return wav
+
     def insert_interval_silence(self, wavs, sampling_rate=22050, interval_silence=200):
         """
         Insert silences between generated segments.
@@ -313,6 +332,7 @@ class IndexTTS2:
 
         wavs_list = []
         for i, wav in enumerate(wavs):
+            wav = self.fade_in_out(wav)
             wavs_list.append(wav)
             if i < len(wavs) - 1:
                 wavs_list.append(sil_tensor)
