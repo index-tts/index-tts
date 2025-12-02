@@ -1,0 +1,5 @@
+uv
+flask
+flask_restx
+fastapi
+uvicorn
