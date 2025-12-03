@@ -358,32 +358,47 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False,
+              more_segment_before=0, return_segments=False, **generation_kwargs):
+        if stream_return and return_segments:
+            raise ValueError("return_segments is not supported when stream_return=True")
+
         if stream_return:
             return self.infer_generator(
                 spk_audio_prompt, text, output_path,
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
                 use_emo_text, emo_text, use_random, interval_silence,
-                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+                verbose=verbose,
+                max_text_tokens_per_segment=max_text_tokens_per_segment,
+                stream_return=stream_return,
+                quick_streaming_tokens=more_segment_before,
+                return_segments=return_segments,
+                **generation_kwargs,
             )
-        else:
-            try:
-                return list(self.infer_generator(
-                    spk_audio_prompt, text, output_path,
-                    emo_audio_prompt, emo_alpha,
-                    emo_vector,
-                    use_emo_text, emo_text, use_random, interval_silence,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
-                ))[0]
-            except IndexError:
-                return None
+
+        try:
+            return list(self.infer_generator(
+                spk_audio_prompt, text, output_path,
+                emo_audio_prompt, emo_alpha,
+                emo_vector,
+                use_emo_text, emo_text, use_random, interval_silence,
+                verbose=verbose,
+                max_text_tokens_per_segment=max_text_tokens_per_segment,
+                stream_return=stream_return,
+                quick_streaming_tokens=more_segment_before,
+                return_segments=return_segments,
+                **generation_kwargs,
+            ))[0]
+        except IndexError:
+            return None
 
     def infer_generator(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False,
+              quick_streaming_tokens=0, return_segments=False, **generation_kwargs):
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
         if verbose:
@@ -527,6 +542,7 @@ class IndexTTS2:
         sampling_rate = 22050
 
         wavs = []
+        segments_metadata = [] if return_segments else None
         gpt_gen_time = 0
         gpt_forward_time = 0
         s2mel_time = 0
@@ -545,6 +561,8 @@ class IndexTTS2:
                 # debug tokenizer
                 text_token_syms = self.tokenizer.convert_ids_to_tokens(text_tokens[0].tolist())
                 print("text_token_syms is same as segment tokens", text_token_syms == sent)
+            segment_token_ids = text_tokens.squeeze(0).tolist()
+            segment_text = self.tokenizer.decode(segment_token_ids).strip()
 
             m_start_time = time.perf_counter()
             with torch.no_grad():
@@ -665,11 +683,24 @@ class IndexTTS2:
                 if verbose:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
                 # wavs.append(wav[:, :-512])
-                wavs.append(wav.cpu())  # to cpu before saving
+                wav_cpu = wav.cpu()
+                wavs.append(wav_cpu)  # to cpu before saving
+
+                if segments_metadata is not None:
+                    segments_metadata.append({
+                        "index": seg_idx,
+                        "token_count": len(sent),
+                        "token_ids": segment_token_ids,
+                        "text": segment_text,
+                        "sample_count": int(wav.shape[-1]),
+                    })
+
                 if stream_return:
-                    yield wav.cpu()
-                    if silence == None:
-                        silence = self.interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
+                    yield wav_cpu
+                    if silence is None:
+                        silence = self.interval_silence(
+                            wavs, sampling_rate=sampling_rate, interval_silence=interval_silence
+                        )
                     yield silence
         end_time = time.perf_counter()
 
@@ -687,6 +718,7 @@ class IndexTTS2:
 
         # save audio
         wav = wav.cpu()  # to cpu
+        result = None
         if output_path:
             # 直接保存音频到指定路径中
             if os.path.isfile(output_path):
@@ -696,16 +728,45 @@ class IndexTTS2:
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
             torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
             print(">> wav file saved to:", output_path)
-            if stream_return:
-                return None
-            yield output_path
+            result = output_path
         else:
-            if stream_return:
-                return None
             # 返回以符合Gradio的格式要求
             wav_data = wav.type(torch.int16)
             wav_data = wav_data.numpy().T
-            yield (sampling_rate, wav_data)
+            result = (sampling_rate, wav_data)
+
+        if stream_return:
+            return None
+
+        if return_segments and segments_metadata is not None:
+            silence_samples = 0
+            if interval_silence and interval_silence > 0:
+                silence_samples = int(round(sampling_rate * interval_silence / 1000.0))
+
+            segments_with_timing = []
+            cumulative_samples = 0
+            for meta in segments_metadata:
+                start_samples = cumulative_samples
+                end_samples = start_samples + meta["sample_count"]
+                segments_with_timing.append({
+                    "index": meta["index"],
+                    "token_count": meta["token_count"],
+                    "text": meta["text"],
+                    "start": start_samples / sampling_rate,
+                    "end": end_samples / sampling_rate,
+                    "duration": meta["sample_count"] / sampling_rate,
+                })
+                cumulative_samples = end_samples + silence_samples
+
+            metadata = {
+                "segments": segments_with_timing,
+                "sampling_rate": sampling_rate,
+                "interval_silence_ms": interval_silence,
+                "silence_samples": silence_samples,
+            }
+            result = (result, metadata)
+
+        yield result
 
 
 def find_most_similar_cosine(query_vector, matrix):
