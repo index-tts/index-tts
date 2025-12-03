@@ -368,16 +368,13 @@ class IndexTTS2:
                 verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
             )
         else:
-            try:
-                return list(self.infer_generator(
-                    spk_audio_prompt, text, output_path,
-                    emo_audio_prompt, emo_alpha,
-                    emo_vector,
-                    use_emo_text, emo_text, use_random, interval_silence,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
-                ))[0]
-            except IndexError:
-                return None
+            return next(self.infer_generator(
+                spk_audio_prompt, text, output_path,
+                emo_audio_prompt, emo_alpha,
+                emo_vector,
+                use_emo_text, emo_text, use_random, interval_silence,
+                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+            ), None)
 
     def infer_generator(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
