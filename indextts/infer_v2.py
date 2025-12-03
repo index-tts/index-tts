@@ -2,6 +2,7 @@ import os
 from subprocess import CalledProcessError
 
 os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+import io
 import json
 import re
 import time
@@ -433,6 +434,8 @@ class IndexTTS2:
                 self.cache_mel = None
                 torch.cuda.empty_cache()
             audio,sr = self._load_and_cut_audio(spk_audio_prompt,15,verbose)
+            if isinstance(spk_audio_prompt, io.BytesIO):
+                spk_audio_prompt.seek(0)
             audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
             audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
 
