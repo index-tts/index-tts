@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import opencc
 
 import warnings
 
@@ -133,6 +134,10 @@ def gen_single(emo_control_method,prompt, text,
     output_path = None
     if not output_path:
         output_path = os.path.join("outputs", f"spk_{int(time.time())}.wav")
+    cc = opencc.OpenCC('t2s')
+    converted_text = cc.convert(text)
+    if text != converted_text:
+        text = converted_text
     # set gradio progress
     tts.gr_progress = progress
     do_sample, top_p, top_k, temperature, \
