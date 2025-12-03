@@ -524,6 +524,7 @@ class IndexTTS2:
         num_beams = generation_kwargs.pop("num_beams", 3)
         repetition_penalty = generation_kwargs.pop("repetition_penalty", 10.0)
         max_mel_tokens = generation_kwargs.pop("max_mel_tokens", 1500)
+        speech_length = int(generation_kwargs.pop("speech_length", 0))
         sampling_rate = 22050
 
         wavs = []
@@ -640,7 +641,25 @@ class IndexTTS2:
                     S_infer = self.semantic_codec.quantizer.vq2emb(codes.unsqueeze(1))
                     S_infer = S_infer.transpose(1, 2)
                     S_infer = S_infer + latent
-                    target_lengths = (code_lens * 1.72).long()
+                    base_target_lengths = (code_lens * 1.72).long()
+                    if speech_length == 0:
+                        target_lengths = base_target_lengths
+                    else:
+                        frame_duration = 11.61 # mel token duration ms = 256 / sampling rate * 1000
+                        len_total = len(text_tokens_list) # total token amount
+                        len_current = len(sent) # current token amount
+                        
+                        if len_total <= 0: # use default audio duration logic if something breaks
+                            target_lengths = base_target_lengths
+                            print(f"!!! Falling back to default duration logic for {seg_idx} segment")
+                        else:
+                            duration_ratio = len_current / len_total
+                            target_chunk_ms = speech_length * duration_ratio
+                            print(f">> Generating segment {seg_idx}: {duration_ratio*100:.2f}% of total audio duration ({int(target_chunk_ms)}ms)")
+                            len_tensor = torch.LongTensor([int(speech_length*duration_ratio)])
+                            len_tensor = len_tensor.to(self.device)
+                            target_lengths = torch.clamp((len_tensor/frame_duration).long(), min=1)
+
 
                     cond = self.s2mel.models['length_regulator'](S_infer,
                                                                  ylens=target_lengths,
