@@ -1,0 +1,164 @@
+name: indextts
+
+services:
+  indextts:
+    # Enforce a custom container name for easy control.
+    # NOTE: Remove if you need to launch multiple service instances on same host.
+    container_name: indextts
+
+    # Container build instructions.
+    image: localhost/indextts:latest
+    build:
+      # NOTE: We only expose the `compose.yml` directory to the build process,
+      # since the actual app is mounted at runtime as a volume, which is much faster
+      # than bundling, and allows for very quick and easy app updates/development.
+      # WARNING: Modifying the original `Containerfile` will cause Git conflicts
+      # on updates. If you need to modify the build process, please make a copy
+      # and change the path below to point at your new, custom `Containerfile`.
+      context: .
+      dockerfile: ./Containerfile
+
+    # Mount all NVIDIA GPUs (CUDA). NVIDIA's Container Toolkit must exist on host.
+    # NOTE: This is the modern CDI method for mounting host devices.
+    # SEE: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html
+    # NOTE: AMD hasn't developed any equivalent way to auto-mount their GPUs yet,
+    # so you have to manually add the AMD GPU devices below if using such GPUs.
+    # NOTE: Remove this section if you aren't using NVIDIA or AMD GPUs, or if
+    # you aren't using the modern CDI method for container device sharing.
+    devices:
+      - nvidia.com/gpu=all
+
+    # Configuration for legacy, non-CDI resource (device) sharing.
+    # SEE: https://docs.docker.com/compose/how-tos/gpu-support/
+    # NOTE: "Deploy" is only used by Docker Swarm, but the normal Docker runtime
+    # also uses its "resources" sub-key (as seen below) to detect shared devices.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # Disable SELinux since it blocks host GPU device access.
+    # NOTE: If you've configured SELinux policies to allow GPU device access,
+    # then you can remove this section to improve the container's isolation.
+    security_opt:
+      - label=disable
+
+    # Container user override.
+    # WARNING: This must match the host user's UID/GID which owns all mapped
+    # directories/volumes. You can run the `id` command on the host to check.
+    # NOTE: On most Linux distributions, the first user account is "1000:1000".
+    # NOTE: This is also important for security, since it means the container
+    # process will be restricted to user-level access on the host.
+    user: "1000:1000"
+
+    # Tell Podman to automatically run the container as the correct host user.
+    # NOTE: If this is skipped, the container will run as a completely virtual
+    # host user and won't have any permission to the host user's mapped volumes.
+    userns_mode: "keep-id"
+
+    # Host network port mappings.
+    # NOTE: The format is `[ip:]<external host port>:<internal container port>`.
+    # NOTE: The external port can be different than the internal port.
+    # NOTE: The internal port MUST match the WebUI's `WEBUI_PORT` env variable.
+    ports:
+      # Listen on all network interfaces, which allows external access.
+      - "7860:7860"
+
+      # Only listen on localhost (connections from your own computer).
+      # NOTE: Use this if you want to block external access, to improve security.
+      #- "127.0.0.1:7860:7860"
+
+    # Environment variables.
+    # NOTE: Do not quote these values, even if they contain spaces. Adding quotes
+    # would cause the quotation marks to be included in the final value.
+    environment:
+      # Container home location override.
+      # WARNING: Don't modify this! It tells the container to ignore `/etc/passwd`
+      # and use a consistent home location inside the container, so we can mount it.
+      - HOME=/app_home
+
+      # Location for uv's virtual environment. Should be placed in a mounted
+      # volume for portability.
+      # NOTE: Relative paths are always relative to the project directory (`/app`).
+      - UV_PROJECT_ENVIRONMENT=container/venv
+
+      # Optional: Verbose uv status logging (useful for troubleshooting).
+      # - RUST_LOG=uv=debug
+
+      # Optional: Alternative uv package mirror configuration.
+      # NOTE: If you experience slow downloads from the default PyPI index,
+      # you can uncomment one of the lines below (or add your own local PyPI
+      # mirror via the same format), to improve performance.
+      # - UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple
+      # - UV_DEFAULT_INDEX=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+      # Optional project dependencies.
+      # NOTE: Can be changed after installation, which will then update the uv
+      # environment after a container restart.
+      - INSTALL_WEBUI=yes
+      - INSTALL_DEEPSPEED=no
+
+      # WebUI launch parameters.
+      # NOTE: The best parameters depends on your personal GPU and system.
+      # NOTE: If you're running out of VRAM in multi-segment generations, please
+      # try `WEBUI_FP16`, and reducing the `WEBUI_SEG_TOKENS` to a lower amount.
+      # SEE: Run `uv run webui.py -h` for more information.
+      - WEBUI_PORT=7860
+      - WEBUI_FP16=no
+      - WEBUI_DEEPSPEED=no
+      - WEBUI_CUDA_KERNEL=no
+      - WEBUI_SEG_TOKENS=120
+
+    # Default command to execute on container startup.
+    #
+    # Available commands:
+    # - webui: Launches the IndexTTS WebUI.
+    # - gpu-check: A diagnostic tool to detect available hardware accelerators.
+    # - shell: Starts an interactive shell inside the container. To use it,
+    #   run `docker attach indextts` in another terminal.
+    # - update: Updates the application to the latest version of the code via Git.
+    # - your own command: You can even run your own custom commands or scripts,
+    #   such as `uv run your_app.py`.
+    #
+    # NOTE: You can also run alternative commands without editing these defaults,
+    # by executing `docker compose run --service-ports indextts <command>`.
+    command: webui
+
+    # Mount the application's source code for live development and rapid iteration.
+    # NOTE: Always mount with `:z` to use the "shared container data" SELinux context.
+    # WARNING: Don't edit the volumes unless you know exactly what you're doing.
+    # WARNING: Their ownership MUST match the `user:` instruction in this file.
+    volumes:
+      # Bind the application's workspace directory.
+      # NOTE: This makes deployment extremely fast, since app updates/development
+      # can be performed without having to rebuild the container whatsoever.
+      - ../:/app:z
+
+      # Always bind the newest version of the entrypoint scripts, so that even
+      # outdated container builds will always have fully updated launch scripts.
+      # NOTE: We only include `actions/`, not the small bootstrap `entrypoint.sh`,
+      # since that would break on Windows due to NTFS losing the executable bit.
+      - ./scripts/actions:/opt/scripts/actions:z
+
+      # Change HOME directory seen by the code, to preserve caches and configurations
+      # between runs, while ensuring it's stored on the same disk as Containerfile.
+      # NOTE: This is better than configuring third-party envs such as `UV_CACHE_DIR`,
+      # because there's a *lot* of them, we would certainly miss some, some tools
+      # force `$HOME/.something`, and their env names may even change in the future.
+      # WARNING: The target location MUST match the `HOME` environment above.
+      - ./home:/app_home:z
+
+    # Keep the standard input stream open and enable a pseudo-TTY output, so that
+    # we can attach to a running, daemonized container anytime to view its current
+    # status or open an interactive shell.
+    stdin_open: true
+    tty: true
+
+    # We must disable automatic container restarts, to avoid infinite startup
+    # loops whenever there is a problem with the user's configuration.
+    # NOTE: Feel free to change this after you have a stable configuration.
+    # SEE: https://docs.docker.com/reference/cli/docker/container/run/#restart
+    restart: no

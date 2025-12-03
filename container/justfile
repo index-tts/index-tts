@@ -1,0 +1,44 @@
+# Provides some convenient commands if "just" is installed.
+# SEE: https://github.com/casey/just
+
+
+# Search for Podman or Docker. If neither are found, this command will terminate.
+CONTAINER_ENGINE := `which podman 2>/dev/null || which docker`
+
+
+# Show all available commands.
+help:
+    @just --list
+
+
+# Start as a background service.
+start:
+    "{{CONTAINER_ENGINE}}" compose up -d
+
+
+# Start in the foreground, or automatically attach to current background service.
+start-foreground:
+    "{{CONTAINER_ENGINE}}" compose up
+
+
+# Stop the current service container.
+stop:
+    "{{CONTAINER_ENGINE}}" compose down
+
+
+# Force a manual rebuild of the service container image.
+build:
+    "{{CONTAINER_ENGINE}}" compose build
+
+
+# Update NVIDIA's CDI (Container Device Interface) specifications on the host.
+update-nvidia-cdi:
+    # You must install and configure NVIDIA's Container Toolkit for your container runtime first:
+    # SEE: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+    # SEE: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html
+    # NOTE: Updating is necessary after every NVIDIA driver update or GPU replacement.
+    @echo -e "\nGenerating CDI (Container Device Interface) specifications:"
+    sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+
+    @echo -e "\nChecking names of generated devices:"
+    nvidia-ctk cdi list

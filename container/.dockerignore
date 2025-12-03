@@ -1,0 +1,7 @@
+# IMPORTANT: ".containerignore" is not implemented by Docker yet,
+# but Podman supports ".dockerignore" files, so we use that name.
+
+# Don't send the active container's data to the build context.
+# NOTE: Paths are relative to the build context root.
+home*
+venv*
