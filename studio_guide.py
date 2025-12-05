@@ -4,7 +4,7 @@ This guide explains how to fine-tune the audio generation to get the best result
 #### 1. Text & Pre-processing (Input)
 
 *   **Convert Numbers (🧮)**:
-    *   Converts digits into words (e.g., "1998" $\\rightarrow$ "nineteen ninety-eight").
+    *   Converts digits into words (e.g., "1998" -> "nineteen ninety-eight").
     *   *Recommended:* **Enabled**. If disabled, the model might ignore or mispronounce raw numbers.
 
 *   **Split by (.!?) (✂️)**:
