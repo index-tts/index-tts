@@ -29,3 +29,6 @@ desktop.ini
 /checkpoints/*
 !/checkpoints/*.yaml
 /outputs/
+/voices/
+glossary.yaml
+presets.json
