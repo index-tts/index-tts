@@ -13,6 +13,8 @@ import tempfile
 import yaml
 import torch
 
+STUDIO_VERSION = "1.2"
+
 try:
     import librosa
     import soundfile as sf
@@ -130,7 +132,7 @@ except Exception as e:
 
 print(">> Loading libraries...")
 import gradio as gr
-from indextts.infer_studio import IndexTTS2
+from indextts.new_infer import IndexTTS2
 
 try:
     from studio_guide import GUIDE_MD
@@ -188,6 +190,7 @@ def ensure_assets_exist():
                 img = Image.new("RGB", (512, 512), color="#2563eb")
                 img.save(DEFAULT_ICON_PATH)
         except Exception as e:
+            print(f"Warning: Could not create default icon: {e}")
             print(f"Warning: Could not create default icon: {e}")
     if not os.path.exists(GUIDE_ICON_PATH):
         try:
@@ -805,12 +808,13 @@ theme = gr.themes.Ocean(
     font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
 ).set()
 
-with gr.Blocks(title="IndexTTS2 Studio", theme=theme, css=css) as demo:
+with gr.Blocks(title=f"IndexTTS2 Studio {STUDIO_VERSION}", theme=theme, css=css) as demo:
     gr.HTML(
-        """
+        f"""
         <div style="text-align: center; margin-bottom: 10px;">
             <h1 style="font-family: 'Outfit', sans-serif; font-size: 2.5em; margin-bottom: 5px;">
                 IndexTTS2 <span style="font-weight: 300; opacity: 0.7;">Studio</span>
+                <span style="font-size: 0.4em; vertical-align: middle; opacity: 0.5; border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px;">v{STUDIO_VERSION}</span>
             </h1>
             <p style="font-family: 'Plus Jakarta Sans', sans-serif; opacity: 0.8;">
                 Emotionally Expressive Zero-Shot Text-to-Speech
