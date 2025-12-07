@@ -132,7 +132,7 @@ except Exception as e:
 
 print(">> Loading libraries...")
 import gradio as gr
-from indextts.new_infer import IndexTTS2
+from indextts.infer_studio import IndexTTS2
 
 try:
     from studio_guide import GUIDE_MD
