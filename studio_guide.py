@@ -3,6 +3,11 @@ This guide explains how to fine-tune the audio generation to get the best result
 ---
 #### 1. Text & Pre-processing (Input)
 
+*   **⚠️ IMPORTANT: Avoid Short Inputs**:
+    *   **Never input single words** (e.g., "Test", "Hello").
+    *   **Why?** The AI tries to force all the complex style features of your audio clip into just one word. This mismatch causes "screeching", glitches, or scary ghost noises.
+    *   *Fix:* Always use full sentences. Instead of "Test", type "This is a test of the voice cloning system."
+
 *   **Convert Numbers (🧮)**:
     *   Converts digits into words (e.g., "1998" -> "nineteen ninety-eight").
     *   *Recommended:* **Enabled**. If disabled, the model might ignore or mispronounce raw numbers.

@@ -12,15 +12,15 @@ import numpy as np
 import tempfile
 import yaml
 import torch
+from PIL import Image
 
-STUDIO_VERSION = "1.3"
+STUDIO_VERSION = "1.4"
 
 try:
     import librosa
     import soundfile as sf
     from num2words import num2words
     from pydub import AudioSegment
-    from PIL import Image
 except ImportError:
     print(
         "⚠️  MISSING LIBRARIES! Please run: uv pip install librosa soundfile num2words pydub"
@@ -200,7 +200,7 @@ def ensure_assets_exist():
                 img.save(DEFAULT_ICON_PATH)
         except Exception as e:
             print(f"Warning: Could not create default icon: {e}")
-            print(f"Warning: Could not create default icon: {e}")
+
     if not os.path.exists(GUIDE_ICON_PATH):
         try:
             if Image:
@@ -307,23 +307,50 @@ def normalize_audio_loudness(audio_path):
         return False
 
 
-def trim_audio_if_needed(file_path):
-    if not file_path:
+def validate_and_trim_audio(file_path, label="Audio"):
+    if not file_path or not os.path.exists(file_path):
         return None
+
     try:
-        duration = librosa.get_duration(filename=file_path)
+        y, sr = librosa.load(file_path, sr=None)
+
+        max_amp = np.max(np.abs(y))
+        if max_amp < 0.005:
+            raise gr.Error(
+                f"❌ Error: {label} is too silent/empty! Please check the file."
+            )
+
+        y_trimmed, _ = librosa.effects.trim(y, top_db=60)
+        duration = librosa.get_duration(y=y_trimmed, sr=sr)
+
+        if duration < 0.5:
+            raise gr.Error(f"❌ Error: {label} contains no clear speech.")
+
         if duration > 25.0:
             print(
-                f">> Audio too long ({duration:.1f}s). Trimming to 25s for stability."
+                f">> ✂️  {label} is long ({duration:.1f}s). Keeping first 25s (Safe Mode)."
             )
-            y, sr = librosa.load(file_path, sr=None, duration=25.0)
+            y_trimmed = y_trimmed[: int(25.0 * sr)]
+
             base, ext = os.path.splitext(file_path)
-            new_path = f"{base}_trimmed{ext}"
-            sf.write(new_path, y, sr)
+            new_path = f"{base}_safe_trim{ext}"
+            sf.write(new_path, y_trimmed, sr)
             return new_path
+
+        elif len(y) != len(y_trimmed):
+            print(f">> ✂️  {label}: Removed leading silence. (Breath preserved).")
+            base, ext = os.path.splitext(file_path)
+            new_path = f"{base}_safe_trim{ext}"
+            sf.write(new_path, y_trimmed, sr)
+            return new_path
+
+        return file_path
+
     except Exception as e:
-        print(f"Error trimming audio: {e}")
-    return file_path
+        if isinstance(e, gr.Error):
+            raise e
+        print(f"Error processing audio: {e}")
+        return file_path
 
 
 def clean_reference_audio(audio_path):
@@ -331,21 +358,32 @@ def clean_reference_audio(audio_path):
         return audio_path
     try:
         y, sr = librosa.load(audio_path, sr=None)
-        non_silent_intervals = librosa.effects.split(y, top_db=30)
+        non_silent_intervals = librosa.effects.split(y, top_db=60)
 
         if len(non_silent_intervals) > 0:
             start = non_silent_intervals[0][0]
-            end = len(y)
-            y = y[start:end]
+            y = y[start:]
 
         max_val = np.max(np.abs(y))
-        if max_val > 0 and max_val < 0.6:  # Only boost if really quiet
-            y = y / max_val * 0.8  # Boost to 80%
+        target_peak = 0.95  # Consistently use 95% like the normalize function
+
+        if max_val > 0 and max_val < 0.6:
+            change_ratio = target_peak / max_val
+            y = y * change_ratio
+
+            percentage = (change_ratio - 1.0) * 100
+            print(
+                f">> 🔊 Ref-Clean: Audio too quiet. Boosted {percentage:.1f}% (Peak: {max_val:.2f} -> {target_peak})"
+            )
 
         base, ext = os.path.splitext(audio_path)
         new_path = f"{base}_clean{ext}"
         sf.write(new_path, y, sr)
-        print(f">> 🧹 Cleaned reference audio (Gentle): {new_path}")
+
+        final_dur = len(y) / sr
+        print(
+            f">> 🧹 Ref-Clean: Done. Saved to {os.path.basename(new_path)} ({final_dur:.1f}s)"
+        )
         return new_path
     except Exception as e:
         print(f"Cleaning failed, using original: {e}")
@@ -611,6 +649,12 @@ def generate_outputs(
     if not text:
         raise gr.Error("Please enter text!")
 
+    clean_txt_check = text.strip()
+    if len(clean_txt_check) < 15 or len(clean_txt_check.split()) < 3:
+        gr.Warning(
+            "⚠️ TEXT TOO SHORT: Generating single words often causes screeching/glitches. Please use a full sentence."
+        )
+
     if normalize_txt:
         text = normalize_text_english(text)
 
@@ -619,12 +663,15 @@ def generate_outputs(
     else:
         mode_idx = int(emo_mode_idx)
 
+    safe_prompt = validate_and_trim_audio(prompt, label="Prompt Audio")
+
+    if mode_idx == 1 and emo_ref:
+        emo_ref = validate_and_trim_audio(emo_ref, label="Emotion Audio")
+
     if clean_ref:
-        safe_prompt = clean_reference_audio(prompt)
+        safe_prompt = clean_reference_audio(safe_prompt)
         if mode_idx == 1 and emo_ref:
             emo_ref = clean_reference_audio(emo_ref)
-    else:
-        safe_prompt = trim_audio_if_needed(prompt)
 
     used_vec = vec if mode_idx == 2 else None
     if mode_idx == 0:
@@ -879,7 +926,10 @@ with gr.Blocks(
             with gr.Group():
                 gr.Markdown("### 2. Text Input")
                 input_text = gr.TextArea(
-                    label="Text", placeholder="Type your text here...", lines=3
+                    label="Text Input",
+                    placeholder="Type full sentences here... (Avoid single words like 'Test')",
+                    lines=3,
+                    info="⚠️ Minimum 3-5 words recommended. Single words may cause audio glitches/screaming.",
                 )
                 with gr.Row():
                     normalize_txt = gr.Checkbox(
