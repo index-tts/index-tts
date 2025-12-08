@@ -5,14 +5,30 @@ import multiprocessing
 import gc
 
 try:
-    sys_threads = multiprocessing.cpu_count()
-    ALLOCATED_THREADS = max(1, sys_threads - 2)
+    if "OMP_NUM_THREADS" in os.environ:
+        ALLOCATED_THREADS = int(os.environ["OMP_NUM_THREADS"])
+        sys_threads = "Manual Override"
+        print(
+            f">> ⚙️  User Config: Using {ALLOCATED_THREADS} threads (forced via Env/Flag)."
+        )
+    else:
+        sys_threads = multiprocessing.cpu_count()
+        calculated_threads = max(1, sys_threads - 2)
+
+        # [SAFETY CAP] Limit max 8 threads for default auto-config.
+        # This prevents OOM crashes on high-core/low-ram setups (like Docker/VBox).
+        # Users who want >8 threads can use --threads flag.
+        ALLOCATED_THREADS = min(8, calculated_threads)
+
+        print(f">> 🖥️  CPU Auto-Config: Detected {sys_threads} threads.")
+        print(
+            f">> ⚙️  Setting AI to use {ALLOCATED_THREADS} threads (leaving 2 for System, capped at 8)."
+        )
+
 except Exception as e:
     sys_threads = "Unknown"
     ALLOCATED_THREADS = 4
-
-print(f">> 🖥️  CPU Auto-Config: Detected {sys_threads} threads.")
-print(f">> ⚙️  Setting AI to use {ALLOCATED_THREADS} threads (leaving 2 for System).")
+    print(f">> ⚠️  Config Error: Defaulting to {ALLOCATED_THREADS} threads.")
 
 os.environ["OMP_NUM_THREADS"] = str(ALLOCATED_THREADS)
 os.environ["MKL_NUM_THREADS"] = str(ALLOCATED_THREADS)

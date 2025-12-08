@@ -13,7 +13,7 @@ import tempfile
 import yaml
 import torch
 
-STUDIO_VERSION = "1.2"
+STUDIO_VERSION = "1.3"
 
 try:
     import librosa
@@ -61,7 +61,16 @@ parser.add_argument(
 parser.add_argument(
     "--no_streaming", action="store_true", help="Disable streaming backend"
 )
+parser.add_argument(
+    "--threads", type=int, default=None, help="Force specific number of CPU threads"
+)
+
 cmd_args = parser.parse_args()
+
+if cmd_args.threads:
+    print(f">> ⚙️  Flag Detected: Forcing system to use {cmd_args.threads} threads.")
+    os.environ["OMP_NUM_THREADS"] = str(cmd_args.threads)
+    os.environ["MKL_NUM_THREADS"] = str(cmd_args.threads)
 
 if not os.path.exists(cmd_args.model_dir):
     print(f"Model directory {cmd_args.model_dir} does not exist.")
@@ -808,7 +817,9 @@ theme = gr.themes.Ocean(
     font_mono=[gr.themes.GoogleFont("JetBrains Mono"), "ui-monospace", "monospace"],
 ).set()
 
-with gr.Blocks(title=f"IndexTTS2 Studio {STUDIO_VERSION}", theme=theme, css=css) as demo:
+with gr.Blocks(
+    title=f"IndexTTS2 Studio {STUDIO_VERSION}", theme=theme, css=css
+) as demo:
     gr.HTML(
         f"""
         <div style="text-align: center; margin-bottom: 10px;">
