@@ -589,8 +589,6 @@ class IndexTTS2:
                         category=RuntimeWarning
                     )
                     has_warned = True
-
-                code_lens = torch.tensor([codes.shape[-1]], device=codes.device, dtype=codes.dtype)
                 #                 if verbose:
                 #                     print(codes, type(codes))
                 #                     print(f"codes shape: {codes.shape}, codes type: {codes.dtype}")
