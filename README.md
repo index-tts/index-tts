@@ -1,5 +1,3 @@
-
-
 <div align="center">
 <img src='assets/index_icon.png' width="250"/>
 </div>
@@ -43,23 +41,34 @@
   </a>
 </div>
 
-
 ### Abstract
 
-Existing autoregressive large-scale text-to-speech (TTS) models have advantages in speech naturalness, but their token-by-token generation mechanism makes it difficult to precisely control the duration of synthesized speech. This becomes a significant limitation in applications requiring strict audio-visual synchronization, such as video dubbing.
+Existing autoregressive large-scale text-to-speech (TTS) models have advantages in speech naturalness, but their
+token-by-token generation mechanism makes it difficult to precisely control the duration of synthesized speech. This
+becomes a significant limitation in applications requiring strict audio-visual synchronization, such as video dubbing.
 
-This paper introduces IndexTTS2, which proposes a novel, general, and autoregressive model-friendly method for speech duration control.
+This paper introduces IndexTTS2, which proposes a novel, general, and autoregressive model-friendly method for speech
+duration control.
 
-The method supports two generation modes: one explicitly specifies the number of generated tokens to precisely control speech duration; the other freely generates speech in an autoregressive manner without specifying the number of tokens, while faithfully reproducing the prosodic features of the input prompt.
+The method supports two generation modes: one explicitly specifies the number of generated tokens to precisely control
+speech duration; the other freely generates speech in an autoregressive manner without specifying the number of tokens,
+while faithfully reproducing the prosodic features of the input prompt.
 
-Furthermore, IndexTTS2 achieves disentanglement between emotional expression and speaker identity, enabling independent control over timbre and emotion. In the zero-shot setting, the model can accurately reconstruct the target timbre (from the timbre prompt) while perfectly reproducing the specified emotional tone (from the style prompt).
+Furthermore, IndexTTS2 achieves disentanglement between emotional expression and speaker identity, enabling independent
+control over timbre and emotion. In the zero-shot setting, the model can accurately reconstruct the target timbre (from
+the timbre prompt) while perfectly reproducing the specified emotional tone (from the style prompt).
 
-To enhance speech clarity in highly emotional expressions, we incorporate GPT latent representations and design a novel three-stage training paradigm to improve the stability of the generated speech. Additionally, to lower the barrier for emotional control, we designed a soft instruction mechanism based on text descriptions by fine-tuning Qwen3, effectively guiding the generation of speech with the desired emotional orientation.
+To enhance speech clarity in highly emotional expressions, we incorporate GPT latent representations and design a novel
+three-stage training paradigm to improve the stability of the generated speech. Additionally, to lower the barrier for
+emotional control, we designed a soft instruction mechanism based on text descriptions by fine-tuning Qwen3, effectively
+guiding the generation of speech with the desired emotional orientation.
 
-Finally, experimental results on multiple datasets show that IndexTTS2 outperforms state-of-the-art zero-shot TTS models in terms of word error rate, speaker similarity, and emotional fidelity. Audio samples are available at: <a href="https://index-tts.github.io/index-tts2.github.io/">IndexTTS2 demo page</a>.
+Finally, experimental results on multiple datasets show that IndexTTS2 outperforms state-of-the-art zero-shot TTS models
+in terms of word error rate, speaker similarity, and emotional fidelity. Audio samples are available
+at: <a href="https://index-tts.github.io/index-tts2.github.io/">IndexTTS2 demo page</a>.
 
-**Tips:** Please contact the authors for more detailed information. For commercial usage and cooperation, please contact <u>indexspeech@bilibili.com</u>.
-
+**Tips:** Please contact the authors for more detailed information. For commercial usage and cooperation, please
+contact <u>indexspeech@bilibili.com</u>.
 
 ### Feel IndexTTS2
 
@@ -73,7 +82,6 @@ Finally, experimental results on multiple datasets show that IndexTTS2 outperfor
 
 </div>
 
-
 ### Contact
 
 QQ Group：663272642(No.4) 1013410623(No.5)  \
@@ -84,20 +92,23 @@ You are welcome to join our community! 🌏  \
 
 > [!CAUTION]
 > Thank you for your support of the bilibili indextts project!
-> Please note that the **only official channel** maintained by the core team is: [https://github.com/index-tts/index-tts](https://github.com/index-tts/index-tts).
-> ***Any other websites or services are not official***, and we cannot guarantee their security, accuracy, or timeliness.
+> Please note that the **only official channel** maintained by the core team
+> is: [https://github.com/index-tts/index-tts](https://github.com/index-tts/index-tts).
+> ***Any other websites or services are not official***, and we cannot guarantee their security, accuracy, or
+> timeliness.
 > For the latest updates, please always refer to this official repository.
-
 
 ## 📣 Updates
 
-- `2025/09/08` 🔥🔥🔥  We release **IndexTTS-2** to the world!
-    - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
-    - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled through multiple input modalities.
-- `2025/05/14` 🔥🔥 We release **IndexTTS-1.5**, significantly improving the model's stability and its performance in the English language.
+- `2025/09/08` 🔥🔥🔥 We release **IndexTTS-2** to the world!
+    - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and
+      uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
+    - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled
+      through multiple input modalities.
+- `2025/05/14` 🔥🔥 We release **IndexTTS-1.5**, significantly improving the model's stability and its performance in the
+  English language.
 - `2025/03/25` 🔥 We release **IndexTTS-1.0** with model weights and inference code.
 - `2025/02/12` 🔥 We submitted our paper to arXiv, and released our demos and test sets.
-
 
 ## 🖥️ Neural Network Architecture
 
@@ -110,20 +121,23 @@ Architectural overview of IndexTTS2, our state-of-the art speech model:
 
 The key contributions of **IndexTTS2** are summarized as follows:
 
- - We propose a duration adaptation scheme for autoregressive TTS models. IndexTTS2 is the first autoregressive zero-shot TTS model to combine precise duration control with natural duration generation, and the method is scalable for any autoregressive large-scale TTS model.  
- - The emotional and speaker-related features are decoupled from the prompts, and a feature fusion strategy is designed to maintain semantic fluency and pronunciation clarity during emotionally rich expressions. Furthermore, a tool was developed for emotion control, utilizing natural language descriptions for the benefit of users.  
- - To address the lack of highly expressive speech data, we propose an effective training strategy, significantly enhancing the emotional expressiveness of zeroshot TTS to State-of-the-Art (SOTA) level.  
- - We will publicly release the code and pre-trained weights to facilitate future research and practical applications.  
-
+- We propose a duration adaptation scheme for autoregressive TTS models. IndexTTS2 is the first autoregressive zero-shot
+  TTS model to combine precise duration control with natural duration generation, and the method is scalable for any
+  autoregressive large-scale TTS model.
+- The emotional and speaker-related features are decoupled from the prompts, and a feature fusion strategy is designed
+  to maintain semantic fluency and pronunciation clarity during emotionally rich expressions. Furthermore, a tool was
+  developed for emotion control, utilizing natural language descriptions for the benefit of users.
+- To address the lack of highly expressive speech data, we propose an effective training strategy, significantly
+  enhancing the emotional expressiveness of zeroshot TTS to State-of-the-Art (SOTA) level.
+- We will publicly release the code and pre-trained weights to facilitate future research and practical applications.
 
 ## Model Download
 
-| **HuggingFace**                                          | **ModelScope** |
-|----------------------------------------------------------|----------------------------------------------------------|
-| [😁 IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
+| **HuggingFace**                                               | **ModelScope**                                                      |
+|---------------------------------------------------------------|---------------------------------------------------------------------|
+| [😁 IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2)  | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2)     |
 | [IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
-| [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) |
-
+| [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS)        | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS)        |
 
 ## Usage Instructions
 
@@ -150,11 +164,11 @@ git lfs pull  # download large repository files
 
 > [!TIP]
 > **Quick & Easy Installation Method:**
-> 
+>
 > There are many convenient ways to install the `uv` command on your computer.
 > Please check the link above to see all options. Alternatively, if you want
 > a very quick and easy method, you can install it as follows:
-> 
+>
 > ```bash
 > pip install -U uv
 > ```
@@ -166,7 +180,7 @@ git lfs pull  # download large repository files
 > ***missing GPU acceleration**, and various other problems* if you don't use `uv`.
 > Please *do not report any issues* if you use non-standard installations, since
 > almost all such issues are invalid.
-> 
+>
 > Furthermore, `uv` is [up to 115x faster](https://github.com/astral-sh/uv/blob/main/BENCHMARKS.md)
 > than `pip`, which is another *great* reason to embrace the new industry-standard
 > for Python project management.
@@ -178,33 +192,35 @@ will *automatically* create a `.venv` project-directory and then installs the co
 versions of Python and all required dependencies:
 
 ```bash
-uv sync --all-extras
+uv sync --all-extras --extra cuda
 ```
 
 If the download is slow, please try a *local mirror*, for example any of these
 local mirrors in China (choose one mirror from the list below):
 
 ```bash
-uv sync --all-extras --default-index "https://mirrors.aliyun.com/pypi/simple"
+uv sync --all-extras --extra cuda --default-index "https://mirrors.aliyun.com/pypi/simple"
 
-uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
+uv sync --all-extras --extra cuda --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ```
 
 > [!TIP]
 > **Available Extra Features:**
-> 
+>
 > - `--all-extras`: Automatically adds *every* extra feature listed below. You can
->   remove this flag if you want to customize your installation choices.
+    > remove this flag if you want to customize your installation choices.
+> - `--extra cuda`: Use pytorch-cuda(cu128).
+> - `--extra xpu`: Use pytorch-xpu.
 > - `--extra webui`: Adds WebUI support (recommended).
 > - `--extra deepspeed`: Adds DeepSpeed support (may speed up inference on some
->   systems).
+    > systems).
 
 > [!IMPORTANT]
 > **Important (Windows):** The DeepSpeed library may be difficult to install for
 > some Windows users. You can skip it by removing the `--all-extras` flag. If you
 > want any of the other extra features above, you can manually add their specific
 > feature flags instead.
-> 
+>
 > **Important (Linux/Windows):** If you see an error about CUDA during the installation,
 > please ensure that you have installed NVIDIA's [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
 > version **12.8** (or newer) on your system.
@@ -236,11 +252,10 @@ modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 > downloaded when the project is run for the first time. If your network environment
 > has slow access to HuggingFace, it is recommended to execute the following
 > command before running the code:
-> 
+>
 > ```bash
 > export HF_ENDPOINT="https://hf-mirror.com"
 > ```
-
 
 #### 🖥️ Checking PyTorch GPU Acceleration
 
@@ -250,7 +265,6 @@ you can use our included utility to check your system:
 ```bash
 uv run tools/gpu_check.py
 ```
-
 
 ### 🔥 IndexTTS2 Quickstart
 
@@ -275,16 +289,15 @@ Have fun!
 > [!IMPORTANT]
 > It can be very helpful to use **FP16** (half-precision) inference. It is faster
 > and uses less VRAM, with a very small quality loss.
-> 
+>
 > **DeepSpeed** *may* also speed up inference on some systems, but it could also
 > make it slower. The performance impact is highly dependent on your specific
 > hardware, drivers and operating system. Please try with and without it,
 > to discover what works best on your personal system.
-> 
+>
 > Lastly, be aware that *all* `uv` commands will **automatically activate** the correct
 > per-project virtual environments. Do *not* manually activate any environments
 > before running `uv` commands, since that could lead to dependency conflicts!
-
 
 #### 📝 Using IndexTTS2 in Python
 
@@ -305,7 +318,9 @@ Here are several examples of how to use IndexTTS2 in your own scripts:
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "Translate for me, what is a surprise!"
 tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, output_path="gen.wav", verbose=True)
 ```
@@ -314,9 +329,12 @@ tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, output_path="gen.
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "酒楼丧尽天良，开始借机竞拍房间，哎，一群蠢货。"
-tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav", emo_audio_prompt="examples/emo_sad.wav", verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav",
+          emo_audio_prompt="examples/emo_sad.wav", verbose=True)
 ```
 
 3. When an emotional reference audio file is specified, you can optionally set
@@ -325,9 +343,12 @@ tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "酒楼丧尽天良，开始借机竞拍房间，哎，一群蠢货。"
-tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav", emo_audio_prompt="examples/emo_sad.wav", emo_alpha=0.9, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.wav",
+          emo_audio_prompt="examples/emo_sad.wav", emo_alpha=0.9, verbose=True)
 ```
 
 4. It's also possible to omit the emotional reference audio and instead provide
@@ -343,9 +364,12 @@ tts.infer(spk_audio_prompt='examples/voice_07.wav', text=text, output_path="gen.
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "哇塞！这个爆率也太高了！欧皇附体了！"
-tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0, 0, 0, 0, 0.45, 0], use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.wav",
+          emo_vector=[0, 0, 0, 0, 0, 0, 0.45, 0], use_random=False, verbose=True)
 ```
 
 5. Alternatively, you can enable `use_emo_text` to guide the emotions based on
@@ -358,9 +382,12 @@ tts.infer(spk_audio_prompt='examples/voice_10.wav', text=text, output_path="gen.
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True,
+          use_random=False, verbose=True)
 ```
 
 6. It's also possible to directly provide a specific text emotion description
@@ -370,18 +397,23 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.
 
 ```python
 from indextts.infer_v2 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False,
+                use_deepspeed=False)
 text = "快躲起来！是他要来了！他要来抓我们了！"
 emo_text = "你吓死我了！你是鬼吗？"
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True,
+          emo_text=emo_text, use_random=False, verbose=True)
 ```
 
 > [!TIP]
 > **Pinyin Usage Notes:**
-> 
+>
 > IndexTTS2 still supports mixed modeling of Chinese characters and Pinyin.
-> When you need precise pronunciation control, please provide text with specific Pinyin annotations to activate the Pinyin control feature.
-> Note that Pinyin control does not work for every possible consonant–vowel combination; only valid Chinese Pinyin cases are supported.
+> When you need precise pronunciation control, please provide text with specific Pinyin annotations to activate the
+> Pinyin control feature.
+> Note that Pinyin control does not work for every possible consonant–vowel combination; only valid Chinese Pinyin cases
+> are supported.
 > For the full list of valid entries, please refer to `checkpoints/pinyin.vocab`.
 >
 > Example:
@@ -395,7 +427,8 @@ You can also use our previous IndexTTS1 model by importing a different module:
 
 ```python
 from indextts.infer import IndexTTS
-tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
+
+tts = IndexTTS(model_dir="checkpoints", cfg_path="checkpoints/config.yaml")
 voice = "examples/voice_07.wav"
 text = "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可以访问 bilibili studio，相信我，你们也会吃惊的。"
 tts.infer(voice, text, 'gen.wav')
@@ -404,13 +437,11 @@ tts.infer(voice, text, 'gen.wav')
 For more detailed information, see [README_INDEXTTS_1_5](archive/README_INDEXTTS_1_5.md),
 or visit the IndexTTS1 repository at <a href="https://github.com/index-tts/index-tts/tree/v1.5.0">index-tts:v1.5.0</a>.
 
-
 ## Our Releases and Demos
 
 ### IndexTTS2: [[Paper]](https://arxiv.org/abs/2506.21619); [[Demo]](https://index-tts.github.io/index-tts2.github.io/); [[ModelScope]](https://modelscope.cn/studios/IndexTeam/IndexTTS-2-Demo); [[HuggingFace]](https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo)
 
 ### IndexTTS1: [[Paper]](https://arxiv.org/abs/2502.05512); [[Demo]](https://index-tts.github.io/); [[ModelScope]](https://modelscope.cn/studios/IndexTeam/IndexTTS-Demo); [[HuggingFace]](https://huggingface.co/spaces/IndexTeam/IndexTTS)
-
 
 ## Acknowledgements
 
@@ -423,35 +454,53 @@ or visit the IndexTTS1 repository at <a href="https://github.com/index-tts/index
 7. [seed-vc](https://github.com/Plachtaa/seed-vc)
 
 ## Contributors in Bilibili
-We sincerely thank colleagues from different roles at Bilibili, whose combined efforts made the IndexTTS series possible.
+
+We sincerely thank colleagues from different roles at Bilibili, whose combined efforts made the IndexTTS series
+possible.
 
 ### Core Authors
- - **Wei Deng** - Core author; Initiated the IndexTTS project, led the development of the IndexTTS1 data pipeline, model architecture design and training, as well as iterative optimization of the IndexTTS series of models, focusing on fundamental capability building and performance optimization.
- - **Siyi Zhou** – Core author; in IndexTTS2, led model architecture design and training pipeline optimization, focusing on key features such as multilingual and emotional synthesis.
- - **Jingchen Shu** - Core author; worked on overall architecture design, cross-lingual modeling solutions, and training strategy optimization, driving model iteration.
- - **Xun Zhou** - Core author; worked on cross-lingual data processing and experiments, explored multilingual training strategies, and contributed to audio quality improvement and stability evaluation.
- - **Jinchao Wang** - Core author; worked on model development and deployment, building the inference framework and supporting system integration.
- - **Yiquan Zhou** - Core author; contributed to model experiments and validation, and proposed and implemented text-based emotion control.
- - **Yi He** - Core author; contributed to model experiments and validation.
- - **Lu Wang** – Core author; worked on data processing and model evaluation, supporting model training and performance verification.
+
+- **Wei Deng** - Core author; Initiated the IndexTTS project, led the development of the IndexTTS1 data pipeline, model
+  architecture design and training, as well as iterative optimization of the IndexTTS series of models, focusing on
+  fundamental capability building and performance optimization.
+- **Siyi Zhou** – Core author; in IndexTTS2, led model architecture design and training pipeline optimization, focusing
+  on key features such as multilingual and emotional synthesis.
+- **Jingchen Shu** - Core author; worked on overall architecture design, cross-lingual modeling solutions, and training
+  strategy optimization, driving model iteration.
+- **Xun Zhou** - Core author; worked on cross-lingual data processing and experiments, explored multilingual training
+  strategies, and contributed to audio quality improvement and stability evaluation.
+- **Jinchao Wang** - Core author; worked on model development and deployment, building the inference framework and
+  supporting system integration.
+- **Yiquan Zhou** - Core author; contributed to model experiments and validation, and proposed and implemented
+  text-based emotion control.
+- **Yi He** - Core author; contributed to model experiments and validation.
+- **Lu Wang** – Core author; worked on data processing and model evaluation, supporting model training and performance
+  verification.
 
 ### Technical Contributors
- - **Yining Wang** - Supporting contributor; contributed to open-source code implementation and maintenance, supporting feature adaptation and community release.
- - **Yong Wu** - Supporting contributor; worked on data processing and experimental support, ensuring data quality and efficiency for model training and iteration.
- - **Yaqin Huang** – Supporting contributor; contributed to systematic model evaluation and effect tracking, providing feedback to support iterative improvements.
- - **Yunhan Xu** – Supporting contributor; provided guidance in recording and data collection, while also offering feedback from a product and operations perspective to improve usability and practical application.
- - **Yuelang Sun** – Supporting contributor; provided professional support in audio recording and data collection, ensuring high-quality data for model training and evaluation.
- - **Yihuang Liang** - Supporting contributor; worked on systematic model evaluation and project promotion, helping IndexTTS expand its reach and engagement.
+
+- **Yining Wang** - Supporting contributor; contributed to open-source code implementation and maintenance, supporting
+  feature adaptation and community release.
+- **Yong Wu** - Supporting contributor; worked on data processing and experimental support, ensuring data quality and
+  efficiency for model training and iteration.
+- **Yaqin Huang** – Supporting contributor; contributed to systematic model evaluation and effect tracking, providing
+  feedback to support iterative improvements.
+- **Yunhan Xu** – Supporting contributor; provided guidance in recording and data collection, while also offering
+  feedback from a product and operations perspective to improve usability and practical application.
+- **Yuelang Sun** – Supporting contributor; provided professional support in audio recording and data collection,
+  ensuring high-quality data for model training and evaluation.
+- **Yihuang Liang** - Supporting contributor; worked on systematic model evaluation and project promotion, helping
+  IndexTTS expand its reach and engagement.
 
 ### Technical Guidance
- - **Huyang Sun** - Provided strong support for the IndexTTS project, ensuring strategic alignment and resource backing.
- - **Bin Xia** - Contributed to the review, optimization, and follow-up of technical solutions, focusing on ensuring model effectiveness.
 
+- **Huyang Sun** - Provided strong support for the IndexTTS project, ensuring strategic alignment and resource backing.
+- **Bin Xia** - Contributed to the review, optimization, and follow-up of technical solutions, focusing on ensuring
+  model effectiveness.
 
 ## 📚 Citation
 
 🌟 If you find our work helpful, please leave us a star and cite our paper.
-
 
 IndexTTS2:
 
@@ -463,7 +512,6 @@ IndexTTS2:
   year={2025}
 }
 ```
-
 
 IndexTTS:
 
