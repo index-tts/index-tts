@@ -4,11 +4,8 @@ set -euo pipefail
 ROOT="/home/shentong/index-tts-main"
 PY="/home/shentong/miniconda3/envs/indextts2/bin/python"
 
-# 必须：让 python 能 import 到仓库里的 indextts
 export PYTHONPATH="$ROOT"
 cd "$ROOT"
-
-# 可选：固定 GPU（不想固定就删掉这行）
 export CUDA_VISIBLE_DEVICES=1
 
 # 用法示例：
