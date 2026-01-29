@@ -11,7 +11,14 @@ cd "$ROOT"
 # 可选：固定 GPU（不想固定就删掉这行）
 export CUDA_VISIBLE_DEVICES=1
 
-exec "$PY" -X faulthandler axis_pack/export_single_axis.py \
+# 用法示例：
+#   bash axis_pack/run_fixed.sh --lines 1
+#   bash axis_pack/run_fixed.sh --lines 1 --axes emotion
+#   bash axis_pack/run_fixed.sh --lines 1 --axes emotion,microexpression
+#   bash axis_pack/run_fixed.sh --lines 1 --conversation_only --merge
+#   bash axis_pack/run_fixed.sh --lines 1 --with_conversation --merge
+
+exec "$PY" -X faulthandler axis_pack/export_single_axis_fixed.py \
   --input axis_pack/all_conversations.jsonl \
   --speaker_map axis_pack/speaker_map.json \
   --cfg checkpoints/config.yaml \
