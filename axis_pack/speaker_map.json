@@ -1,0 +1,5 @@
+{
+    "Agent":"/home/shentong/index-tts-main/examples_fixed/voice_07.wav",
+    "User_male": "/home/shentong/index-tts-main/examples_fixed/voice_00.wav",
+    "User_female": "/home/shentong/index-tts-main/examples_fixed/voice_11.wav"
+}
