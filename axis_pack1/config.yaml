@@ -248,6 +248,26 @@ microexpression_energy_gain_db:
   "倒吸气": -1.5
   "哭腔": -1.3
   "正常": 0.0
+# 微表情 -> 语气助词注入（文本层）
+micro_particle_injection:
+  enabled: true
+  default_prob: 0.85
+  rules:
+    "冷笑":
+      particle: "呵"
+      style: "prefix"     # prefix | suffix
+      joiner: "！"        # 接在语气词后的连接符
+      prob: 0.90
+    "叹息":
+      particle: "诶"
+      style: "prefix"
+      joiner: "……"
+      prob: 0.80
+    "倒吸气":
+      particle: "嘶"
+      style: "prefix"
+      joiner: "——"
+      prob: 0.75
 
 #speed
 speech_rate_config:
