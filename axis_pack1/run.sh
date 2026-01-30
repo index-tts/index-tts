@@ -9,13 +9,13 @@ cd "$ROOT"
 export CUDA_VISIBLE_DEVICES=1
 
 # 用法示例：
-#   bash axis_pack/run_fixed.sh --lines 1
-#   bash axis_pack/run_fixed.sh --lines 1 --axes emotion
-#   bash axis_pack/run_fixed.sh --lines 1 --axes emotion,microexpression
-#   bash axis_pack/run_fixed.sh --lines 1 --conversation_only --merge
-#   bash axis_pack/run_fixed.sh --lines 1 --with_conversation --merge
+#   bash axis_pack/run.sh --lines 1
+#   bash axis_pack/run.sh --lines 1 --axes microexpression
+#   bash axis_pack/run.sh --lines 1 --axes emotion,microexpression
+#   bash axis_pack/run.sh --lines 1 --conversation_only --merge
+#   bash axis_pack/run.sh --lines 1 --with_conversation --merge
 
-exec "$PY" -X faulthandler axis_pack/export_single_axis_fixed.py \
+exec "$PY" -X faulthandler axis_pack/export_single_axis.py \
   --input axis_pack/all_conversations.jsonl \
   --speaker_map axis_pack/speaker_map.json \
   --cfg checkpoints/config.yaml \
