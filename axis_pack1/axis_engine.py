@@ -897,64 +897,54 @@ def synthesize_turn(
     total_turns: int,
     axis_mode: str = AXIS_MODE_ALL
 ) -> Optional[str]:
-    """
-    单轮合成：
-      - 写入 out_dir 下的 wav（turns 目录）
-      - 返回最终 wav 路径；失败返回 None
-    """
+
     try:
-        os.makedirs(out_dir, exist_ok=True)
-
-        utter_raw = (turn.get("utterance") or "").strip()
-        if not utter_raw:
-            print(f"[WARN] 空 utterance，跳过 turn={idx}")
-            return None
-
+        utter_raw = turn.get("utterance","").strip()
         base_emo_raw = (turn.get("emotion") or "正常").strip() or "正常"
         micro_raw = (turn.get("microexpression") or "正常").strip() or "正常"
         rate_raw = (turn.get("speech_rate_anomaly") or "正常").strip() or "正常"
         intention_raw = (turn.get("intention") or "").strip()
 
         axis_mode = normalize_axis_mode(axis_mode)
-
-        # 轴屏蔽：单轴模式下把其它标签置“正常/空”
         base_emo, micro, rate, intention = masked_labels(
             base_emo=base_emo_raw,
             micro=micro_raw,
             rate=rate_raw,
             intention=intention_raw,
-            axis_mode=axis_mode,
+            axis_mode=axis_mode
         )
-
-        # 统一变量名：后续一直用 emo 表示“当前参与合成的情绪标签”
-        emo = base_emo
-
-        role = "Agent" if (turn.get("speaker", "") or "").lower() in ["agent", "客服"] else "User"
-        speaker = "Agent" if role == "Agent" else f"User_{gender}"
-        if speaker not in speaker_map:
-            print(f"[ERROR] speaker_map 缺少 speaker={speaker}，可选 keys={list(speaker_map.keys())[:5]}...")
-            return None
+        role = "Agent" if turn.get("speaker","").lower() in ["agent","客服"] else "User"
+        speaker = "Agent" if role=="Agent" else f"User_{gender}"
 
         print(f"\n[处理第{idx}/{total_turns}轮] {role}：{utter_raw}")
 
-        # 场景行为：先拿到基础 emo_alpha，再做对话递进（all 模式）
-        _, emo_alpha = apply_scene_behavior(scene=scene, role=role, base_emo=emo, micro=micro, rate=rate)
+        emo, emo_alpha = apply_scene_behavior(
+            scene=scene,
+            role=role,
+            base_emo=base_emo,
+            micro=micro,
+            rate=rate,
+        )
+
+        # 场景行为调节
         if axis_mode == AXIS_MODE_ALL:
             emo_alpha = apply_conversation_progression(
                 scene=scene,
                 turn_idx=idx,
                 total_turns=total_turns,
-                base_emo_alpha=float(emo_alpha),
+                base_emo_alpha=emo_alpha,
                 role=role,
             )
 
         # ===== 情绪强度安全阀（听感校准） =====
         if emo == "犹豫":
-            emo_alpha = min(float(emo_alpha), 0.42)
+            # 犹豫不允许过强，否则像演戏
+            emo_alpha = min(emo_alpha, 0.42)
         elif emo == "不耐烦":
-            emo_alpha = min(float(emo_alpha), 0.62)
+            emo_alpha = min(emo_alpha, 0.62)
         elif emo == "愤怒":
-            emo_alpha = min(float(emo_alpha), 0.50)
+            # 压抑愤怒，防止破音
+            emo_alpha = min(emo_alpha, 0.50)
 
         # ===== 文本处理 =====
         print(f"\n[DEBUG] 步骤1: 文本处理")
@@ -964,21 +954,22 @@ def synthesize_turn(
 
         if axis_mode == AXIS_MODE_ALL:
             utter = apply_scene_specific_text_process(utter, scene)
-            if scene in ("suspicious", "fraud"):
+            if scene in ["suspicious", "fraud"]:
                 utter = apply_fraud_keyword_emphasis(utter)
 
+        # 语速韵律标记处理
         utter = enhance_text_with_rhythm_marks(utter, rate)
+
         print(f"[DEBUG] 最终处理文本: {utter}")
 
-        # 文件名（纯 ASCII + 可读片段），避免写坏 wav
+        # 用纯ASCII短名，避免中文标点/超长文件名导致写出的wav损坏
         uid = uuid.uuid4().hex[:8]
         role_tag = "agent" if role == "Agent" else "user"
         text_tag = safe_filename_readable(utter_raw, max_len=24)
         base = f"turn{idx:02d}_{role_tag}_{text_tag}_{uid}"
 
-        raw_wav = os.path.join(out_dir, f"{base}_raw.wav")
-        speed_wav = os.path.join(out_dir, f"{base}_speed.wav")
-        out_wav = os.path.join(out_dir, f"{base}.wav")
+        raw = os.path.join(out_dir, f"{base}_raw.wav")
+        out = os.path.join(out_dir, f"{base}.wav")
 
         # ===== TTS 合成 =====
         print(f"\n[DEBUG] 步骤2: TTS合成")
@@ -987,8 +978,9 @@ def synthesize_turn(
         if axis_mode == AXIS_MODE_ALL and emo == "犹豫" and intention in ["理清思路", "信息核实", "寻找借口"]:
             rate = "不自然停顿"
 
+        # 获取语速配置
         rate_config = get_rate_config(rate)
-        max_len = int(rate_config.get("max_len", 28))
+        max_len = rate_config.get("max_len", 28)
         chunks = split_text_for_semantic_safety(utter, max_len=max_len, rate=rate)
 
         audio_all = AudioSegment.empty()
@@ -997,7 +989,8 @@ def synthesize_turn(
         for j, sub in enumerate(chunks):
             tmp = os.path.join(out_dir, f"{base}_chunk{j}.wav")
 
-            # 片段前停顿
+            # 根据语速调整停顿（使用统一配置）
+            pause_before = 0
             if j > 0:
                 pause_params = get_rate_pause_params(rate, "before_chunk")
                 pause_before = (
@@ -1005,10 +998,9 @@ def synthesize_turn(
                     if random.random() < float(pause_params["long_pause_prob"])
                     else pause_params["short_pause"]
                 )
-                if pause_before > 0:
-                    audio_all += AudioSegment.silent(duration=int(pause_before))
+            if pause_before > 0:
+                audio_all += AudioSegment.silent(duration=pause_before)
 
-            # 推理
             tts.infer(
                 spk_audio_prompt=speaker_map[speaker],
                 text=sub,
@@ -1019,12 +1011,11 @@ def synthesize_turn(
                 emo_alpha=float(emo_alpha),
             )
 
-            # 校验生成结果
-            if (not os.path.exists(tmp)) or os.path.getsize(tmp) < 100 or (not is_valid_wav_header(tmp)):
-                print(f"[WARN] chunk 音频无效：{tmp}")
+            if not os.path.exists(tmp):
+                continue
+            if os.path.getsize(tmp) < 100 or (not is_valid_wav_header(tmp)):
                 try:
-                    if os.path.exists(tmp):
-                        os.remove(tmp)
+                    os.remove(tmp)
                 except Exception:
                     pass
                 continue
@@ -1037,7 +1028,6 @@ def synthesize_turn(
                 except Exception:
                     pass
 
-            # 片段间停顿
             if j < len(chunks) - 1:
                 pause_params = get_rate_pause_params(rate, "between_chunks")
                 gap = (
@@ -1045,44 +1035,32 @@ def synthesize_turn(
                     if random.random() < float(pause_params["long_pause_prob"])
                     else pause_params["short_pause"]
                 )
-                if gap > 0:
-                    audio_all += AudioSegment.silent(duration=int(gap))
+                audio_all += AudioSegment.silent(duration=int(gap))
 
-        # 如果所有 chunk 都失败，audio_all 会是空的
-        if len(audio_all) < 50:
-            print(f"[ERROR] turn={idx} 合成后音频为空（可能 infer 没产出有效 wav）")
-            return None
-
+        os.makedirs(out_dir, exist_ok=True)
         audio_all.export(raw_wav, format="wav")
-        print(f"[DEBUG] 原始音频保存成功，大小: {os.path.getsize(raw_wav)} bytes")
+        print(f"[DEBUG] 原始音频保存成功，大小: {os.path.getsize(raw)} bytes")
 
         # ===== 语速调整 =====
         print(f"\n[DEBUG] 步骤3: 语速调整")
+        speed_wav = raw_wav.replace("_raw.wav", "_speed.wav")
         adjust_audio_speed(raw_wav, speed_wav, rate)
-        if not os.path.exists(speed_wav):
-            # 回退：至少保留 raw
-            shutil.copy2(raw_wav, speed_wav)
-        print(f"[DEBUG] 语速调整完成，文件大小: {os.path.getsize(speed_wav)} bytes")
+        print(f"[DEBUG] 语速调整完成，文件大小: {os.path.getsize(speed_adjusted)} bytes")
 
         # ===== 轻量后处理 =====
         print(f"\n[DEBUG] 步骤4: 轻量后处理")
         ok = simple_postprocess(inp=speed_wav, outp=out_wav, micro=micro, emo=emo, rate=rate)
 
-        # fallback：保证 out_wav 存在
-        if (not ok) or (not os.path.exists(out_wav)) or os.path.getsize(out_wav) < 100:
-            print(f"[WARN] 后处理未生成有效最终文件，fallback: copy speed/raw -> out")
+        # 如果后处理失败或 out 没生成，至少保证有一个可用 wav（回退到 speed/raw）
+        if (not ok) or (not os.path.exists(out_wav)):
+            print(f"[WARN] 后处理未生成最终文件，fallback: copy speed/raw -> out")
             try:
                 shutil.copy2(speed_wav if os.path.exists(speed_wav) else raw_wav, out_wav)
             except Exception as e:
                 print(f"[ERROR] fallback copy failed: {e}")
 
-        if not os.path.exists(out_wav) or os.path.getsize(out_wav) < 100:
-            print(f"[ERROR] 最终 out 仍无效：{out_wav}")
-            return None
-
-        print(f"[DEBUG] 最终输出文件大小: {os.path.getsize(out_wav)} bytes")
-
-        # 清理中间文件（可按需保留）
+        print(f"[DEBUG] 最终输出文件大小: {os.path.getsize(out)} bytes")
+        # 清理中间文件
         for p in (raw_wav, speed_wav):
             try:
                 if p and os.path.exists(p):
@@ -1090,12 +1068,13 @@ def synthesize_turn(
             except Exception:
                 pass
 
-        return out_wav
+        print(f"[WARN] 最终 out 仍不存在，返回 raw: {out_wav}")
+        return out_wav if os.path.exists(out_wav) else None
+
 
     except Exception as e:
         print(f"[ERROR] synthesize_turn failed: turn={idx} err={e}")
         return None
-
 # ====================== 导出格式 ===========================
 def axis_catalog() -> Dict[str, Tuple[str, str]]:
     """axis_dir_name -> (axis_mode, label_key)"""

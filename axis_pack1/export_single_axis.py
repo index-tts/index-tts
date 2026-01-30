@@ -23,7 +23,6 @@ def _parse_axes_arg(s: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
-    ap.add_argument("--speaker_map", required=True)
     ap.add_argument("--cfg", required=True)
     ap.add_argument("--model_dir", required=True)
     ap.add_argument("--configs_dir", required=True)
@@ -46,7 +45,6 @@ def main():
 
     conv.export_dataset(
         input_jsonl=args.input,
-        speaker_map_path=args.speaker_map,
         cfg=args.cfg,
         model_dir=args.model_dir,
         configs_dir=args.configs_dir,

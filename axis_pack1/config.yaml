@@ -701,3 +701,30 @@ crm_prompts:
     }
   }
 
+# ===== YAML-only 配置入口：speaker_map（替代 speaker_map.json）=====
+# 说明：
+# - key 必须与数据(all_conversations.jsonl)里的 speaker 字段完全一致
+# - value 的结构保持你原 speaker_map.json 的结构不变，直接粘贴进来即可
+# - 这里给一个空字典占位，等你把 speaker_map.json 的内容搬过来
+speaker_map:
+  "Agent": "/home/shentong/index-tts-main/examples_fixed/voice_07.wav"
+  "User_male": "/home/shentong/index-tts-main/examples_fixed/voice_00.wav"
+  "User_female": "/home/shentong/index-tts-main/examples_fixed/voice_11.wav"
+
+# ===== 全局音频后处理参数（可选；后续接入音频 normalize/peak/整体增益使用）=====
+postprocess_audio:
+  normalize_headroom_db: 6.0   # normalize_to_dbfs 的 headroom
+  target_peak_dbfs: -1.0       # 峰值限制（dBFS）
+  extra_gain_db: 0.0           # 最终整体额外增益（想整体更响/更轻就调这里）
+
+# ===== 微表情拟音前缀（可选；保证“叹息/吸气/冷笑/哭腔”绝对可听见）=====
+# - enabled=false 默认关闭，不影响现有生成
+# - files 支持相对路径（建议放在 configs_dir/assets/ 下）
+microexpression_sfx:
+  enabled: false
+  gain_db: -9.0
+  files:
+    "叹息": "assets/sigh.wav"
+    "倒吸气": "assets/gasp.wav"
+    "冷笑": "assets/snicker.wav"
+    "哭腔": "assets/sob.wav"
