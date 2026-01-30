@@ -27,7 +27,7 @@ def main():
     ap.add_argument("--model_dir", required=True)
     ap.add_argument("--configs_dir", required=True)
     ap.add_argument("--out_root", required=True)
-
+    ap.add_argument("--speaker_map", default="", help="(可选) 旧版 speaker_map.json，YAML 已配置可不传")
     ap.add_argument("--lines", type=str, default="", help="Select lines: 5 | 5,8,10 | 5-12")
     ap.add_argument("--merge", action="store_true", help="(可选) 合并每个 call 的 turns -> merged-*.wav")
     ap.add_argument("--with_conversation", action="store_true", help="(可选) 同时导出 conversation(all) 输出")
@@ -48,6 +48,7 @@ def main():
         cfg=args.cfg,
         model_dir=args.model_dir,
         configs_dir=args.configs_dir,
+        speaker_map_path=(args.speaker_map or None),
         out_root=args.out_root,
         lines=args.lines,
         merge=args.merge,

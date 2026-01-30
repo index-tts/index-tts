@@ -95,6 +95,7 @@ SCENE_BEHAVIOR_PROFILE: Dict[str, Any] = {}
 FRAUD_KEYWORDS: Dict[str, Any] = {}
 EMO_ALPHA_MAP: Dict[str, float] = {}
 SPEECH_RATE_CONFIG: Dict[str, Any] = {}
+SPEAKER_MAP: Dict[str, Any] = {}
 
 # 可选：把后处理参数放 YAML（没配就用默认）
 POSTPROCESS_AUDIO_CFG: Dict[str, Any] = {}
@@ -161,7 +162,7 @@ def load_configs(cfg_dir: str) -> None:
     global CRM_PROMPTS, BASE_EMOTION_MAP, MICROEXP_MAP
     global SEMANTIC_EMO_MAP, TEXT_PROCESS_CFG
     global EMOTION_RHYTHM_TEMPLATES, SCENE_BEHAVIOR_PROFILE, FRAUD_KEYWORDS
-    global EMO_ALPHA_MAP, SPEECH_RATE_CONFIG
+    global EMO_ALPHA_MAP, SPEECH_RATE_CONFIG, SPEAKER_MAP
 
     yaml_path = os.path.join(cfg_dir, "config.yaml")
     if os.path.exists(yaml_path):
@@ -176,21 +177,10 @@ def load_configs(cfg_dir: str) -> None:
         SCENE_BEHAVIOR_PROFILE = cfg.get("scene_behavior_profile", {}) or {}
         EMO_ALPHA_MAP = cfg.get("emotion_alpha_map", {}) or {}
         SPEECH_RATE_CONFIG = cfg.get("speech_rate_config", {}) or {}
+        SPEAKER_MAP = cfg.get("speaker_map", {}) or {}
         print(f"[CFG] Loaded YAML: {yaml_path}")
+        print(f"[CFG] speaker_map_keys={len(SPEAKER_MAP)}")
         return
-
-    # fallback: old json layout
-    CRM_PROMPTS = _load_json("crm_prompts.json")
-    BASE_EMOTION_MAP = _load_json("base_emotions.json")
-    MICROEXP_MAP = _load_json("microexpressions.json")
-    SEMANTIC_EMO_MAP = _load_json("semantic_emotions.json")
-    TEXT_PROCESS_CFG = _load_json("text_process_config.json")
-    EMOTION_RHYTHM_TEMPLATES = _load_json("emotion_rhythm_templates.json")
-    FRAUD_KEYWORDS = _load_json("fraud_keywords.json")
-    SCENE_BEHAVIOR_PROFILE = _load_json("scene_behavior_profile.json")
-    EMO_ALPHA_MAP = _load_json("emotion_alpha_map.json")
-    SPEECH_RATE_CONFIG = _load_json("speech_rate_config.json")
-    print(f"[CFG] Loaded JSON configs from: {cfg_dir}")
 
 #============== 小工具 ==================
 class TeeLogger:
@@ -1132,7 +1122,7 @@ def relpath(path: str, start: str) -> str:
 def export_dataset(
     *,
     input_jsonl: str,
-    speaker_map_path: str,
+    speaker_map_path: Optional[str] = None,
     cfg: str,
     model_dir: str,
     configs_dir: str,
@@ -1166,8 +1156,23 @@ def export_dataset(
 
     # configs + model
     load_configs(configs_dir)
-    with open(speaker_map_path, "r", encoding="utf-8") as f:
-        speaker_map: Dict[str, Any] = json.load(f)
+    speaker_map: Dict[str, Any] = {}
+
+    # 1) 优先用 YAML 的 speaker_map
+    if isinstance(SPEAKER_MAP, dict) and SPEAKER_MAP:
+        speaker_map = SPEAKER_MAP
+    # 2) YAML 没有才用 json 文件（兼容旧流程）
+    elif speaker_map_path:
+        with open(speaker_map_path, "r", encoding="utf-8") as f:
+            speaker_map = json.load(f)
+
+    if not isinstance(speaker_map, dict) or not speaker_map:
+        raise RuntimeError(
+            "speaker_map 为空：请在 configs_dir/config.yaml 顶层加入 speaker_map，"
+            "或传入 --speaker_map 指向旧的 speaker_map.json"
+        )
+
+    print(f"[CFG] speaker_map_keys_used={len(speaker_map)}")
 
     tts = IndexTTS2(cfg, model_dir, use_fp16=fp16)
 
