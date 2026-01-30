@@ -19,7 +19,7 @@ exec "$PY" -X faulthandler axis_pack/export_single_axis.py \
   --input axis_pack/all_conversations.jsonl \
   --cfg checkpoints/config.yaml \
   --model_dir checkpoints/IndexTTS-2 \
-  --configs_dir axis_pack/configs \
+  --configs_dir axis_pack \
   --out_root axis_pack/output_export_by_tags \
   --merge \
   "$@"

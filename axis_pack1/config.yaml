@@ -208,19 +208,6 @@ microexpressions:
       "calm": -0.05
     },
 
-    "语调急剧升高": {
-      "surprised": 0.40,
-      "afraid": 0.15,
-      "happy": 0.50
-    },
-
-    "语调急剧降低": {
-      "sad": 0.41,
-      "melancholic": 0.10,
-      "happy": -0.15,
-      "angry": 0.05
-    },
-
     "冷笑": {
       "disgusted": 0.10,
       "calm": -0.30,
@@ -405,7 +392,6 @@ scene_behavior_profile:
           "危机植入": {
             "microexpression": {
               "冷笑": 0.45,
-              "语调急剧降低": 0.30
             },
             "speech_rate": {
               "语速加快": 0.25
@@ -413,9 +399,6 @@ scene_behavior_profile:
           },
 
           "操作指令": {
-            "microexpression": {
-              "语调急剧降低": 0.40
-            },
             "speech_rate": {
               "不自然停顿": 0.30
             }
@@ -473,7 +456,6 @@ scene_behavior_profile:
           "危机植入": {
             "microexpression": {
               "冷笑": 0.65,
-              "语调急剧降低": 0.45
             },
             "speech_rate": {
               "语速加快": 0.35
@@ -481,9 +463,6 @@ scene_behavior_profile:
           },
 
           "利益诱导": {
-            "microexpression": {
-              "语调急剧升高": 0.40
-            },
             "speech_rate": {
               "语速加快": 0.30
             }

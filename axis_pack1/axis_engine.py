@@ -959,6 +959,7 @@ def synthesize_turn(
         base = f"turn{idx:02d}_{role_tag}_{text_tag}_{uid}"
 
         raw = os.path.join(out_dir, f"{base}_raw.wav")
+        speed_wav = os.path.join(out_dir, f"{base}_speed.wav")  # 显式定义
         out = os.path.join(out_dir, f"{base}.wav")
 
         # ===== TTS 合成 =====
@@ -996,7 +997,7 @@ def synthesize_turn(
                 text=sub,
                 output_path=tmp,
                 use_emo_text=True,
-                emo_text=build_emo_text(utter_raw, intention, emo, micro, rate, scene, axis_mode=axis_mode),
+                emo_text=build_emo_text(sub, intention, emo, micro, rate, scene, axis_mode=axis_mode),
                 emo_vector=build_emo_vector(emo, micro, rate, scene, axis_mode=axis_mode),
                 emo_alpha=float(emo_alpha),
             )
@@ -1028,43 +1029,45 @@ def synthesize_turn(
                 audio_all += AudioSegment.silent(duration=int(gap))
 
         os.makedirs(out_dir, exist_ok=True)
-        audio_all.export(raw_wav, format="wav")
+        audio_all.export(raw, format="wav")
         print(f"[DEBUG] 原始音频保存成功，大小: {os.path.getsize(raw)} bytes")
 
         # ===== 语速调整 =====
         print(f"\n[DEBUG] 步骤3: 语速调整")
-        speed_wav = raw_wav.replace("_raw.wav", "_speed.wav")
-        adjust_audio_speed(raw_wav, speed_wav, rate)
-        print(f"[DEBUG] 语速调整完成，文件大小: {os.path.getsize(speed_adjusted)} bytes")
+        speed_wav = raw.replace("_raw.wav", "_speed.wav")
+        adjust_audio_speed(raw, speed_wav, rate)
+        print(f"[DEBUG] 语速调整完成，文件大小: {os.path.getsize(speed_wav)} bytes")
 
         # ===== 轻量后处理 =====
         print(f"\n[DEBUG] 步骤4: 轻量后处理")
-        ok = simple_postprocess(inp=speed_wav, outp=out_wav, micro=micro, emo=emo, rate=rate)
+        ok = simple_postprocess(inp=speed_wav, outp=out, micro=micro, emo=emo, rate=rate)
 
         # 如果后处理失败或 out 没生成，至少保证有一个可用 wav（回退到 speed/raw）
-        if (not ok) or (not os.path.exists(out_wav)):
+        if (not ok) or (not os.path.exists(out)):
             print(f"[WARN] 后处理未生成最终文件，fallback: copy speed/raw -> out")
             try:
-                shutil.copy2(speed_wav if os.path.exists(speed_wav) else raw_wav, out_wav)
+                fallback_src = speed_wav if os.path.exists(speed_wav) else raw
+                shutil.copy2(fallback_src, out)
             except Exception as e:
                 print(f"[ERROR] fallback copy failed: {e}")
 
         print(f"[DEBUG] 最终输出文件大小: {os.path.getsize(out)} bytes")
         # 清理中间文件
-        for p in (raw_wav, speed_wav):
+        for p in (raw, speed_wav):
             try:
                 if p and os.path.exists(p):
                     os.remove(p)
             except Exception:
                 pass
 
-        print(f"[WARN] 最终 out 仍不存在，返回 raw: {out_wav}")
-        return out_wav if os.path.exists(out_wav) else None
+        return out if os.path.exists(out) else None
 
 
     except Exception as e:
         print(f"[ERROR] synthesize_turn failed: turn={idx} err={e}")
+        traceback.print_exc()  # 建议加上堆栈打印，方便排查具体哪行错
         return None
+
 # ====================== 导出格式 ===========================
 def axis_catalog() -> Dict[str, Tuple[str, str]]:
     """axis_dir_name -> (axis_mode, label_key)"""
