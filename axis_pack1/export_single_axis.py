@@ -36,8 +36,8 @@ def main():
     ap.add_argument(
         "--axes",
         type=str,
-        default="emotion,microexpression,speech_rate_anomaly",
-        help="选择要导出的单轴目录（逗号分隔）。可选: emotion,microexpression,speech_rate_anomaly。默认全部。",
+        default="emotion,speech_rate_anomaly",
+        help="选择要导出的单轴目录（逗号分隔）。可选: emotion,speech_rate_anomaly。默认全部。",
     )
     ap.add_argument("--fp16", action="store_true", help="Use FP16 to reduce VRAM")
 

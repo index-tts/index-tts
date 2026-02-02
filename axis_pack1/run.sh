@@ -10,8 +10,8 @@ export CUDA_VISIBLE_DEVICES=1
 
 # 用法示例：
 #   bash axis_pack/run.sh --lines 1
-#   bash axis_pack/run.sh --lines 1 --axes microexpression
-#   bash axis_pack/run.sh --lines 1 --axes emotion,microexpression
+#   bash axis_pack/run.sh --lines 1 --axes emotion
+#   bash axis_pack/run.sh --lines 1 --axes emotion,speech_rate_anomaly
 #   bash axis_pack/run.sh --lines 1 --conversation_only --merge
 #   bash axis_pack/run.sh --lines 1 --with_conversation --merge
 
