@@ -10,8 +10,8 @@ base_emotions:
   困惑: [0.01, 0.08, 0.12, 0.35, 0.03, 0.55, 0.35, 0.01]
 emotion_alpha_map:
   压迫性: 0.48
-  不耐烦: 0.5
-  犹豫: 0.55
+  不耐烦: 0.62
+  犹豫: 0.68
   正常: 0.35
   兴奋: 0.55
   愤怒: 0.37
@@ -20,13 +20,13 @@ emotion_alpha_map:
 semantic_emotions:
   不耐烦:
     desc: 急躁催促
-    prompt: 说话者明显不耐烦，语速加快，语气急切强硬，带有强烈的催促感，急于推进对话，表现出对对方反应迟缓的不满，带有压迫性的紧迫感。
+    prompt: 说话者明显不耐烦，句子更短更直接，语速偏快，语气急切强硬，常用推进式表达（如“行了”“别绕了”“直接说重点”），几乎不给对方解释空间，表达带催促与压迫感。
   压迫性:
     desc: 稳定施压
     prompt: 说话者语气低沉而强势，说话节奏稳定，持续给对方心理压力。
   犹豫:
     desc: 真实犹豫
-    prompt: 说话者明显在思考，说话过程中有自然停顿，语气不稳定但不夸张。省略号处要有语气的延续和拖长，不是单纯的停顿，而是声音的延续和尾音的拖长，表现出思考和迟疑的感觉。
+    prompt: 说话者在犹豫和思考，表达会吞吐、会轻微自我修正（说到一半改口），会使用少量填充词（如“嗯…那个…”），停顿自然但不夸张。省略号处要有尾音的延续和拖住，而不是完全断开。
   恐慌:
     desc: 紧张失控边缘
     prompt: 声音紧张，呼吸略急，说话不够连贯，情绪明显紧张但仍可表达。
@@ -50,22 +50,20 @@ emotion_rhythm_templates:
       replace: \1……
       count: 1
   不耐烦:
-    desc: 语速略快，克制的烦躁,将结尾的句号改为省略号，表现出一种‘懒得解释’的尾音下沉
+    desc: 语速偏快、句子更短更硬、推进对话，不给太多解释空间
     rules:
-    - pattern: 。
-      replace: ，
-      count: 1
-    - pattern: ^哎呀
-      replace: 哎呀！
-      count: 1
-    - pattern: 。{1，}
-      replace: 。
-      count: 2
-    - pattern: '[，。]'
-      replace: ，
-      count: 2
-    - pattern: 现在
-      replace: 现在立刻
+      # 1) 压缩重复句号
+      - { pattern: "。{2,}", replace: "。", count: 2 }
+
+      # 2) 句末更“硬”（句号更像“到此为止”/“快点”）
+      - { pattern: "。$", replace: "！", count: 1, prob: 0.65 }
+
+      # 3) 少用逗号拖长（逗号多会显得耐心解释）
+      - { pattern: "，{2,}", replace: "，", count: 2 }
+
+      # 4) 轻量注入口头推进词（概率小一点，避免太口水）
+      - { pattern: "^", replace: "快点，", count: 1, prob: 0.22 }
+      - { pattern: "^(哎呀)", replace: "\\1！", count: 1 }
   压迫性:
     rules:
     - desc: 去掉感叹号前的停顿，使其语气更生硬
@@ -77,18 +75,13 @@ emotion_rhythm_templates:
       replace: \1
       prob: 0.9
   犹豫:
-    desc: 真实犹豫，思考中断而非情绪化
+    desc: 更明显的思考与吞吐，带少量自我修正和尾音拖住
     rules:
-    - pattern: ^(我|嗯|那个|这个)
-      replace: \1……
-      count: 1
-    - pattern: (但是|不过)
-      replace: \1……
-      count: 1
-    - pattern: 。$
-      replace: ……
-      count: 1
-      prob: 0.4
+      - { pattern: "^", replace: "嗯……", count: 1, prob: 0.28 }
+      - { pattern: "(但是|不过|其实|可能|这个)", replace: "\\1……", count: 2 }
+      - { pattern: "(我觉得|我想|应该|大概)([，。])", replace: "\\1……\\2", count: 2 }
+      - { pattern: "。$", replace: "……", count: 1, prob: 0.75 }
+      - {pattern: '^(?!.*我(?:…|\.{3,})+我)\s*我', replace: '我……我', count: 1}
   愤怒:
     desc: 压着的愤怒，而非失控
     rules:
