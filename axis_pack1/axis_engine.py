@@ -1,16 +1,4 @@
-"""axis_engine.py
-运行：
-只生成 conversation（并且合并 merged）
-bash /home/shentong/index-tts-main/axis_pack/run.sh --lines 1 --conversation_only --merge
-只生成原来的单轴（不带 conversation）
-bash /home/shentong/index-tts-main/axis_pack/run.sh --lines 1
-两者都要（单轴 + conversation）
-bash /home/shentong/index-tts-main/axis_pack/run.sh --lines 1 --with_conversation --merge
-
-  - synthesize_turn(): 单轮合成（支持 axis_mode）
-  - load_configs(): 从 configs_dir/config.yaml 读取配置（不存在则回退 json）
-  - CLI：支持只生成某一个单轴、同时生成多个单轴、以及 conversation 生成；输出结构不变。
-"""
+#axis_engine.py
 from __future__ import annotations
 
 import argparse
