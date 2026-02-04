@@ -1,0 +1,158 @@
+debug:
+  emotion_rhythm_templates: true
+emotion:
+  base:
+    #["happy","angry","sad","afraid","disgusted","melancholic","surprised","calm"]
+    压迫性: [0.02,0.58,0.02,0.22,0.28,0.05,0.16,0.05]
+    不耐烦: [0.04,0.55,0.02,0.1,0.65,0.05,0.12,-0.25]
+    恐慌: [0.01,0.55,0.06,0.85,0.12,0.06,0.55,-0.15]
+    愤怒: [0.01,0.65,0.2,0.15,0.5,0.08,0.15,-0.3]
+    兴奋: [0.7,0.05,0.01,0.08,0,0.02,0.3,0.18]
+    正常: [0.08,0.03,0.03,0.01,0.01,0.03,0.01,0.35]
+    犹豫: [0.02,0.02,0.18,0.55,0.02,0.45,0.5,0.02]
+    困惑: [0.01,0.08,0.12,0.35,0.03,0.55,0.35,0.01]
+  alpha:
+    压迫性: 0.48
+    不耐烦: 0.62
+    犹豫: 0.68
+    正常: 0.35
+    兴奋: 0.55
+    愤怒: 0.37
+    恐慌: 0.5
+    困惑: 0.35
+  semantic:
+    不耐烦:
+      desc: 急躁催促
+      prompt: 说话者明显不耐烦，句子更短更直接，语速偏快，语气急切强硬，常用推进式表达（如“行了”“别绕了”“直接说重点”），几乎不给对方解释空间，表达带催促与压迫感。
+    压迫性:
+      desc: 稳定施压
+      prompt: 说话者语气低沉而强势，说话节奏稳定，持续给对方心理压力。
+    犹豫:
+      desc: 真实犹豫
+      prompt: 说话者在犹豫和思考，表达会吞吐、会轻微自我修正（说到一半改口），会使用少量填充词（如“嗯…那个…”），停顿自然但不夸张。省略号处要有尾音的延续和拖住，而不是完全断开。
+    恐慌:
+      desc: 紧张失控边缘
+      prompt: 声音紧张，呼吸略急，说话不够连贯，情绪明显紧张但仍可表达。
+    愤怒:
+      desc: 压抑的愤怒
+      prompt: 语气明显强硬，情绪愤怒但被压制，没有歇斯底里，语速偏快但不抢话，句与句之间保持控制感。
+    兴奋:
+      desc: 情绪上扬
+      prompt: 语气略有上扬，说话节奏加快，情绪积极但不过度。
+    正常:
+      desc: 中性自然
+      prompt: 保持自然、平稳的说话语气。
+  rhythm_templates:
+    正常:
+      desc: 中性自然
+      rules: []
+    困惑:
+      desc: 轻微疑惑，不夸张
+      rules:
+      - pattern: (什么|怎么|为什么|是不是)
+        replace: \1……
+        count: 1
+    不耐烦:
+      desc: 语速偏快、句子更短更硬、推进对话，不给太多解释空间
+      rules:
+      - pattern: 。{2,}
+        replace: 。
+        count: 2
+      - pattern: 。$
+        replace: ！
+        count: 1
+        prob: 0.65
+      - pattern: ，{2,}
+        replace: ，
+        count: 2
+      - pattern: ^
+        replace: 快点，
+        count: 1
+        prob: 0.22
+      - pattern: ^(哎呀)
+        replace: \1！
+        count: 1
+    压迫性:
+      rules:
+      - desc: 去掉感叹号前的停顿，使其语气更生硬
+        pattern: ([！!])
+        replace: ！
+        prob: 1.0
+      - desc: 在指令性动词后紧跟内容，不留空隙
+        pattern: (请务必|立刻|马上|配合)([，, ]?)
+        replace: \1
+        prob: 0.9
+    犹豫:
+      desc: 更明显的思考与吞吐，带少量自我修正和尾音拖住
+      rules:
+      - pattern: ^
+        replace: 嗯……
+        count: 1
+        prob: 0.28
+      - pattern: (但是|不过|其实|可能|这个)
+        replace: \1……
+        count: 2
+      - pattern: (我觉得|我想|应该|大概)([，。])
+        replace: \1……\2
+        count: 2
+      - pattern: 。$
+        replace: ……
+        count: 1
+        prob: 0.75
+      - pattern: ^(?!.*我(?:…|\.{3,})+我)\s*我
+        replace: 我……我
+        count: 1
+    愤怒:
+      desc: 压着的愤怒，而非失控
+      rules:
+      - pattern: 。$
+        replace: ！
+        count: 1
+    恐慌:
+      desc: 紧张但不破碎
+      rules:
+      - pattern: 我
+        replace: 我……
+        count: 1
+    兴奋:
+      desc: 情绪上扬但不过度
+      rules:
+      - pattern: 。
+        replace: ！
+        count: 1
+      - pattern: ？
+        replace: ！
+        count: 1
+      - pattern: 是这样的，
+        replace: 是这样的！
+        count: 1
+      - pattern: 真的假的啊
+        replace: 真的假的啊！
+        desc: 加强兴奋语气
+speech_rate:
+  speed_factor:
+    语速加快: 1.02
+    语速放慢: 0.97
+    不自然停顿: 1.0
+    正常: 1.0
+text_process:
+  punctuation:
+    question:
+      pattern: ？$
+      replace: ？
+      desc: 保留问号，不自动加语气词
+    exclamation:
+      pattern: ！
+      replace: ！
+      desc: 保留感叹号，不自动加语气词
+  job_id:
+    pattern: (工号|编号|账号)[：:]?\s*(\d+)
+    desc: 工号逐字读
+speaker_map:
+  Agent: /home/shentong/index-tts-main/examples_fixed/voice_07.wav
+  User_male: /home/shentong/index-tts-main/examples_fixed/voice_00.wav
+  User_female: /home/shentong/index-tts-main/examples_fixed/voice_11.wav
+postprocess_audio:
+  normalize_headroom_db: 6.0
+  target_peak_dbfs: -1.0
+  extra_gain_db: 0.0
