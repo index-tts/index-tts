@@ -14,7 +14,7 @@ conda_env*/
 *.py[cod]
 
 # Distribution/Packaging.
-/build/
+build/
 /dist/
 *.egg-info/
 .pypirc
@@ -29,3 +29,4 @@ desktop.ini
 /checkpoints/*
 !/checkpoints/*.yaml
 /outputs/
+/temp_audio/

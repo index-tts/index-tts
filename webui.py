@@ -29,6 +29,8 @@ parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16
 parser.add_argument("--deepspeed", action="store_true", default=False, help="Use DeepSpeed to accelerate if available")
 parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use CUDA kernel for inference if available")
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
+parser.add_argument("--fa2", action="store_true", help="Use Flash Attention 2")
+parser.add_argument("--compile", action="store_true", help="Use Torch Compile")
 cmd_args = parser.parse_args()
 
 if not os.path.exists(cmd_args.model_dir):
@@ -58,6 +60,8 @@ tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 use_fp16=cmd_args.fp16,
                 use_deepspeed=cmd_args.deepspeed,
                 use_cuda_kernel=cmd_args.cuda_kernel,
+                use_accel=cmd_args.fa2,
+                use_torch_compile=cmd_args.compile
                 )
 # 支持的语言列表
 LANGUAGES = {
