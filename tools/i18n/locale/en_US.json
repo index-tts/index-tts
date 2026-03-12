@@ -46,5 +46,20 @@
   "与音色参考音频相同": "Same as the voice reference",
   "情感随机采样": "Randomize emotion sampling",
   "显示实验功能": "Show experimental features",
-  "提示：此功能为实验版，结果尚不稳定，我们正在持续优化中。": "Note: This feature is currently experimental and may not produce satisfactory results. We're dedicated to improving its performance in a future release."
+  "提示：此功能为实验版，结果尚不稳定，我们正在持续优化中。": "Note: This feature is currently experimental and may not produce satisfactory results. We're dedicated to improving its performance in a future release.",
+  "自定义个别专业术语的读音": "Customize the pronunciation of each term or how it is \"say as\".",
+  "请至少输入一种读法": "Please enter at least one pronunciation",
+  "已添加": "Added",
+  "开启术语词汇读音": "Enable custom term pronunciations",
+  "添加术语": "Add term",
+  "暂无术语": "No custom terms added yet",
+  "请输入术语": "Please input the term",
+  "术语": "Term",
+  "已删除": "Deleted",
+  "英文读法": "English pronunciation",
+  "自定义术语词汇读音": "Customize term pronunciations",
+  "中文读法": "Chinese pronunciation",
+  "词汇表已更新": "Glossary updated successfully",
+  "保存词汇表时出错": "Error saving glossary",
+  "加载词汇表时出错": "Error loading glossary"
 }

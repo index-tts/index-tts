@@ -133,8 +133,10 @@ def subsequent_mask(length):
 def fused_add_tanh_sigmoid_multiply(input_a, input_b, n_channels):
     n_channels_int = n_channels[0]
     in_act = input_a + input_b
-    t_act = torch.tanh(in_act[:, :n_channels_int, :])
-    s_act = torch.sigmoid(in_act[:, n_channels_int:, :])
+    # use torch.split to avoid dynamic slicing
+    t_act_part, s_act_part = torch.split(in_act, n_channels_int, dim=1)
+    t_act = torch.tanh(t_act_part)
+    s_act = torch.sigmoid(s_act_part)
     acts = t_act * s_act
     return acts
 
@@ -436,6 +438,15 @@ class MyModel(nn.Module):
     def forward_gpt(self,x):
         x = self.models['gpt_layer'](x)
         return x
+
+    def enable_torch_compile(self):
+        """Enable torch.compile optimization.
+        
+        This method applies torch.compile to the model for significant
+        performance improvements during inference.
+        """
+        if 'cfm' in self.models:
+            self.models['cfm'].enable_torch_compile()
 
 
 

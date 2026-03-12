@@ -62,22 +62,23 @@ def de_tokenized_by_CJK_char(line: str, do_lower_case=False) -> str:
       output = "see you!"
     """
     # replace english words in the line with placeholders
-    english_word_pattern = re.compile(r"([A-Z]+(?:[\s-][A-Z-]+)*)", re.IGNORECASE)
+    english_word_pattern = re.compile(r"([A-Z]+(?:[\s'-][A-Z-]+)*)", re.IGNORECASE)
     english_sents = english_word_pattern.findall(line)
     for i, sent in enumerate(english_sents):
         line = line.replace(sent, f"<sent_{i}>")
 
     words = line.split()
     # restore english sentences
-    sent_placeholder_pattern = re.compile(r"^.*?(<sent_(\d+)>)")
+    sent_placeholder_pattern = re.compile(r"(<sent_(\d+)>)")
     for i in range(len(words)):
-        m = sent_placeholder_pattern.match(words[i])
-        if m:
+        all_matches = sent_placeholder_pattern.findall(words[i])
+        if len(all_matches) > 1:
             # restore the english word
-            placeholder_index = int(m.group(2))
-            words[i] = words[i].replace(m.group(1), english_sents[placeholder_index])
-            if do_lower_case:
-                words[i] = words[i].lower()
+            for h,j in all_matches:
+                placeholder_index = int(j)
+                words[i] = words[i].replace(h, english_sents[placeholder_index])
+                if do_lower_case:
+                    words[i] = words[i].lower()
     return "".join(words)
 
 

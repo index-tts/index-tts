@@ -76,7 +76,7 @@ Finally, experimental results on multiple datasets show that IndexTTS2 outperfor
 
 ### Contact
 
-QQ Group：553460296(No.1) 663272642(No.4)  \
+QQ Group：663272642(No.4) 1013410623(No.5)  \
 Discord：https://discord.gg/uT32E7KDmy  \
 Email：indexspeech@bilibili.com  \
 You are welcome to join our community! 🌏  \

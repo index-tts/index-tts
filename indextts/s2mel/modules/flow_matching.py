@@ -169,3 +169,18 @@ class CFM(BASECFM):
             self.estimator = DiT(args)
         else:
             raise NotImplementedError(f"Unknown diffusion type {args.dit_type}")
+
+    def enable_torch_compile(self):
+        """Enable torch.compile optimization for the estimator model.
+        
+        This method applies torch.compile to the estimator (DiT model) for significant
+        performance improvements during inference. It also configures distributed
+        training optimizations if applicable.
+        """
+        if torch.distributed.is_initialized():
+            torch._inductor.config.reorder_for_compute_comm_overlap = True
+        self.estimator = torch.compile(
+            self.estimator, 
+            fullgraph=True,
+            dynamic=True,
+        )

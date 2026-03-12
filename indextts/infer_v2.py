@@ -38,7 +38,7 @@ import torch.nn.functional as F
 class IndexTTS2:
     def __init__(
             self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, device=None,
-            use_cuda_kernel=None,use_deepspeed=False
+            use_cuda_kernel=None,use_deepspeed=False, use_accel=False, use_torch_compile=False
     ):
         """
         Args:
@@ -48,6 +48,8 @@ class IndexTTS2:
             device (str): device to use (e.g., 'cuda:0', 'cpu'). If None, it will be set automatically based on the availability of CUDA or MPS.
             use_cuda_kernel (None | bool): whether to use BigVGan custom fused activation CUDA kernel, only for CUDA device.
             use_deepspeed (bool): whether to use DeepSpeed or not.
+            use_accel (bool): whether to use acceleration engine for GPT2 or not.
+            use_torch_compile (bool): whether to use torch.compile for optimization or not.
         """
         if device is not None:
             self.device = device
@@ -75,10 +77,12 @@ class IndexTTS2:
         self.model_dir = model_dir
         self.dtype = torch.float16 if self.use_fp16 else None
         self.stop_mel_token = self.cfg.gpt.stop_mel_token
+        self.use_accel = use_accel
+        self.use_torch_compile = use_torch_compile
 
         self.qwen_emo = QwenEmotion(os.path.join(self.model_dir, self.cfg.qwen_emo_path))
 
-        self.gpt = UnifiedVoice(**self.cfg.gpt)
+        self.gpt = UnifiedVoice(**self.cfg.gpt, use_accel=self.use_accel)
         self.gpt_path = os.path.join(self.model_dir, self.cfg.gpt_checkpoint)
         load_checkpoint(self.gpt, self.gpt_path)
         self.gpt = self.gpt.to(self.device)
@@ -135,6 +139,13 @@ class IndexTTS2:
         )
         self.s2mel = s2mel.to(self.device)
         self.s2mel.models['cfm'].estimator.setup_caches(max_batch_size=1, max_seq_length=8192)
+        
+        # Enable torch.compile optimization if requested
+        if self.use_torch_compile:
+            print(">> Enabling torch.compile optimization")
+            self.s2mel.enable_torch_compile()
+            print(">> torch.compile optimization enabled successfully")
+        
         self.s2mel.eval()
         print(">> s2mel weights restored from:", s2mel_path)
 
@@ -156,11 +167,17 @@ class IndexTTS2:
         print(">> bigvgan weights restored from:", bigvgan_name)
 
         self.bpe_path = os.path.join(self.model_dir, self.cfg.dataset["bpe_model"])
-        self.normalizer = TextNormalizer()
+        self.normalizer = TextNormalizer(enable_glossary=True)
         self.normalizer.load()
         print(">> TextNormalizer loaded")
         self.tokenizer = TextTokenizer(self.bpe_path, self.normalizer)
         print(">> bpe model loaded from:", self.bpe_path)
+
+        # 加载术语词汇表（如果存在）
+        self.glossary_path = os.path.join(self.model_dir, "glossary.yaml")
+        if os.path.exists(self.glossary_path):
+            self.normalizer.load_glossary_from_yaml(self.glossary_path)
+            print(">> Glossary loaded from:", self.glossary_path)
 
         emo_matrix = torch.load(os.path.join(self.model_dir, self.cfg.emo_matrix))
         self.emo_matrix = emo_matrix.to(self.device)
@@ -453,7 +470,7 @@ class IndexTTS2:
             ref_mel = self.cache_mel
 
         if emo_vector is not None:
-            weight_vector = torch.tensor(emo_vector).to(self.device)
+            weight_vector = torch.tensor(emo_vector, device=self.device)
             if use_random:
                 random_index = [random.randint(0, x - 1) for x in self.emo_num]
             else:
@@ -580,15 +597,16 @@ class IndexTTS2:
                 #                     print(f"code len: {code_lens}")
 
                 code_lens = []
+                max_code_len = 0
                 for code in codes:
                     if self.stop_mel_token not in code:
-                        code_lens.append(len(code))
                         code_len = len(code)
                     else:
-                        len_ = (code == self.stop_mel_token).nonzero(as_tuple=False)[0] + 1
-                        code_len = len_ - 1
+                        len_ = (code == self.stop_mel_token).nonzero(as_tuple=False)[0]
+                        code_len = len_[0].item() if len_.numel() > 0 else len(code)
                     code_lens.append(code_len)
-                codes = codes[:, :code_len]
+                    max_code_len = max(max_code_len, code_len)
+                codes = codes[:, :max_code_len]
                 code_lens = torch.LongTensor(code_lens)
                 code_lens = code_lens.to(self.device)
                 if verbose:
@@ -815,6 +833,19 @@ class QwenEmotion:
 if __name__ == "__main__":
     prompt_wav = "examples/voice_01.wav"
     text = '欢迎大家来体验indextts2，并给予我们意见与反馈，谢谢大家。'
-
-    tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_cuda_kernel=False)
+    tts = IndexTTS2(
+        cfg_path="checkpoints/config.yaml", 
+        model_dir="checkpoints", 
+        use_cuda_kernel=False,
+        use_torch_compile=True
+    )
     tts.infer(spk_audio_prompt=prompt_wav, text=text, output_path="gen.wav", verbose=True)
+    char_size = 5
+    import string
+    time_buckets = []
+    for i in range(10):
+        text = ''.join(random.choices(string.ascii_letters, k=char_size))
+        start_time = time.time()
+        tts.infer(spk_audio_prompt=prompt_wav, text=text, output_path="gen.wav", verbose=True)
+        time_buckets.append(time.time() - start_time)
+    print(time_buckets)

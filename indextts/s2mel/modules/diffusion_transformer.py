@@ -233,7 +233,7 @@ class DiT(torch.nn.Module):
         if self.time_as_token: # False
             x_in = torch.cat([t1.unsqueeze(1), x_in], dim=1)
             
-        x_mask = sequence_mask(x_lens + self.style_as_token + self.time_as_token).to(x.device).unsqueeze(1) #torch.Size([1, 1, 1863])True
+        x_mask = sequence_mask(x_lens + self.style_as_token + self.time_as_token, max_length=x_in.size(1)).to(x.device).unsqueeze(1) #torch.Size([1, 1, 1863])True
         input_pos = self.input_pos[:x_in.size(1)]  # (T,) range（0，1863）
         x_mask_expanded = x_mask[:, None, :].repeat(1, 1, x_in.size(1), 1) if not self.is_causal else None # torch.Size([1, 1, 1863, 1863]
         x_res = self.transformer(x_in, t1.unsqueeze(1), input_pos, x_mask_expanded) # [2, 1863, 512]
