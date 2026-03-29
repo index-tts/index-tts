@@ -28,4 +28,5 @@ desktop.ini
 /cache/
 /checkpoints/*
 !/checkpoints/*.yaml
+/logs/
 /outputs/
