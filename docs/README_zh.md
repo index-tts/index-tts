@@ -252,6 +252,25 @@ text = "Translate for me, what is a surprise!"
 tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, output_path="gen.wav", verbose=True)
 ```
 
+也可以一次传入多个音色参考或情感参考音频，并通过
+`spk_audio_weights` / `emo_audio_weights` 指定权重。权重会自动归一化；
+如果省略则默认等权融合：
+
+```python
+from indextts.infer_v2 import IndexTTS2
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+text = "Blend timbre from several references while keeping a stable output."
+tts.infer(
+    spk_audio_prompt=["examples/voice_01.wav", "examples/voice_07.wav", "examples/voice_12.wav"],
+    spk_audio_weights=[0.5, 0.3, 0.2],
+    text=text,
+    output_path="gen.wav",
+    emo_audio_prompt=["examples/emo_sad.wav", "examples/emo_surprise.wav"],
+    emo_audio_weights=[2, 1],
+    verbose=True,
+)
+```
+
 2. 指定情感参考音频：
 
 ```python

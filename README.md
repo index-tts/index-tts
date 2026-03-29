@@ -313,6 +313,26 @@ text = "Translate for me, what is a surprise!"
 tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, output_path="gen.wav", verbose=True)
 ```
 
+You can also pass multiple speaker or emotion references as a list or tuple,
+and optionally provide weights via `spk_audio_weights` / `emo_audio_weights`.
+Weights are normalized automatically. If omitted, equal weighting is applied
+across all references:
+
+```python
+from indextts.infer_v2 import IndexTTS2
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, use_cuda_kernel=False, use_deepspeed=False)
+text = "Blend timbre from several references while keeping a stable output."
+tts.infer(
+    spk_audio_prompt=["examples/voice_01.wav", "examples/voice_07.wav", "examples/voice_12.wav"],
+    spk_audio_weights=[0.5, 0.3, 0.2],
+    text=text,
+    output_path="gen.wav",
+    emo_audio_prompt=["examples/emo_sad.wav", "examples/emo_surprise.wav"],
+    emo_audio_weights=[2, 1],
+    verbose=True,
+)
+```
+
 2. Using a separate, emotional reference audio file to condition the speech synthesis:
 
 ```python
