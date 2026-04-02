@@ -352,19 +352,119 @@ class IndexTTS2:
             emo_vector = [vec * scale_factor for vec in emo_vector]
 
         return emo_vector
+    def parse_text_with_pauses(self, text):
+        """
+        支持形如 [p150] 的暂停标记，表示插入 150ms 静音
+        返回:
+        [
+            ("text", "你好"),
+            ("pause", 150),
+            ("text", "世界")
+        ]
+        """
+        text = text.replace("\r\n", "\n").strip()
+        if not text:
+            return []
+
+        pattern = re.compile(r"\[p(\d+)\]")
+        items = []
+        pos = 0
+
+        for m in pattern.finditer(text):
+            chunk = text[pos:m.start()]
+            if chunk.strip():
+                items.append(("text", chunk.strip()))
+            items.append(("pause", int(m.group(1))))
+            pos = m.end()
+
+        tail = text[pos:]
+        if tail.strip():
+            items.append(("text", tail.strip()))
+
+        return items
+    def parse_text_controls(self, text):
+        """
+        支持三种控制：
+        1. 双换行 \\n\\n      -> 强制断句
+        2. [KEEP]...[/KEEP]   -> 整段禁止自动切分
+        3. [p150]             -> 插入150ms静音
+        返回:
+        [
+            ("text", "普通文本块"),
+            ("keep", "禁止切分文本块"),
+            ("pause", 150),
+        ]
+        """
+        text = text.replace("\r\n", "\n").strip()
+        if not text:
+            return []
+
+        pattern = re.compile(r"(\[KEEP\].*?\[/KEEP\]|\[p\d+\])", re.S)
+        parts = pattern.split(text)
+
+        items = []
+
+        for part in parts:
+            if not part:
+                continue
+
+            # pause
+            m = re.fullmatch(r"\[p(\d+)\]", part.strip())
+            if m:
+                items.append(("pause", int(m.group(1))))
+                continue
+
+            # keep block
+            if part.startswith("[KEEP]") and part.endswith("[/KEEP]"):
+                keep_text = part[len("[KEEP]"):-len("[/KEEP]")].strip()
+                if keep_text:
+                    items.append(("keep", keep_text))
+                continue
+
+            # normal text -> still support hard break by double newline
+            manual_blocks = [x.strip() for x in re.split(r"\n\s*\n+", part) if x.strip()]
+            for block in manual_blocks:
+                items.append(("text", block))
+
+        return items    
+    def split_text_with_manual_breaks(self, text, max_text_tokens_per_segment=120, quick_streaming_tokens=0):
+        """
+        双换行 \\n\\n 视为强制断句
+        每个强制断句块内部，再按原有 split_segments 自动切
+        """
+        text = text.replace("\r\n", "\n").strip()
+        if not text:
+            return [], []
+
+        manual_blocks = [x.strip() for x in re.split(r"\n\s*\n+", text) if x.strip()]
+
+        all_segments = []
+        all_tokens_flat = []
+
+        for block in manual_blocks:
+            text_tokens_list = self.tokenizer.tokenize(block)
+            segs = self.tokenizer.split_segments(
+                text_tokens_list,
+                max_text_tokens_per_segment,
+                quick_streaming_tokens=quick_streaming_tokens
+            )
+            all_segments.extend(segs)
+            all_tokens_flat.extend(text_tokens_list)
+
+        return all_segments, all_tokens_flat    
 
     # 原始推理模式
     def infer(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
-              use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
+              use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, **generation_kwargs):
         if stream_return:
             return self.infer_generator(
                 spk_audio_prompt, text, output_path,
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
-                use_emo_text, emo_text, use_random, interval_silence,
+                use_emo_text, emo_text, use_random, interval_silence, speed_scale,
                 verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
             )
         else:
@@ -373,7 +473,7 @@ class IndexTTS2:
                     spk_audio_prompt, text, output_path,
                     emo_audio_prompt, emo_alpha,
                     emo_vector,
-                    use_emo_text, emo_text, use_random, interval_silence,
+                    use_emo_text, emo_text, use_random, interval_silence, speed_scale,
                     verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
                 ))[0]
             except IndexError:
@@ -382,7 +482,7 @@ class IndexTTS2:
     def infer_generator(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
-              use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
+              use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, **generation_kwargs):
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
@@ -500,11 +600,43 @@ class IndexTTS2:
             emo_cond_emb = self.cache_emo_cond
 
         self._set_gr_progress(0.1, "text processing...")
-        text_tokens_list = self.tokenizer.tokenize(text)
-        segments = self.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment, quick_streaming_tokens = quick_streaming_tokens)
-        segments_count = len(segments)
+
+        parsed_items = self.parse_text_controls(text)
+
+        plan = []
+        text_tokens_list = []
+
+        for item_type, item_value in parsed_items:
+            if item_type == "pause":
+                plan.append(("pause", item_value))
+
+            elif item_type == "keep":
+                keep_tokens = self.tokenizer.tokenize(item_value)
+
+                # 超过模型支持的硬上限，就不能再强制不切了
+                if len(keep_tokens) > self.cfg.gpt.max_text_tokens:
+                    raise ValueError(
+                        f"[KEEP] 块过长，token数={len(keep_tokens)}，"
+                        f"超过模型允许上限 {self.cfg.gpt.max_text_tokens}。"
+                    )
+
+                plan.append(("segment", keep_tokens))
+                text_tokens_list.extend(keep_tokens)
+
+            else:  # normal text
+                segs, tokens_flat = self.split_text_with_manual_breaks(
+                    item_value,
+                    max_text_tokens_per_segment=max_text_tokens_per_segment,
+                    quick_streaming_tokens=quick_streaming_tokens
+                )
+                for seg in segs:
+                    plan.append(("segment", seg))
+                text_tokens_list.extend(tokens_flat)
+
+        segments_count = sum(1 for t, _ in plan if t == "segment")
 
         text_token_ids = self.tokenizer.convert_tokens_to_ids(text_tokens_list)
+
         if self.tokenizer.unk_token_id in text_token_ids:
             print(f"  >> Warning: input text contains {text_token_ids.count(self.tokenizer.unk_token_id)} unknown tokens (id={self.tokenizer.unk_token_id}):")
             print( "     Tokens which can't be encoded: ", [t for t, id in zip(text_tokens_list, text_token_ids) if id == self.tokenizer.unk_token_id])
@@ -532,8 +664,31 @@ class IndexTTS2:
         s2mel_time = 0
         bigvgan_time = 0
         has_warned = False
-        silence = None # for stream_return
-        for seg_idx, sent in enumerate(segments):
+        default_interval_samples = int(sampling_rate * interval_silence / 1000.0) if interval_silence > 0 else 0
+        default_interval_tensor = None
+        prev_item_type = None
+        real_seg_idx = 0
+        for item_type, item_value in plan:
+            # default interval silence only for segment -> segment transition.
+            if item_type == "segment" and prev_item_type == "segment" and default_interval_samples > 0:
+                if default_interval_tensor is None:
+                    default_interval_tensor = torch.zeros(1, default_interval_samples)
+                wavs.append(default_interval_tensor)
+                if stream_return:
+                    yield default_interval_tensor
+
+            if item_type == "pause":
+                pause_ms = int(item_value)
+                pause_tensor = torch.zeros(1, int(sampling_rate * pause_ms / 1000.0))
+                wavs.append(pause_tensor)
+                if stream_return:
+                    yield pause_tensor
+                prev_item_type = "pause"
+                continue
+
+            sent = item_value
+            seg_idx = real_seg_idx
+            real_seg_idx += 1
             self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
                                   f"speech synthesis {seg_idx + 1}/{segments_count}...")
 
@@ -640,7 +795,7 @@ class IndexTTS2:
                     S_infer = self.semantic_codec.quantizer.vq2emb(codes.unsqueeze(1))
                     S_infer = S_infer.transpose(1, 2)
                     S_infer = S_infer + latent
-                    target_lengths = (code_lens * 1.72).long()
+                    target_lengths = (code_lens * speed_scale).long()
 
                     cond = self.s2mel.models['length_regulator'](S_infer,
                                                                  ylens=target_lengths,
@@ -668,13 +823,10 @@ class IndexTTS2:
                 wavs.append(wav.cpu())  # to cpu before saving
                 if stream_return:
                     yield wav.cpu()
-                    if silence == None:
-                        silence = self.interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
-                    yield silence
+                prev_item_type = "segment"
         end_time = time.perf_counter()
 
         self._set_gr_progress(0.9, "saving audio...")
-        wavs = self.insert_interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
         wav = torch.cat(wavs, dim=1)
         wav_length = wav.shape[-1] / sampling_rate
         print(f">> gpt_gen_time: {gpt_gen_time:.2f} seconds")

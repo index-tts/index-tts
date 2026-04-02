@@ -9,7 +9,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-
+import re
 import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +128,7 @@ def gen_single(emo_control_method,prompt, text,
                emo_ref_path, emo_weight,
                vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                emo_text,emo_random,
-               max_text_tokens_per_segment=120,
+               max_text_tokens_per_segment=120, interval_silence=200, speed_scale=1.72,
                 *args, progress=gr.Progress()):
     output_path = None
     if not output_path:
@@ -172,6 +172,8 @@ def gen_single(emo_control_method,prompt, text,
                        emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
                        emo_vector=vec,
                        use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
+                       interval_silence=int(interval_silence),
+                       speed_scale=float(speed_scale),
                        verbose=cmd_args.verbose,
                        max_text_tokens_per_segment=int(max_text_tokens_per_segment),
                        **kwargs)
@@ -311,6 +313,15 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                             label=i18n("分句最大Token数"), value=initial_value, minimum=20, maximum=tts.cfg.gpt.max_text_tokens, step=2, key="max_text_tokens_per_segment",
                             info=i18n("建议80~200之间，值越大，分句越长；值越小，分句越碎；过小过大都可能导致音频质量不高"),
                         )
+                    with gr.Row():
+                        interval_silence = gr.Slider(
+                            label=i18n("段间静音(ms)"), value=200, minimum=0, maximum=500, step=10,
+                            info=i18n("仅影响分段之间的默认静音，不影响单段内部字间时长"),
+                        )
+                        speed_scale = gr.Slider(
+                            label=i18n("语速系数"), value=1.72, minimum=1.45, maximum=2.00, step=0.02,
+                            info=i18n("越小越快，越大越慢"),
+                        )
                     with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
                         segments_preview = gr.Dataframe(
                             headers=[i18n("序号"), i18n("分句内容"), i18n("Token数")],
@@ -374,23 +385,44 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     )
 
     def on_input_text_change(text, max_text_tokens_per_segment):
-        if text and len(text) > 0:
-            text_tokens_list = tts.tokenizer.tokenize(text)
+        columns = [i18n("序号"), i18n("分句内容"), i18n("Token数")]
 
-            segments = tts.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment=int(max_text_tokens_per_segment))
-            data = []
-            for i, s in enumerate(segments):
-                segment_str = ''.join(s)
-                tokens_count = len(s)
-                data.append([i, segment_str, tokens_count])
+        if not text or not text.strip():
+            df = pd.DataFrame([], columns=columns)
             return {
-                segments_preview: gr.update(value=data, visible=True, type="array"),
+                segments_preview: gr.update(value=df, visible=True)
             }
-        else:
-            df = pd.DataFrame([], columns=[i18n("序号"), i18n("分句内容"), i18n("Token数")])
-            return {
-                segments_preview: gr.update(value=df),
-            }
+
+        rows = []
+        idx = 0
+
+        parsed_items = tts.parse_text_controls(text)
+
+        for item_type, item_value in parsed_items:
+            if item_type == "pause":
+                rows.append([idx, f"[pause {item_value}ms]", 0])
+                idx += 1
+
+            elif item_type == "keep":
+                keep_tokens = tts.tokenizer.tokenize(item_value)
+                rows.append([idx, f"[KEEP] {item_value}", len(keep_tokens)])
+                idx += 1
+
+            else:
+                segs, _ = tts.split_text_with_manual_breaks(
+                    item_value,
+                    max_text_tokens_per_segment=int(max_text_tokens_per_segment),
+                    quick_streaming_tokens=0
+                )
+
+                for seg in segs:
+                    rows.append([idx, ''.join(seg), len(seg)])
+                    idx += 1
+
+        df = pd.DataFrame(rows, columns=columns)
+        return {
+            segments_preview: gr.update(value=df, visible=True)
+        }
 
     # 术语词汇表事件处理函数
     def on_add_glossary_term(term, reading_zh, reading_en):
@@ -545,7 +577,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                      inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
                             vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                              emo_text,emo_random,
-                             max_text_tokens_per_segment,
+                             max_text_tokens_per_segment, interval_silence, speed_scale,
                              *advanced_params,
                      ],
                      outputs=[output_audio])
