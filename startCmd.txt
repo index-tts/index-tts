@@ -1,0 +1,7 @@
+unset HTTP_PROXY HTTPS_PROXY FTP_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy ftp_proxy all_proxy no_proxy
+
+export HTTP_PROXY=http://192.168.1.103:1080/ HTTPS_PROXY=http://192.168.1.103:1080/ FTP_PROXY=http://192.168.1.103:1080/ http_proxy=http://192.168.1.103:1080/ https_proxy=http://192.168.1.103:1080/ ftp_proxy=http://192.168.1.103:1080/  NO_PROXY=localhost,127.0.0.1,0.0.0.0,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,23.tcp.cpolar.top no_proxy=localhost,127.0.0.1,0.0.0.0,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,23.tcp.cpolar.top
+
+
+uv run webui.py --fp16
+
