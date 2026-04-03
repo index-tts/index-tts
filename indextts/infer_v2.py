@@ -464,6 +464,63 @@ class IndexTTS2:
 
         return wav
 
+    def _build_char_pause_map(self, punct_pause_map=None):
+        config = {
+            "comma": 120,
+            "period": 220,
+            "exclamation": 240,
+            "question": 240,
+            "semicolon": 180,
+            "colon": 160,
+        }
+        if isinstance(punct_pause_map, dict):
+            for key in config:
+                if key in punct_pause_map:
+                    try:
+                        config[key] = int(self._clamp_value(int(punct_pause_map[key]), 0, 500))
+                    except (TypeError, ValueError):
+                        continue
+
+        return {
+            "，": config["comma"], ",": config["comma"],
+            "。": config["period"], ".": config["period"],
+            "！": config["exclamation"], "!": config["exclamation"],
+            "？": config["question"], "?": config["question"],
+            "；": config["semicolon"], ";": config["semicolon"],
+            "：": config["colon"], ":": config["colon"],
+        }
+
+    def _split_text_for_auto_punct_pause(self, text, char_pause_map):
+        """
+        Convert plain text into interleaved items by punctuation.
+        Return: [("text", "..."), ("pause", 120), ...]
+        """
+        if not text:
+            return []
+
+        pieces = []
+        buf = []
+        for ch in text:
+            if ch in char_pause_map:
+                chunk = "".join(buf).strip()
+                if chunk:
+                    pieces.append(("text", chunk))
+                buf = []
+                pause_ms = int(char_pause_map[ch])
+                if pause_ms > 0:
+                    if pieces and pieces[-1][0] == "pause":
+                        pieces[-1] = ("pause", max(pieces[-1][1], pause_ms))
+                    else:
+                        pieces.append(("pause", pause_ms))
+            else:
+                buf.append(ch)
+
+        tail = "".join(buf).strip()
+        if tail:
+            pieces.append(("text", tail))
+
+        return pieces
+
     def parse_text_controls(self, text):
         """
         统一文本控制解析层，支持：
@@ -611,7 +668,13 @@ class IndexTTS2:
 
         return items
 
-    def build_generation_plan(self, text, max_text_tokens_per_segment=120, quick_streaming_tokens=0):
+    def build_generation_plan(
+            self,
+            text,
+            max_text_tokens_per_segment=120,
+            quick_streaming_tokens=0,
+            enable_punct_pause=False,
+            punct_pause_map=None):
         """
         Build the final unified generation plan from text controls.
         Plan items:
@@ -623,6 +686,8 @@ class IndexTTS2:
         plan = []
         text_tokens_list = []
 
+        char_pause_map = self._build_char_pause_map(punct_pause_map) if enable_punct_pause else {}
+
         for item in parsed_items:
             item_type = item["type"]
             if item_type == "pause":
@@ -633,32 +698,43 @@ class IndexTTS2:
             if not item_text:
                 continue
 
-            tokens = self.tokenizer.tokenize(item_text)
-
             if item_type == "keep":
-                if len(tokens) > self.cfg.gpt.max_text_tokens:
-                    raise ValueError(
-                        f"[KEEP] 块过长，token数={len(tokens)}，"
-                        f"超过模型允许上限 {self.cfg.gpt.max_text_tokens}。"
-                    )
-                segment_list = [tokens]
+                sub_items = [("text", item_text)]
+            elif enable_punct_pause:
+                sub_items = self._split_text_for_auto_punct_pause(item_text, char_pause_map)
             else:
-                segment_list = self.tokenizer.split_segments(
-                    tokens,
-                    max_text_tokens_per_segment,
-                    quick_streaming_tokens=quick_streaming_tokens
-                )
+                sub_items = [("text", item_text)]
 
-            for seg in segment_list:
-                plan.append((
-                    "segment",
-                    {
-                        "tokens": seg,
-                        "overrides": dict(item.get("overrides", {})),
-                        "preview_prefix": item.get("preview_prefix"),
-                    }
-                ))
-                text_tokens_list.extend(seg)
+            for sub_type, sub_value in sub_items:
+                if sub_type == "pause":
+                    plan.append(("pause", int(sub_value)))
+                    continue
+
+                tokens = self.tokenizer.tokenize(sub_value)
+                if item_type == "keep":
+                    if len(tokens) > self.cfg.gpt.max_text_tokens:
+                        raise ValueError(
+                            f"[KEEP] 块过长，token数={len(tokens)}，"
+                            f"超过模型允许上限 {self.cfg.gpt.max_text_tokens}。"
+                        )
+                    segment_list = [tokens]
+                else:
+                    segment_list = self.tokenizer.split_segments(
+                        tokens,
+                        max_text_tokens_per_segment,
+                        quick_streaming_tokens=quick_streaming_tokens
+                    )
+
+                for seg in segment_list:
+                    plan.append((
+                        "segment",
+                        {
+                            "tokens": seg,
+                            "overrides": dict(item.get("overrides", {})),
+                            "preview_prefix": item.get("preview_prefix"),
+                        }
+                    ))
+                    text_tokens_list.extend(seg)
 
         return plan, text_tokens_list
     def split_text_with_manual_breaks(self, text, max_text_tokens_per_segment=120, quick_streaming_tokens=0):
@@ -692,6 +768,7 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
+              enable_punct_pause=False, punct_pause_map=None,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0,
               seed=None, lock_seed=False, **generation_kwargs):
         if stream_return:
@@ -700,6 +777,7 @@ class IndexTTS2:
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
                 use_emo_text, emo_text, use_random, interval_silence, speed_scale,
+                enable_punct_pause, punct_pause_map,
                 verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
                 seed, lock_seed, **generation_kwargs
             )
@@ -710,6 +788,7 @@ class IndexTTS2:
                     emo_audio_prompt, emo_alpha,
                     emo_vector,
                     use_emo_text, emo_text, use_random, interval_silence, speed_scale,
+                    enable_punct_pause, punct_pause_map,
                     verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
                     seed, lock_seed, **generation_kwargs
                 ))[0]
@@ -720,6 +799,7 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
+              enable_punct_pause=False, punct_pause_map=None,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0,
               seed=None, lock_seed=False, **generation_kwargs):
         print(">> starting inference...")
@@ -841,7 +921,9 @@ class IndexTTS2:
         plan, text_tokens_list = self.build_generation_plan(
             text=text,
             max_text_tokens_per_segment=max_text_tokens_per_segment,
-            quick_streaming_tokens=quick_streaming_tokens
+            quick_streaming_tokens=quick_streaming_tokens,
+            enable_punct_pause=enable_punct_pause,
+            punct_pause_map=punct_pause_map,
         )
 
         segments_count = sum(1 for t, _ in plan if t == "segment")

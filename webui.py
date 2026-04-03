@@ -129,6 +129,8 @@ def gen_single(emo_control_method,prompt, text,
                emo_text,emo_random,
                max_text_tokens_per_segment=120, interval_silence=200, speed_scale=1.72,
                seed=42, lock_seed=False,
+               enable_punct_pause=False, pause_comma=120, pause_period=220, pause_exclamation=240,
+               pause_question=240, pause_semicolon=180, pause_colon=160,
                 *args, progress=gr.Progress()):
     output_path = None
     if not output_path:
@@ -168,6 +170,14 @@ def gen_single(emo_control_method,prompt, text,
 
     print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
     seed_value = 42 if seed is None else int(seed)
+    punct_pause_map = {
+        "comma": int(pause_comma),
+        "period": int(pause_period),
+        "exclamation": int(pause_exclamation),
+        "question": int(pause_question),
+        "semicolon": int(pause_semicolon),
+        "colon": int(pause_colon),
+    }
     output = tts.infer(spk_audio_prompt=prompt, text=text,
                        output_path=output_path,
                        emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
@@ -177,6 +187,8 @@ def gen_single(emo_control_method,prompt, text,
                        speed_scale=float(speed_scale),
                        seed=seed_value,
                        lock_seed=bool(lock_seed),
+                       enable_punct_pause=bool(enable_punct_pause),
+                       punct_pause_map=punct_pause_map,
                        verbose=cmd_args.verbose,
                        max_text_tokens_per_segment=int(max_text_tokens_per_segment),
                        **kwargs)
@@ -337,6 +349,20 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                             value=False,
                             info=i18n("开启后每次生成前固定随机源"),
                         )
+                    with gr.Row():
+                        enable_punct_pause = gr.Checkbox(
+                            label=i18n("启用标点自动停顿"),
+                            value=False,
+                            info=i18n("按中英标点自动插入停顿"),
+                        )
+                    with gr.Row():
+                        pause_comma = gr.Slider(label=i18n("，/,"), value=120, minimum=0, maximum=500, step=10)
+                        pause_period = gr.Slider(label=i18n("。/."), value=220, minimum=0, maximum=500, step=10)
+                        pause_exclamation = gr.Slider(label=i18n("！/!"), value=240, minimum=0, maximum=500, step=10)
+                    with gr.Row():
+                        pause_question = gr.Slider(label=i18n("？/?"), value=240, minimum=0, maximum=500, step=10)
+                        pause_semicolon = gr.Slider(label=i18n("；/;"), value=180, minimum=0, maximum=500, step=10)
+                        pause_colon = gr.Slider(label=i18n("：/:"), value=160, minimum=0, maximum=500, step=10)
                     with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
                         segments_preview = gr.Dataframe(
                             headers=[
@@ -406,7 +432,9 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                                  vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
     )
 
-    def on_input_text_change(text, max_text_tokens_per_segment, speed_scale, max_mel_tokens):
+    def on_input_text_change(text, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                             enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                             pause_question, pause_semicolon, pause_colon):
         columns = [
             i18n("序号"),
             i18n("分句内容"),
@@ -425,10 +453,21 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         rows = []
         idx = 0
 
+        punct_pause_map = {
+            "comma": int(pause_comma),
+            "period": int(pause_period),
+            "exclamation": int(pause_exclamation),
+            "question": int(pause_question),
+            "semicolon": int(pause_semicolon),
+            "colon": int(pause_colon),
+        }
+
         plan, _ = tts.build_generation_plan(
             text=text,
             max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-            quick_streaming_tokens=0
+            quick_streaming_tokens=0,
+            enable_punct_pause=bool(enable_punct_pause),
+            punct_pause_map=punct_pause_map,
         )
 
         for item_type, item_value in plan:
@@ -601,25 +640,89 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 
     input_text_single.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
         outputs=[segments_preview]
     )
 
     max_text_tokens_per_segment.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
         outputs=[segments_preview]
     )
 
     speed_scale.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
         outputs=[segments_preview]
     )
 
     max_mel_tokens.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    enable_punct_pause.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_comma.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_period.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_exclamation.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_question.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_semicolon.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
+        outputs=[segments_preview]
+    )
+
+    pause_colon.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens,
+                enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                pause_question, pause_semicolon, pause_colon],
         outputs=[segments_preview]
     )
 
@@ -655,6 +758,8 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                             vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                              emo_text,emo_random,
                              max_text_tokens_per_segment, interval_silence, speed_scale, seed, lock_seed,
+                             enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                             pause_question, pause_semicolon, pause_colon,
                              *advanced_params,
                      ],
                      outputs=[output_audio])
