@@ -9,7 +9,6 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-import re
 import pandas as pd
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -129,6 +128,7 @@ def gen_single(emo_control_method,prompt, text,
                vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                emo_text,emo_random,
                max_text_tokens_per_segment=120, interval_silence=200, speed_scale=1.72,
+               seed=42, lock_seed=False,
                 *args, progress=gr.Progress()):
     output_path = None
     if not output_path:
@@ -167,6 +167,7 @@ def gen_single(emo_control_method,prompt, text,
         emo_text = None
 
     print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
+    seed_value = 42 if seed is None else int(seed)
     output = tts.infer(spk_audio_prompt=prompt, text=text,
                        output_path=output_path,
                        emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
@@ -174,6 +175,8 @@ def gen_single(emo_control_method,prompt, text,
                        use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
                        interval_silence=int(interval_silence),
                        speed_scale=float(speed_scale),
+                       seed=seed_value,
+                       lock_seed=bool(lock_seed),
                        verbose=cmd_args.verbose,
                        max_text_tokens_per_segment=int(max_text_tokens_per_segment),
                        **kwargs)
@@ -322,6 +325,18 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                             label=i18n("语速系数"), value=1.72, minimum=1.45, maximum=2.00, step=0.02,
                             info=i18n("越小越快，越大越慢"),
                         )
+                    with gr.Row():
+                        seed = gr.Number(
+                            label=i18n("seed"),
+                            value=42,
+                            precision=0,
+                            info=i18n("固定随机种子（配合锁定开关可复现）"),
+                        )
+                        lock_seed = gr.Checkbox(
+                            label=i18n("锁定seed"),
+                            value=False,
+                            info=i18n("开启后每次生成前固定随机源"),
+                        )
                     with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
                         segments_preview = gr.Dataframe(
                             headers=[i18n("序号"), i18n("分句内容"), i18n("Token数")],
@@ -396,28 +411,30 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         rows = []
         idx = 0
 
-        parsed_items = tts.parse_text_controls(text)
+        plan, _ = tts.build_generation_plan(
+            text=text,
+            max_text_tokens_per_segment=int(max_text_tokens_per_segment),
+            quick_streaming_tokens=0
+        )
 
-        for item_type, item_value in parsed_items:
+        for item_type, item_value in plan:
             if item_type == "pause":
-                rows.append([idx, f"[pause {item_value}ms]", 0])
+                rows.append([idx, f"[pause {int(item_value)}ms]", 0])
                 idx += 1
+                continue
 
-            elif item_type == "keep":
-                keep_tokens = tts.tokenizer.tokenize(item_value)
-                rows.append([idx, f"[KEEP] {item_value}", len(keep_tokens)])
-                idx += 1
-
+            if isinstance(item_value, dict):
+                seg_tokens = item_value.get("tokens", [])
+                preview_prefix = item_value.get("preview_prefix")
             else:
-                segs, _ = tts.split_text_with_manual_breaks(
-                    item_value,
-                    max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-                    quick_streaming_tokens=0
-                )
+                seg_tokens = item_value
+                preview_prefix = None
 
-                for seg in segs:
-                    rows.append([idx, ''.join(seg), len(seg)])
-                    idx += 1
+            seg_text = ''.join(seg_tokens)
+            if preview_prefix:
+                seg_text = f"{preview_prefix} {seg_text}"
+            rows.append([idx, seg_text, len(seg_tokens)])
+            idx += 1
 
         df = pd.DataFrame(rows, columns=columns)
         return {
@@ -577,7 +594,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                      inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
                             vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                              emo_text,emo_random,
-                             max_text_tokens_per_segment, interval_silence, speed_scale,
+                             max_text_tokens_per_segment, interval_silence, speed_scale, seed, lock_seed,
                              *advanced_params,
                      ],
                      outputs=[output_audio])

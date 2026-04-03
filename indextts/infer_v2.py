@@ -382,24 +382,70 @@ class IndexTTS2:
             items.append(("text", tail.strip()))
 
         return items
+    def _clamp_value(self, value, min_value, max_value):
+        return max(min_value, min(max_value, value))
+
+    def _assert_no_nested_controls(self, block_text, block_name):
+        nested_pattern = re.compile(r"\[(KEEP|SPD|GEN|EMO_A)\b|\[p\d+\]", re.I)
+        nested = nested_pattern.search(block_text)
+        if nested:
+            raise ValueError(f"[{block_name}] 块内不支持嵌套控制标签，检测到：{nested.group(0)}")
+
+    def _parse_gen_overrides(self, attr_text):
+        """
+        Parse [GEN ...] attributes from opening tag text.
+        Supported keys: t, p, k
+        """
+        pairs = re.findall(r"\b([tpk])\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))", attr_text, flags=re.I)
+        if not pairs:
+            raise ValueError("[GEN] 控制块缺少参数，示例：[GEN t=0.7 p=0.85 k=20]文本[/GEN]")
+
+        raw = {}
+        for key, value in pairs:
+            raw[key.lower()] = value
+
+        overrides = {"do_sample": True}
+        preview_parts = []
+
+        if "t" in raw:
+            t_val = self._clamp_value(float(raw["t"]), 0.1, 2.0)
+            overrides["temperature"] = t_val
+            preview_parts.append(f"t={t_val:.2f}")
+        if "p" in raw:
+            p_val = self._clamp_value(float(raw["p"]), 0.0, 1.0)
+            overrides["top_p"] = p_val
+            preview_parts.append(f"p={p_val:.2f}")
+        if "k" in raw:
+            k_val = int(self._clamp_value(int(float(raw["k"])), 0, 100))
+            overrides["top_k"] = None if k_val == 0 else k_val
+            preview_parts.append(f"k={k_val}")
+
+        preview_prefix = f"[GEN {' '.join(preview_parts)}]"
+        return overrides, preview_prefix
+
     def parse_text_controls(self, text):
         """
-        支持三种控制：
-        1. 双换行 \\n\\n      -> 强制断句
-        2. [KEEP]...[/KEEP]   -> 整段禁止自动切分
-        3. [p150]             -> 插入150ms静音
-        返回:
-        [
-            ("text", "普通文本块"),
-            ("keep", "禁止切分文本块"),
-            ("pause", 150),
-        ]
+        统一文本控制解析层，支持：
+        1. 双换行 \\n\\n                    -> 强制断句
+        2. [KEEP]...[/KEEP]                 -> 整段禁止自动切分
+        3. [p150]                           -> 插入150ms静音
+        4. [SPD=1.55]...[/SPD]              -> 段级语速
+        5. [GEN t=0.7 p=0.85 k=20]...[/GEN] -> 段级采样
+        6. [EMO_A=0.4]...[/EMO_A]           -> 段级情感强度
+        不支持嵌套控制块。
+
+        Return format (list[dict]):
+        - {"type": "pause", "ms": int}
+        - {"type": "text"/"keep", "text": str, "overrides": dict, "preview_prefix": Optional[str]}
         """
         text = text.replace("\r\n", "\n").strip()
         if not text:
             return []
 
-        pattern = re.compile(r"(\[KEEP\].*?\[/KEEP\]|\[p\d+\])", re.S)
+        pattern = re.compile(
+            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[p\d+\])",
+            re.S | re.I
+        )
         parts = pattern.split(text)
 
         items = []
@@ -407,26 +453,139 @@ class IndexTTS2:
         for part in parts:
             if not part:
                 continue
-
-            # pause
-            m = re.fullmatch(r"\[p(\d+)\]", part.strip())
-            if m:
-                items.append(("pause", int(m.group(1))))
+            part = part.strip()
+            if not part:
                 continue
 
-            # keep block
-            if part.startswith("[KEEP]") and part.endswith("[/KEEP]"):
-                keep_text = part[len("[KEEP]"):-len("[/KEEP]")].strip()
+            pause_m = re.fullmatch(r"\[p(\d+)\]", part, flags=re.I)
+            if pause_m:
+                items.append({"type": "pause", "ms": int(pause_m.group(1))})
+                continue
+
+            keep_m = re.fullmatch(r"\[KEEP\](.*?)\[/KEEP\]", part, flags=re.S | re.I)
+            if keep_m:
+                keep_text = keep_m.group(1).strip()
                 if keep_text:
-                    items.append(("keep", keep_text))
+                    self._assert_no_nested_controls(keep_text, "KEEP")
+                    items.append({
+                        "type": "keep",
+                        "text": keep_text,
+                        "overrides": {},
+                        "preview_prefix": "[KEEP]",
+                    })
                 continue
 
-            # normal text -> still support hard break by double newline
+            spd_m = re.fullmatch(
+                r"\[SPD\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/SPD\]",
+                part,
+                flags=re.S | re.I,
+            )
+            if spd_m:
+                spd = self._clamp_value(float(spd_m.group(1)), 1.45, 2.00)
+                spd_text = spd_m.group(2).strip()
+                if spd_text:
+                    self._assert_no_nested_controls(spd_text, "SPD")
+                    items.append({
+                        "type": "text",
+                        "text": spd_text,
+                        "overrides": {"speed_scale": spd},
+                        "preview_prefix": f"[SPD={spd:.2f}]",
+                    })
+                continue
+
+            gen_m = re.fullmatch(r"\[GEN\b([^\]]*)\](.*?)\[/GEN\]", part, flags=re.S | re.I)
+            if gen_m:
+                gen_text = gen_m.group(2).strip()
+                if gen_text:
+                    self._assert_no_nested_controls(gen_text, "GEN")
+                    overrides, preview_prefix = self._parse_gen_overrides(gen_m.group(1))
+                    items.append({
+                        "type": "text",
+                        "text": gen_text,
+                        "overrides": overrides,
+                        "preview_prefix": preview_prefix,
+                    })
+                continue
+
+            emo_m = re.fullmatch(
+                r"\[EMO_A\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/EMO_A\]",
+                part,
+                flags=re.S | re.I,
+            )
+            if emo_m:
+                emo_alpha = self._clamp_value(float(emo_m.group(1)), 0.0, 1.0)
+                emo_text = emo_m.group(2).strip()
+                if emo_text:
+                    self._assert_no_nested_controls(emo_text, "EMO_A")
+                    items.append({
+                        "type": "text",
+                        "text": emo_text,
+                        "overrides": {"emo_alpha": emo_alpha},
+                        "preview_prefix": f"[EMO_A={emo_alpha:.2f}]",
+                    })
+                continue
+
             manual_blocks = [x.strip() for x in re.split(r"\n\s*\n+", part) if x.strip()]
             for block in manual_blocks:
-                items.append(("text", block))
+                items.append({
+                    "type": "text",
+                    "text": block,
+                    "overrides": {},
+                    "preview_prefix": None,
+                })
 
-        return items    
+        return items
+
+    def build_generation_plan(self, text, max_text_tokens_per_segment=120, quick_streaming_tokens=0):
+        """
+        Build the final unified generation plan from text controls.
+        Plan items:
+        - ("segment", {"tokens": token_list, "overrides": dict, "preview_prefix": str|None})
+        - ("pause", ms)
+        """
+        parsed_items = self.parse_text_controls(text)
+
+        plan = []
+        text_tokens_list = []
+
+        for item in parsed_items:
+            item_type = item["type"]
+            if item_type == "pause":
+                plan.append(("pause", int(item["ms"])))
+                continue
+
+            item_text = item.get("text", "").strip()
+            if not item_text:
+                continue
+
+            tokens = self.tokenizer.tokenize(item_text)
+
+            if item_type == "keep":
+                if len(tokens) > self.cfg.gpt.max_text_tokens:
+                    raise ValueError(
+                        f"[KEEP] 块过长，token数={len(tokens)}，"
+                        f"超过模型允许上限 {self.cfg.gpt.max_text_tokens}。"
+                    )
+                segment_list = [tokens]
+            else:
+                segment_list = self.tokenizer.split_segments(
+                    tokens,
+                    max_text_tokens_per_segment,
+                    quick_streaming_tokens=quick_streaming_tokens
+                )
+
+            for seg in segment_list:
+                plan.append((
+                    "segment",
+                    {
+                        "tokens": seg,
+                        "overrides": dict(item.get("overrides", {})),
+                        "preview_prefix": item.get("preview_prefix"),
+                    }
+                ))
+                text_tokens_list.extend(seg)
+
+        return plan, text_tokens_list
     def split_text_with_manual_breaks(self, text, max_text_tokens_per_segment=120, quick_streaming_tokens=0):
         """
         双换行 \\n\\n 视为强制断句
@@ -458,14 +617,16 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0,
+              seed=None, lock_seed=False, **generation_kwargs):
         if stream_return:
             return self.infer_generator(
                 spk_audio_prompt, text, output_path,
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
                 use_emo_text, emo_text, use_random, interval_silence, speed_scale,
-                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+                verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
+                seed, lock_seed, **generation_kwargs
             )
         else:
             try:
@@ -474,7 +635,8 @@ class IndexTTS2:
                     emo_audio_prompt, emo_alpha,
                     emo_vector,
                     use_emo_text, emo_text, use_random, interval_silence, speed_scale,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
+                    seed, lock_seed, **generation_kwargs
                 ))[0]
             except IndexError:
                 return None
@@ -483,15 +645,25 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0,
+              seed=None, lock_seed=False, **generation_kwargs):
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
         if verbose:
             print(f"origin text:{text}, spk_audio_prompt:{spk_audio_prompt}, "
                   f"emo_audio_prompt:{emo_audio_prompt}, emo_alpha:{emo_alpha}, "
                   f"emo_vector:{emo_vector}, use_emo_text:{use_emo_text}, "
-                  f"emo_text:{emo_text}")
+                  f"emo_text:{emo_text}, seed:{seed}, lock_seed:{lock_seed}")
         start_time = time.perf_counter()
+
+        if lock_seed:
+            seed_value = 42 if seed is None else int(seed)
+            random.seed(seed_value)
+            torch.manual_seed(seed_value)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed_value)
+            if verbose:
+                print(f"lock_seed enabled, seed={seed_value}")
 
         if use_emo_text or emo_vector is not None:
             # we're using a text or emotion vector guidance; so we must remove
@@ -508,14 +680,7 @@ class IndexTTS2:
             emo_vector = list(emo_dict.values())
 
         if emo_vector is not None:
-            # we have emotion vectors; they can't be blended via alpha mixing
-            # in the main inference process later, so we must pre-calculate
-            # their new strengths here based on the alpha instead!
-            emo_vector_scale = max(0.0, min(1.0, emo_alpha))
-            if emo_vector_scale != 1.0:
-                # scale each vector and truncate to 4 decimals (for nicer printing)
-                emo_vector = [int(x * emo_vector_scale * 10000) / 10000 for x in emo_vector]
-                print(f"scaled emotion vectors to {emo_vector_scale}x: {emo_vector}")
+            emo_vector = [float(x) for x in emo_vector]
 
         if emo_audio_prompt is None:
             # we are not using any external "emotion reference voice"; use
@@ -570,7 +735,7 @@ class IndexTTS2:
             ref_mel = self.cache_mel
 
         if emo_vector is not None:
-            weight_vector = torch.tensor(emo_vector, device=self.device)
+            base_weight_vector = torch.tensor(emo_vector, device=self.device)
             if use_random:
                 random_index = [random.randint(0, x - 1) for x in self.emo_num]
             else:
@@ -578,9 +743,6 @@ class IndexTTS2:
 
             emo_matrix = [tmp[index].unsqueeze(0) for index, tmp in zip(random_index, self.emo_matrix)]
             emo_matrix = torch.cat(emo_matrix, 0)
-            emovec_mat = weight_vector.unsqueeze(1) * emo_matrix
-            emovec_mat = torch.sum(emovec_mat, 0)
-            emovec_mat = emovec_mat.unsqueeze(0)
 
         if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
             if self.cache_emo_cond is not None:
@@ -601,37 +763,11 @@ class IndexTTS2:
 
         self._set_gr_progress(0.1, "text processing...")
 
-        parsed_items = self.parse_text_controls(text)
-
-        plan = []
-        text_tokens_list = []
-
-        for item_type, item_value in parsed_items:
-            if item_type == "pause":
-                plan.append(("pause", item_value))
-
-            elif item_type == "keep":
-                keep_tokens = self.tokenizer.tokenize(item_value)
-
-                # 超过模型支持的硬上限，就不能再强制不切了
-                if len(keep_tokens) > self.cfg.gpt.max_text_tokens:
-                    raise ValueError(
-                        f"[KEEP] 块过长，token数={len(keep_tokens)}，"
-                        f"超过模型允许上限 {self.cfg.gpt.max_text_tokens}。"
-                    )
-
-                plan.append(("segment", keep_tokens))
-                text_tokens_list.extend(keep_tokens)
-
-            else:  # normal text
-                segs, tokens_flat = self.split_text_with_manual_breaks(
-                    item_value,
-                    max_text_tokens_per_segment=max_text_tokens_per_segment,
-                    quick_streaming_tokens=quick_streaming_tokens
-                )
-                for seg in segs:
-                    plan.append(("segment", seg))
-                text_tokens_list.extend(tokens_flat)
+        plan, text_tokens_list = self.build_generation_plan(
+            text=text,
+            max_text_tokens_per_segment=max_text_tokens_per_segment,
+            quick_streaming_tokens=quick_streaming_tokens
+        )
 
         segments_count = sum(1 for t, _ in plan if t == "segment")
 
@@ -646,7 +782,15 @@ class IndexTTS2:
             print("text_tokens_list:", text_tokens_list)
             print("segments count:", segments_count)
             print("max_text_tokens_per_segment:", max_text_tokens_per_segment)
-            print(*segments, sep="\n")
+            segment_lines = []
+            for item_type, item_value in plan:
+                if item_type != "segment":
+                    continue
+                seg_tokens = item_value["tokens"] if isinstance(item_value, dict) else item_value
+                preview_prefix = item_value.get("preview_prefix") if isinstance(item_value, dict) else None
+                seg_text = "".join(seg_tokens)
+                segment_lines.append(f"{preview_prefix} {seg_text}" if preview_prefix else seg_text)
+            print(*segment_lines, sep="\n")
         do_sample = generation_kwargs.pop("do_sample", True)
         top_p = generation_kwargs.pop("top_p", 0.8)
         top_k = generation_kwargs.pop("top_k", 30)
@@ -686,7 +830,22 @@ class IndexTTS2:
                 prev_item_type = "pause"
                 continue
 
-            sent = item_value
+            if isinstance(item_value, dict):
+                sent = item_value.get("tokens", [])
+                segment_overrides = dict(item_value.get("overrides", {}))
+                preview_prefix = item_value.get("preview_prefix")
+            else:
+                sent = item_value
+                segment_overrides = {}
+                preview_prefix = None
+
+            segment_do_sample = segment_overrides.get("do_sample", do_sample)
+            segment_top_p = segment_overrides.get("top_p", top_p)
+            segment_top_k = segment_overrides.get("top_k", top_k)
+            segment_temperature = segment_overrides.get("temperature", temperature)
+            segment_emo_alpha = self._clamp_value(float(segment_overrides.get("emo_alpha", emo_alpha)), 0.0, 1.0)
+            segment_speed_scale = float(segment_overrides.get("speed_scale", speed_scale))
+
             seg_idx = real_seg_idx
             real_seg_idx += 1
             self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
@@ -695,6 +854,10 @@ class IndexTTS2:
             text_tokens = self.tokenizer.convert_tokens_to_ids(sent)
             text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=self.device).unsqueeze(0)
             if verbose:
+                if preview_prefix:
+                    print(f"segment control: {preview_prefix}")
+                if segment_overrides:
+                    print(f"segment overrides: {segment_overrides}")
                 print(text_tokens)
                 print(f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}")
                 # debug tokenizer
@@ -709,12 +872,14 @@ class IndexTTS2:
                         emo_cond_emb,
                         torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
                         torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
-                        alpha=emo_alpha
+                        alpha=segment_emo_alpha
                     )
 
                     if emo_vector is not None:
-                        emovec = emovec_mat + (1 - torch.sum(weight_vector)) * emovec
-                        # emovec = emovec_mat
+                        segment_weight_vector = base_weight_vector * segment_emo_alpha
+                        emovec_mat = segment_weight_vector.unsqueeze(1) * emo_matrix
+                        emovec_mat = torch.sum(emovec_mat, 0).unsqueeze(0)
+                        emovec = emovec_mat + (1 - torch.sum(segment_weight_vector)) * emovec
 
                     codes, speech_conditioning_latent = self.gpt.inference_speech(
                         spk_cond_emb,
@@ -723,10 +888,10 @@ class IndexTTS2:
                         cond_lengths=torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
                         emo_cond_lengths=torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
                         emo_vec=emovec,
-                        do_sample=True,
-                        top_p=top_p,
-                        top_k=top_k,
-                        temperature=temperature,
+                        do_sample=segment_do_sample,
+                        top_p=segment_top_p,
+                        top_k=segment_top_k,
+                        temperature=segment_temperature,
                         num_return_sequences=autoregressive_batch_size,
                         length_penalty=length_penalty,
                         num_beams=num_beams,
@@ -795,7 +960,7 @@ class IndexTTS2:
                     S_infer = self.semantic_codec.quantizer.vq2emb(codes.unsqueeze(1))
                     S_infer = S_infer.transpose(1, 2)
                     S_infer = S_infer + latent
-                    target_lengths = (code_lens * speed_scale).long()
+                    target_lengths = (code_lens * segment_speed_scale).long()
 
                     cond = self.s2mel.models['length_regulator'](S_infer,
                                                                  ylens=target_lengths,
