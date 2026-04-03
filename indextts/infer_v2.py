@@ -521,6 +521,88 @@ class IndexTTS2:
 
         return pieces
 
+    def _raise_control_error(self, message, pos):
+        raise ValueError(f"{message}（位置: {pos + 1}）")
+
+    def _validate_opening_tag(self, tag, pos):
+        if re.fullmatch(r"\[KEEP\]", tag, flags=re.I):
+            return "KEEP"
+        if re.fullmatch(r"\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
+            return "SPD"
+        if re.fullmatch(r"\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
+            return "EMO_A"
+        if re.fullmatch(r"\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
+            return "VOL"
+        if re.fullmatch(r"\[GEN\b[^\]]*\]", tag, flags=re.I):
+            attr_text = tag[4:-1]
+            try:
+                self._parse_gen_overrides(attr_text)
+            except ValueError as e:
+                self._raise_control_error(str(e), pos)
+            return "GEN"
+        if re.fullmatch(r"\[FADE\b[^\]]*\]", tag, flags=re.I):
+            attr_text = tag[5:-1]
+            try:
+                self._parse_fade_overrides(attr_text)
+            except ValueError as e:
+                self._raise_control_error(str(e), pos)
+            return "FADE"
+
+        if re.fullmatch(r"\[/?[A-Za-z_][A-Za-z0-9_]*.*\]", tag):
+            self._raise_control_error(f"未知控制标签: {tag}", pos)
+        return None
+
+    def validate_text_controls(self, text):
+        """
+        Validate text control tags before parsing/generation.
+        Raises ValueError with location on invalid inputs.
+        """
+        text = text.replace("\r\n", "\n")
+        if not text.strip():
+            return
+
+        tag_pattern = re.compile(r"\[[^\[\]]+\]")
+        stack = []
+
+        for m in tag_pattern.finditer(text):
+            tag = m.group(0)
+            pos = m.start()
+
+            pause_m = re.fullmatch(r"\[p(\d+)\]", tag, flags=re.I)
+            if pause_m:
+                if stack:
+                    self._raise_control_error(f"{stack[-1]['name']} 块内不支持嵌套 [pN] 标签", pos)
+                continue
+
+            close_m = re.fullmatch(r"\[/([A-Za-z_]+)\]", tag)
+            if close_m:
+                name = close_m.group(1).upper()
+                if name not in {"KEEP", "SPD", "GEN", "EMO_A", "VOL", "FADE"}:
+                    self._raise_control_error(f"未知结束标签: {tag}", pos)
+                if not stack:
+                    self._raise_control_error(f"未匹配到开始标签: {tag}", pos)
+                if stack[-1]["name"] != name:
+                    self._raise_control_error(
+                        f"结束标签不匹配，期望 [/{stack[-1]['name']}] 实际 {tag}",
+                        pos
+                    )
+                stack.pop()
+                continue
+
+            open_name = self._validate_opening_tag(tag, pos)
+            if open_name is None:
+                continue
+            if stack:
+                self._raise_control_error(
+                    f"[{stack[-1]['name']}] 块内不支持嵌套控制标签，检测到: {tag}",
+                    pos
+                )
+            stack.append({"name": open_name, "pos": pos, "tag": tag})
+
+        if stack:
+            unclosed = stack[-1]
+            self._raise_control_error(f"标签未闭合: {unclosed['tag']}", unclosed["pos"])
+
     def parse_text_controls(self, text):
         """
         统一文本控制解析层，支持：
@@ -541,6 +623,7 @@ class IndexTTS2:
         text = text.replace("\r\n", "\n").strip()
         if not text:
             return []
+        self.validate_text_controls(text)
 
         pattern = re.compile(
             r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/VOL\]|\[FADE\b[^\]]*\].*?\[/FADE\]|\[p\d+\])",

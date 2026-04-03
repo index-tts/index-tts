@@ -132,6 +132,11 @@ def gen_single(emo_control_method,prompt, text,
                enable_punct_pause=False, pause_comma=120, pause_period=220, pause_exclamation=240,
                pause_question=240, pause_semicolon=180, pause_colon=160,
                 *args, progress=gr.Progress()):
+    try:
+        tts.validate_text_controls(text or "")
+    except Exception as e:
+        raise gr.Error(f"文本控制校验失败: {e}")
+
     output_path = None
     if not output_path:
         output_path = os.path.join("outputs", f"spk_{int(time.time())}.wav")
@@ -452,6 +457,15 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 
         rows = []
         idx = 0
+
+        try:
+            tts.validate_text_controls(text)
+        except Exception as e:
+            rows.append([0, f"[ERROR] {e}", 0, "-", "-", "高"])
+            df = pd.DataFrame(rows, columns=columns)
+            return {
+                segments_preview: gr.update(value=df, visible=True)
+            }
 
         punct_pause_map = {
             "comma": int(pause_comma),
