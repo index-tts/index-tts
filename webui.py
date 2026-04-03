@@ -339,7 +339,14 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                         )
                     with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
                         segments_preview = gr.Dataframe(
-                            headers=[i18n("序号"), i18n("分句内容"), i18n("Token数")],
+                            headers=[
+                                i18n("序号"),
+                                i18n("分句内容"),
+                                i18n("Token数"),
+                                i18n("生效参数"),
+                                i18n("预计时长(粗略s)"),
+                                i18n("截断风险"),
+                            ],
                             key="segments_preview",
                             wrap=True,
                         )
@@ -399,8 +406,15 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                                  vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
     )
 
-    def on_input_text_change(text, max_text_tokens_per_segment):
-        columns = [i18n("序号"), i18n("分句内容"), i18n("Token数")]
+    def on_input_text_change(text, max_text_tokens_per_segment, speed_scale, max_mel_tokens):
+        columns = [
+            i18n("序号"),
+            i18n("分句内容"),
+            i18n("Token数"),
+            i18n("生效参数"),
+            i18n("预计时长(粗略s)"),
+            i18n("截断风险"),
+        ]
 
         if not text or not text.strip():
             df = pd.DataFrame([], columns=columns)
@@ -419,21 +433,55 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 
         for item_type, item_value in plan:
             if item_type == "pause":
-                rows.append([idx, f"[pause {int(item_value)}ms]", 0])
+                pause_ms = int(item_value)
+                rows.append([idx, f"[pause {pause_ms}ms]", 0, "-", f"{pause_ms / 1000.0:.2f}", "-"])
                 idx += 1
                 continue
 
             if isinstance(item_value, dict):
                 seg_tokens = item_value.get("tokens", [])
                 preview_prefix = item_value.get("preview_prefix")
+                overrides = dict(item_value.get("overrides", {}))
             else:
                 seg_tokens = item_value
                 preview_prefix = None
+                overrides = {}
 
             seg_text = ''.join(seg_tokens)
             if preview_prefix:
                 seg_text = f"{preview_prefix} {seg_text}"
-            rows.append([idx, seg_text, len(seg_tokens)])
+
+            # 估算时长与截断风险（粗略）
+            token_count = len(seg_tokens)
+            segment_speed_scale = float(overrides.get("speed_scale", speed_scale))
+            est_sec = token_count * 0.09 * (segment_speed_scale / 1.72)
+            est_mel_tokens = max(1, int(est_sec * 86.0))
+            if max_mel_tokens and max_mel_tokens > 0:
+                ratio = est_mel_tokens / float(max_mel_tokens)
+                if ratio >= 0.9:
+                    trunc_risk = "高"
+                elif ratio >= 0.6:
+                    trunc_risk = "中"
+                else:
+                    trunc_risk = "低"
+            else:
+                trunc_risk = "-"
+
+            if overrides:
+                shown = []
+                for key in ("speed_scale", "temperature", "top_p", "top_k", "emo_alpha", "volume_scale", "fade_in_ms", "fade_out_ms"):
+                    if key not in overrides:
+                        continue
+                    val = overrides[key]
+                    if key == "top_k" and val is None:
+                        shown.append("top_k=0")
+                    else:
+                        shown.append(f"{key}={val}")
+                params_text = ", ".join(shown) if shown else "默认"
+            else:
+                params_text = "默认"
+
+            rows.append([idx, seg_text, token_count, params_text, f"{est_sec:.2f}", trunc_risk])
             idx += 1
 
         df = pd.DataFrame(rows, columns=columns)
@@ -553,13 +601,25 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
 
     input_text_single.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
         outputs=[segments_preview]
     )
 
     max_text_tokens_per_segment.change(
         on_input_text_change,
-        inputs=[input_text_single, max_text_tokens_per_segment],
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        outputs=[segments_preview]
+    )
+
+    speed_scale.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
+        outputs=[segments_preview]
+    )
+
+    max_mel_tokens.change(
+        on_input_text_change,
+        inputs=[input_text_single, max_text_tokens_per_segment, speed_scale, max_mel_tokens],
         outputs=[segments_preview]
     )
 
