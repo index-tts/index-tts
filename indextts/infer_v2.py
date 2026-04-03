@@ -386,7 +386,7 @@ class IndexTTS2:
         return max(min_value, min(max_value, value))
 
     def _assert_no_nested_controls(self, block_text, block_name):
-        nested_pattern = re.compile(r"\[(KEEP|SPD|GEN|EMO_A)\b|\[p\d+\]", re.I)
+        nested_pattern = re.compile(r"\[(KEEP|SPD|GEN|EMO_A|VOL)\b|\[p\d+\]", re.I)
         nested = nested_pattern.search(block_text)
         if nested:
             raise ValueError(f"[{block_name}] 块内不支持嵌套控制标签，检测到：{nested.group(0)}")
@@ -432,6 +432,7 @@ class IndexTTS2:
         4. [SPD=1.55]...[/SPD]              -> 段级语速
         5. [GEN t=0.7 p=0.85 k=20]...[/GEN] -> 段级采样
         6. [EMO_A=0.4]...[/EMO_A]           -> 段级情感强度
+        7. [VOL=0.85]...[/VOL]              -> 段级音量
         不支持嵌套控制块。
 
         Return format (list[dict]):
@@ -443,7 +444,7 @@ class IndexTTS2:
             return []
 
         pattern = re.compile(
-            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[p\d+\])",
+            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/VOL\]|\[p\d+\])",
             re.S | re.I
         )
         parts = pattern.split(text)
@@ -522,6 +523,24 @@ class IndexTTS2:
                         "text": emo_text,
                         "overrides": {"emo_alpha": emo_alpha},
                         "preview_prefix": f"[EMO_A={emo_alpha:.2f}]",
+                    })
+                continue
+
+            vol_m = re.fullmatch(
+                r"\[VOL\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/VOL\]",
+                part,
+                flags=re.S | re.I,
+            )
+            if vol_m:
+                volume_scale = self._clamp_value(float(vol_m.group(1)), 0.20, 2.00)
+                vol_text = vol_m.group(2).strip()
+                if vol_text:
+                    self._assert_no_nested_controls(vol_text, "VOL")
+                    items.append({
+                        "type": "text",
+                        "text": vol_text,
+                        "overrides": {"volume_scale": volume_scale},
+                        "preview_prefix": f"[VOL={volume_scale:.2f}]",
                     })
                 continue
 
@@ -845,6 +864,7 @@ class IndexTTS2:
             segment_temperature = segment_overrides.get("temperature", temperature)
             segment_emo_alpha = self._clamp_value(float(segment_overrides.get("emo_alpha", emo_alpha)), 0.0, 1.0)
             segment_speed_scale = float(segment_overrides.get("speed_scale", speed_scale))
+            segment_volume_scale = self._clamp_value(float(segment_overrides.get("volume_scale", 1.0)), 0.20, 2.00)
 
             seg_idx = real_seg_idx
             real_seg_idx += 1
@@ -981,6 +1001,7 @@ class IndexTTS2:
                     bigvgan_time += time.perf_counter() - m_start_time
                     wav = wav.squeeze(1)
 
+                wav = wav * segment_volume_scale
                 wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
                 if verbose:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
