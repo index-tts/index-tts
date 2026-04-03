@@ -386,7 +386,7 @@ class IndexTTS2:
         return max(min_value, min(max_value, value))
 
     def _assert_no_nested_controls(self, block_text, block_name):
-        nested_pattern = re.compile(r"\[(KEEP|SPD|GEN|EMO_A|VOL)\b|\[p\d+\]", re.I)
+        nested_pattern = re.compile(r"\[(KEEP|SPD|GEN|EMO_A|VOL|FADE)\b|\[p\d+\]", re.I)
         nested = nested_pattern.search(block_text)
         if nested:
             raise ValueError(f"[{block_name}] 块内不支持嵌套控制标签，检测到：{nested.group(0)}")
@@ -423,6 +423,47 @@ class IndexTTS2:
         preview_prefix = f"[GEN {' '.join(preview_parts)}]"
         return overrides, preview_prefix
 
+    def _parse_fade_overrides(self, attr_text):
+        pairs = re.findall(r"\b(in|out)\s*=\s*(\d+)\b", attr_text, flags=re.I)
+        if not pairs:
+            raise ValueError("[FADE] 控制块缺少参数，示例：[FADE in=80 out=120]文本[/FADE]")
+
+        raw = {}
+        for key, value in pairs:
+            raw[key.lower()] = value
+
+        fade_in_ms = int(self._clamp_value(int(raw.get("in", 0)), 0, 300))
+        fade_out_ms = int(self._clamp_value(int(raw.get("out", 0)), 0, 300))
+        preview_prefix = f"[FADE in={fade_in_ms} out={fade_out_ms}]"
+        return {"fade_in_ms": fade_in_ms, "fade_out_ms": fade_out_ms}, preview_prefix
+
+    def _apply_fade(self, wav, fade_in_ms, fade_out_ms, sampling_rate):
+        if wav is None or wav.numel() == 0:
+            return wav
+
+        total_samples = wav.shape[-1]
+        if total_samples <= 1:
+            return wav
+
+        fade_in_samples = int(self._clamp_value(int(sampling_rate * fade_in_ms / 1000.0), 0, total_samples))
+        fade_out_samples = int(self._clamp_value(int(sampling_rate * fade_out_ms / 1000.0), 0, total_samples))
+
+        total_fade = fade_in_samples + fade_out_samples
+        if total_fade > total_samples:
+            scale = total_samples / float(total_fade)
+            fade_in_samples = int(fade_in_samples * scale)
+            fade_out_samples = int(fade_out_samples * scale)
+
+        if fade_in_samples > 0:
+            fade_in_curve = torch.linspace(0.0, 1.0, fade_in_samples, device=wav.device, dtype=wav.dtype)
+            wav[..., :fade_in_samples] = wav[..., :fade_in_samples] * fade_in_curve
+
+        if fade_out_samples > 0:
+            fade_out_curve = torch.linspace(1.0, 0.0, fade_out_samples, device=wav.device, dtype=wav.dtype)
+            wav[..., -fade_out_samples:] = wav[..., -fade_out_samples:] * fade_out_curve
+
+        return wav
+
     def parse_text_controls(self, text):
         """
         统一文本控制解析层，支持：
@@ -433,6 +474,7 @@ class IndexTTS2:
         5. [GEN t=0.7 p=0.85 k=20]...[/GEN] -> 段级采样
         6. [EMO_A=0.4]...[/EMO_A]           -> 段级情感强度
         7. [VOL=0.85]...[/VOL]              -> 段级音量
+        8. [FADE in=80 out=120]...[/FADE]   -> 段级淡入淡出
         不支持嵌套控制块。
 
         Return format (list[dict]):
@@ -444,7 +486,7 @@ class IndexTTS2:
             return []
 
         pattern = re.compile(
-            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/VOL\]|\[p\d+\])",
+            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/VOL\]|\[FADE\b[^\]]*\].*?\[/FADE\]|\[p\d+\])",
             re.S | re.I
         )
         parts = pattern.split(text)
@@ -541,6 +583,20 @@ class IndexTTS2:
                         "text": vol_text,
                         "overrides": {"volume_scale": volume_scale},
                         "preview_prefix": f"[VOL={volume_scale:.2f}]",
+                    })
+                continue
+
+            fade_m = re.fullmatch(r"\[FADE\b([^\]]*)\](.*?)\[/FADE\]", part, flags=re.S | re.I)
+            if fade_m:
+                fade_text = fade_m.group(2).strip()
+                if fade_text:
+                    self._assert_no_nested_controls(fade_text, "FADE")
+                    overrides, preview_prefix = self._parse_fade_overrides(fade_m.group(1))
+                    items.append({
+                        "type": "text",
+                        "text": fade_text,
+                        "overrides": overrides,
+                        "preview_prefix": preview_prefix,
                     })
                 continue
 
@@ -865,6 +921,8 @@ class IndexTTS2:
             segment_emo_alpha = self._clamp_value(float(segment_overrides.get("emo_alpha", emo_alpha)), 0.0, 1.0)
             segment_speed_scale = float(segment_overrides.get("speed_scale", speed_scale))
             segment_volume_scale = self._clamp_value(float(segment_overrides.get("volume_scale", 1.0)), 0.20, 2.00)
+            segment_fade_in_ms = int(self._clamp_value(int(segment_overrides.get("fade_in_ms", 0)), 0, 300))
+            segment_fade_out_ms = int(self._clamp_value(int(segment_overrides.get("fade_out_ms", 0)), 0, 300))
 
             seg_idx = real_seg_idx
             real_seg_idx += 1
@@ -1002,6 +1060,7 @@ class IndexTTS2:
                     wav = wav.squeeze(1)
 
                 wav = wav * segment_volume_scale
+                wav = self._apply_fade(wav, segment_fade_in_ms, segment_fade_out_ms, sampling_rate)
                 wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
                 if verbose:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
