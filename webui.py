@@ -368,24 +368,24 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                         pause_question = gr.Slider(label=i18n("？/?"), value=240, minimum=0, maximum=500, step=10)
                         pause_semicolon = gr.Slider(label=i18n("；/;"), value=180, minimum=0, maximum=500, step=10)
                         pause_colon = gr.Slider(label=i18n("：/:"), value=160, minimum=0, maximum=500, step=10)
-                    with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
-                        segments_preview = gr.Dataframe(
-                            headers=[
-                                i18n("序号"),
-                                i18n("分句内容"),
-                                i18n("Token数"),
-                                i18n("生效参数"),
-                                i18n("预计时长(粗略s)"),
-                                i18n("截断风险"),
-                            ],
-                            key="segments_preview",
-                            wrap=True,
-                        )
             advanced_params = [
                 do_sample, top_p, top_k, temperature,
                 length_penalty, num_beams, repetition_penalty, max_mel_tokens,
                 # typical_sampling, typical_mass,
             ]
+            with gr.Accordion(i18n("预览分句结果"), open=True) as segments_settings:
+                segments_preview = gr.Dataframe(
+                    headers=[
+                        i18n("序号"),
+                        i18n("分句内容"),
+                        i18n("Token数"),
+                        i18n("生效参数"),
+                        i18n("预计时长(粗略s)"),
+                        i18n("截断风险"),
+                    ],
+                    key="segments_preview",
+                    wrap=True,
+                )
 
         # we must use `gr.Dataset` to support dynamic UI rewrites, since `gr.Examples`
         # binds tightly to UI and always restores the initial state of all components,
