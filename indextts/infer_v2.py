@@ -521,6 +521,16 @@ class IndexTTS2:
 
         return pieces
 
+    def _parse_pause_plan_item(self, item_value):
+        """
+        Normalize pause plan item.
+        Returns:
+            pause_ms (int), source (str)
+        """
+        if isinstance(item_value, dict):
+            return int(item_value.get("ms", 0)), str(item_value.get("source", "explicit"))
+        return int(item_value), "explicit"
+
     def _raise_control_error(self, message, pos):
         raise ValueError(f"{message}（位置: {pos + 1}）")
 
@@ -741,13 +751,16 @@ class IndexTTS2:
                 continue
 
             manual_blocks = [x.strip() for x in re.split(r"\n\s*\n+", part) if x.strip()]
-            for block in manual_blocks:
+            for block_idx, block in enumerate(manual_blocks):
                 items.append({
                     "type": "text",
                     "text": block,
                     "overrides": {},
                     "preview_prefix": None,
                 })
+                if block_idx < len(manual_blocks) - 1:
+                    # keep explicit hard-break boundary for preview / planning
+                    items.append({"type": "hard_break"})
 
         return items
 
@@ -774,7 +787,15 @@ class IndexTTS2:
         for item in parsed_items:
             item_type = item["type"]
             if item_type == "pause":
-                plan.append(("pause", int(item["ms"])))
+                plan.append(("pause", {"ms": int(item["ms"]), "source": "explicit"}))
+                continue
+            if item_type == "hard_break":
+                # trailing auto punctuation pause should not swallow hard-break behavior
+                if plan and plan[-1][0] == "pause":
+                    pause_ms, source = self._parse_pause_plan_item(plan[-1][1])
+                    if source == "auto_punct":
+                        plan.pop()
+                plan.append(("boundary", "hard_break"))
                 continue
 
             item_text = item.get("text", "").strip()
@@ -790,7 +811,7 @@ class IndexTTS2:
 
             for sub_type, sub_value in sub_items:
                 if sub_type == "pause":
-                    plan.append(("pause", int(sub_value)))
+                    plan.append(("pause", {"ms": int(sub_value), "source": "auto_punct"}))
                     continue
 
                 tokens = self.tokenizer.tokenize(sub_value)
@@ -1053,6 +1074,10 @@ class IndexTTS2:
         prev_item_type = None
         real_seg_idx = 0
         for item_type, item_value in plan:
+            if item_type == "boundary":
+                # boundary exists for preview/planning only; keep prev_item_type unchanged
+                continue
+
             # default interval silence only for segment -> segment transition.
             if item_type == "segment" and prev_item_type == "segment" and default_interval_samples > 0:
                 if default_interval_tensor is None:
@@ -1062,7 +1087,7 @@ class IndexTTS2:
                     yield default_interval_tensor
 
             if item_type == "pause":
-                pause_ms = int(item_value)
+                pause_ms, _ = self._parse_pause_plan_item(item_value)
                 pause_tensor = torch.zeros(1, int(sampling_rate * pause_ms / 1000.0))
                 wavs.append(pause_tensor)
                 if stream_return:

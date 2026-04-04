@@ -484,30 +484,79 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             punct_pause_map=punct_pause_map,
         )
 
-        for item_type, item_value in plan:
-            if item_type == "pause":
-                pause_ms = int(item_value)
-                rows.append([idx, f"[pause {pause_ms}ms]", 0, "-", f"{pause_ms / 1000.0:.2f}", "-"])
-                idx += 1
+        def parse_pause(item_value):
+            if isinstance(item_value, dict):
+                return int(item_value.get("ms", 0)), str(item_value.get("source", "explicit"))
+            return int(item_value), "explicit"
+
+        def parse_segment(item_value):
+            if isinstance(item_value, dict):
+                return (
+                    item_value.get("tokens", []),
+                    item_value.get("preview_prefix"),
+                    dict(item_value.get("overrides", {})),
+                )
+            return item_value, None, {}
+
+        def format_overrides(overrides):
+            if not overrides:
+                return "默认"
+            shown = []
+            for key in ("speed_scale", "temperature", "top_p", "top_k", "emo_alpha", "volume_scale", "fade_in_ms", "fade_out_ms"):
+                if key not in overrides:
+                    continue
+                val = overrides[key]
+                if key == "top_k" and val is None:
+                    shown.append("top_k=0")
+                else:
+                    shown.append(f"{key}={val}")
+            return ", ".join(shown) if shown else "默认"
+
+        i = 0
+        while i < len(plan):
+            item_type, item_value = plan[i]
+            if item_type == "boundary":
+                i += 1
                 continue
 
-            if isinstance(item_value, dict):
-                seg_tokens = item_value.get("tokens", [])
-                preview_prefix = item_value.get("preview_prefix")
-                overrides = dict(item_value.get("overrides", {}))
-            else:
-                seg_tokens = item_value
-                preview_prefix = None
-                overrides = {}
+            if item_type == "pause":
+                pause_ms, pause_source = parse_pause(item_value)
+                if not (pause_source == "auto_punct" and i + 1 < len(plan) and plan[i + 1][0] == "segment"):
+                    rows.append([idx, f"[pause {pause_ms}ms]", 0, "-", f"{pause_ms / 1000.0:.2f}", "-"])
+                    idx += 1
+                i += 1
+                continue
 
-            seg_text = ''.join(seg_tokens)
-            if preview_prefix:
-                seg_text = f"{preview_prefix} {seg_text}"
+            seg_tokens, preview_prefix, overrides = parse_segment(item_value)
+            seg_text_raw = ''.join(seg_tokens)
+            seg_text = f"{preview_prefix} {seg_text_raw}" if preview_prefix else seg_text_raw
 
-            # 估算时长与截断风险（粗略）
             token_count = len(seg_tokens)
+            merged_pause_ms = 0
+            j = i + 1
+            while j < len(plan) and plan[j][0] == "pause":
+                pause_ms, pause_source = parse_pause(plan[j][1])
+                if pause_source != "auto_punct":
+                    break
+
+                # auto punctuation pause + next segment with same control: merge inline
+                if j + 1 < len(plan) and plan[j + 1][0] == "segment":
+                    next_tokens, next_prefix, next_overrides = parse_segment(plan[j + 1][1])
+                    if next_prefix != preview_prefix or next_overrides != overrides:
+                        break
+                    seg_text = f"{seg_text}[pause {pause_ms}ms] {''.join(next_tokens)}"
+                    token_count += len(next_tokens)
+                    merged_pause_ms += pause_ms
+                    j += 2
+                    continue
+
+                # trailing auto punctuation pause
+                seg_text = f"{seg_text}[pause {pause_ms}ms]"
+                merged_pause_ms += pause_ms
+                j += 1
+
             segment_speed_scale = float(overrides.get("speed_scale", speed_scale))
-            est_sec = token_count * 0.09 * (segment_speed_scale / 1.72)
+            est_sec = token_count * 0.09 * (segment_speed_scale / 1.72) + merged_pause_ms / 1000.0
             est_mel_tokens = max(1, int(est_sec * 86.0))
             if max_mel_tokens and max_mel_tokens > 0:
                 ratio = est_mel_tokens / float(max_mel_tokens)
@@ -520,22 +569,10 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             else:
                 trunc_risk = "-"
 
-            if overrides:
-                shown = []
-                for key in ("speed_scale", "temperature", "top_p", "top_k", "emo_alpha", "volume_scale", "fade_in_ms", "fade_out_ms"):
-                    if key not in overrides:
-                        continue
-                    val = overrides[key]
-                    if key == "top_k" and val is None:
-                        shown.append("top_k=0")
-                    else:
-                        shown.append(f"{key}={val}")
-                params_text = ", ".join(shown) if shown else "默认"
-            else:
-                params_text = "默认"
-
+            params_text = format_overrides(overrides)
             rows.append([idx, seg_text, token_count, params_text, f"{est_sec:.2f}", trunc_risk])
             idx += 1
+            i = j
 
         df = pd.DataFrame(rows, columns=columns)
         return {
