@@ -108,6 +108,33 @@ def get_example_cases(include_experimental = False):
     # exclude emotion control mode 3 (emotion from text description)
     return [x for x in example_cases if x[1] != EMO_CHOICES_ALL[3]]
 
+
+def resolve_emo_control_method_idx(method_value):
+    if hasattr(method_value, "value"):
+        method_value = method_value.value
+
+    if isinstance(method_value, int):
+        return method_value
+
+    if isinstance(method_value, float):
+        try:
+            return int(method_value)
+        except (TypeError, ValueError):
+            return 0
+
+    if isinstance(method_value, str):
+        method_text = method_value.strip()
+        if method_text in EMO_CHOICES_ALL:
+            return EMO_CHOICES_ALL.index(method_text)
+        if method_text in EMO_CHOICES_OFFICIAL:
+            return EMO_CHOICES_OFFICIAL.index(method_text)
+        try:
+            return int(method_text)
+        except (TypeError, ValueError):
+            return 0
+
+    return 0
+
 def format_glossary_markdown():
     """将词汇表转换为Markdown表格格式"""
     if not tts.normalizer.term_glossary:
@@ -156,8 +183,7 @@ def gen_single(emo_control_method,prompt, text,
         # "typical_sampling": bool(typical_sampling),
         # "typical_mass": float(typical_mass),
     }
-    if type(emo_control_method) is not int:
-        emo_control_method = emo_control_method.value
+    emo_control_method = resolve_emo_control_method_idx(emo_control_method)
     if emo_control_method == 0:  # emotion from speaker
         emo_ref_path = None  # remove external reference audio
     if emo_control_method == 1:  # emotion from reference audio
@@ -279,7 +305,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                 emo_text = gr.Textbox(label=i18n("情感描述文本"),
                                       placeholder=i18n("请输入情绪描述（或留空以自动使用目标文本作为情绪描述）"),
                                       value="",
-                                      info=i18n("例如：委屈巴巴、危险在悄悄逼近"))
+                                      info=i18n("例如：委屈巴巴、危险在悄悄逼近；也支持在主文本中用 [低落]句子。[激动]句子。按句号或换行切换"))
 
         with gr.Row(visible=False) as emo_weight_group:
             emo_weight = gr.Slider(label=i18n("情感权重"), minimum=0.0, maximum=1.0, value=0.65, step=0.01)
@@ -502,7 +528,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
             if not overrides:
                 return "默认"
             shown = []
-            for key in ("speed_scale", "temperature", "top_p", "top_k", "emo_alpha", "volume_scale", "fade_in_ms", "fade_out_ms"):
+            for key in ("speed_scale", "temperature", "top_p", "top_k", "emo_alpha", "emo_text", "volume_scale", "fade_in_ms", "fade_out_ms"):
                 if key not in overrides:
                     continue
                 val = overrides[key]
@@ -622,6 +648,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         
 
     def on_method_change(emo_control_method):
+        emo_control_method = resolve_emo_control_method_idx(emo_control_method)
         if emo_control_method == 1:  # emotion reference audio
             return (gr.update(visible=True),
                     gr.update(visible=False),
@@ -661,6 +688,7 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     )
 
     def on_experimental_change(is_experimental, current_mode_index):
+        current_mode_index = resolve_emo_control_method_idx(current_mode_index)
         # 切换情感控制选项
         new_choices = EMO_CHOICES_ALL if is_experimental else EMO_CHOICES_OFFICIAL
         # if their current mode selection doesn't exist in new choices, reset to 0.

@@ -437,6 +437,90 @@ class IndexTTS2:
         preview_prefix = f"[FADE in={fade_in_ms} out={fade_out_ms}]"
         return {"fade_in_ms": fade_in_ms, "fade_out_ms": fade_out_ms}, preview_prefix
 
+    def _is_emo_text_prefix_tag(self, tag_text):
+        label = (tag_text or "").strip()
+        if not label:
+            return False
+        if any(ch in label for ch in ["=", "/", "[", "]"]):
+            return False
+        if re.fullmatch(r"p\d+", label, flags=re.I):
+            return False
+        upper = label.upper()
+        if upper in {"KEEP", "SPD", "GEN", "EMO_A", "VOL", "FADE"}:
+            return False
+        return True
+
+    def _split_text_with_emo_prefix(self, text):
+        """
+        Parse sentence-level emotion text prefix tags from plain text.
+        Supported format:
+            [低落]第一句。[激动]第二句。
+        Tag scope: from tag position to sentence end (。/. or newline).
+        """
+        if not text:
+            return []
+
+        sentence_end_chars = {"。", ".", "\n"}
+        tag_pattern = re.compile(r"\[([^\[\]]+)\]")
+        chunks = []
+        active_emo_text = None
+        buf = []
+        last_non_space_char = None
+        pos = 0
+        found_prefix_tag = False
+
+        def flush_chunk(reset_emo=False, end_char=None):
+            nonlocal buf, active_emo_text, last_non_space_char
+            chunk_text = "".join(buf).strip()
+            if chunk_text:
+                chunks.append((chunk_text, active_emo_text))
+                if end_char is not None:
+                    last_non_space_char = end_char
+                else:
+                    for c in reversed(chunk_text):
+                        if not c.isspace():
+                            last_non_space_char = c
+                            break
+            elif end_char is not None:
+                last_non_space_char = end_char
+            buf = []
+            if reset_emo:
+                active_emo_text = None
+
+        def append_text(raw_text):
+            nonlocal last_non_space_char
+            for ch in raw_text:
+                buf.append(ch)
+                if ch == "\n":
+                    last_non_space_char = "\n"
+                elif not ch.isspace():
+                    last_non_space_char = ch
+                if active_emo_text is not None and ch in sentence_end_chars:
+                    flush_chunk(reset_emo=True, end_char=ch)
+
+        while True:
+            m = tag_pattern.search(text, pos)
+            if m is None:
+                append_text(text[pos:])
+                break
+
+            append_text(text[pos:m.start()])
+            tag_label = m.group(1).strip()
+            at_sentence_start = last_non_space_char is None or last_non_space_char in sentence_end_chars
+            if self._is_emo_text_prefix_tag(tag_label) and at_sentence_start:
+                found_prefix_tag = True
+                if active_emo_text is not None and "".join(buf).strip():
+                    flush_chunk(reset_emo=False)
+                active_emo_text = tag_label
+            else:
+                append_text(m.group(0))
+            pos = m.end()
+
+        flush_chunk(reset_emo=False)
+        if not chunks and text.strip() and not found_prefix_tag:
+            chunks.append((text.strip(), None))
+        return chunks
+
     def _apply_fade(self, wav, fade_in_ms, fade_out_ms, sampling_rate):
         if wav is None or wav.numel() == 0:
             return wav
@@ -622,8 +706,9 @@ class IndexTTS2:
         4. [SPD=1.55]...[/SPD]              -> 段级语速
         5. [GEN t=0.7 p=0.85 k=20]...[/GEN] -> 段级采样
         6. [EMO_A=0.4]...[/EMO_A]           -> 段级情感强度
-        7. [VOL=0.85]...[/VOL]              -> 段级音量
-        8. [FADE in=80 out=120]...[/FADE]   -> 段级淡入淡出
+        7. [情感描述]句子内容                 -> 句首情感描述（句号/换行为止）
+        8. [VOL=0.85]...[/VOL]              -> 段级音量
+        9. [FADE in=80 out=120]...[/FADE]   -> 段级淡入淡出
         不支持嵌套控制块。
 
         Return format (list[dict]):
@@ -643,6 +728,41 @@ class IndexTTS2:
 
         items = []
 
+        def append_text_items_with_emo(
+                raw_text,
+                item_type="text",
+                base_overrides=None,
+                base_prefix=None,
+                enable_manual_break=False):
+            emo_chunks = self._split_text_with_emo_prefix(raw_text)
+            for chunk_text, chunk_emo_text in emo_chunks:
+                if item_type == "keep":
+                    blocks = [chunk_text.strip()] if chunk_text and chunk_text.strip() else []
+                elif enable_manual_break:
+                    blocks = [x.strip() for x in re.split(r"\n\s*\n+", chunk_text) if x.strip()]
+                else:
+                    blocks = [chunk_text.strip()] if chunk_text and chunk_text.strip() else []
+
+                for block_idx, block in enumerate(blocks):
+                    overrides = dict(base_overrides or {})
+                    preview_parts = []
+                    if base_prefix:
+                        preview_parts.append(base_prefix)
+                    if chunk_emo_text:
+                        overrides["emo_text"] = chunk_emo_text
+                        preview_parts.append(f"[{chunk_emo_text}]")
+                    preview_prefix = "".join(preview_parts) if preview_parts else None
+
+                    items.append({
+                        "type": item_type,
+                        "text": block,
+                        "overrides": overrides,
+                        "preview_prefix": preview_prefix,
+                    })
+
+                    if enable_manual_break and block_idx < len(blocks) - 1:
+                        items.append({"type": "hard_break"})
+
         for part in parts:
             if not part:
                 continue
@@ -660,12 +780,13 @@ class IndexTTS2:
                 keep_text = keep_m.group(1).strip()
                 if keep_text:
                     self._assert_no_nested_controls(keep_text, "KEEP")
-                    items.append({
-                        "type": "keep",
-                        "text": keep_text,
-                        "overrides": {},
-                        "preview_prefix": "[KEEP]",
-                    })
+                    append_text_items_with_emo(
+                        keep_text,
+                        item_type="keep",
+                        base_overrides={},
+                        base_prefix="[KEEP]",
+                        enable_manual_break=False,
+                    )
                 continue
 
             spd_m = re.fullmatch(
@@ -678,12 +799,13 @@ class IndexTTS2:
                 spd_text = spd_m.group(2).strip()
                 if spd_text:
                     self._assert_no_nested_controls(spd_text, "SPD")
-                    items.append({
-                        "type": "text",
-                        "text": spd_text,
-                        "overrides": {"speed_scale": spd},
-                        "preview_prefix": f"[SPD={spd:.2f}]",
-                    })
+                    append_text_items_with_emo(
+                        spd_text,
+                        item_type="text",
+                        base_overrides={"speed_scale": spd},
+                        base_prefix=f"[SPD={spd:.2f}]",
+                        enable_manual_break=False,
+                    )
                 continue
 
             gen_m = re.fullmatch(r"\[GEN\b([^\]]*)\](.*?)\[/GEN\]", part, flags=re.S | re.I)
@@ -692,12 +814,13 @@ class IndexTTS2:
                 if gen_text:
                     self._assert_no_nested_controls(gen_text, "GEN")
                     overrides, preview_prefix = self._parse_gen_overrides(gen_m.group(1))
-                    items.append({
-                        "type": "text",
-                        "text": gen_text,
-                        "overrides": overrides,
-                        "preview_prefix": preview_prefix,
-                    })
+                    append_text_items_with_emo(
+                        gen_text,
+                        item_type="text",
+                        base_overrides=overrides,
+                        base_prefix=preview_prefix,
+                        enable_manual_break=False,
+                    )
                 continue
 
             emo_m = re.fullmatch(
@@ -710,12 +833,13 @@ class IndexTTS2:
                 emo_text = emo_m.group(2).strip()
                 if emo_text:
                     self._assert_no_nested_controls(emo_text, "EMO_A")
-                    items.append({
-                        "type": "text",
-                        "text": emo_text,
-                        "overrides": {"emo_alpha": emo_alpha},
-                        "preview_prefix": f"[EMO_A={emo_alpha:.2f}]",
-                    })
+                    append_text_items_with_emo(
+                        emo_text,
+                        item_type="text",
+                        base_overrides={"emo_alpha": emo_alpha},
+                        base_prefix=f"[EMO_A={emo_alpha:.2f}]",
+                        enable_manual_break=False,
+                    )
                 continue
 
             vol_m = re.fullmatch(
@@ -728,12 +852,13 @@ class IndexTTS2:
                 vol_text = vol_m.group(2).strip()
                 if vol_text:
                     self._assert_no_nested_controls(vol_text, "VOL")
-                    items.append({
-                        "type": "text",
-                        "text": vol_text,
-                        "overrides": {"volume_scale": volume_scale},
-                        "preview_prefix": f"[VOL={volume_scale:.2f}]",
-                    })
+                    append_text_items_with_emo(
+                        vol_text,
+                        item_type="text",
+                        base_overrides={"volume_scale": volume_scale},
+                        base_prefix=f"[VOL={volume_scale:.2f}]",
+                        enable_manual_break=False,
+                    )
                 continue
 
             fade_m = re.fullmatch(r"\[FADE\b([^\]]*)\](.*?)\[/FADE\]", part, flags=re.S | re.I)
@@ -742,25 +867,22 @@ class IndexTTS2:
                 if fade_text:
                     self._assert_no_nested_controls(fade_text, "FADE")
                     overrides, preview_prefix = self._parse_fade_overrides(fade_m.group(1))
-                    items.append({
-                        "type": "text",
-                        "text": fade_text,
-                        "overrides": overrides,
-                        "preview_prefix": preview_prefix,
-                    })
+                    append_text_items_with_emo(
+                        fade_text,
+                        item_type="text",
+                        base_overrides=overrides,
+                        base_prefix=preview_prefix,
+                        enable_manual_break=False,
+                    )
                 continue
 
-            manual_blocks = [x.strip() for x in re.split(r"\n\s*\n+", part) if x.strip()]
-            for block_idx, block in enumerate(manual_blocks):
-                items.append({
-                    "type": "text",
-                    "text": block,
-                    "overrides": {},
-                    "preview_prefix": None,
-                })
-                if block_idx < len(manual_blocks) - 1:
-                    # keep explicit hard-break boundary for preview / planning
-                    items.append({"type": "hard_break"})
+            append_text_items_with_emo(
+                part,
+                item_type="text",
+                base_overrides={},
+                base_prefix=None,
+                enable_manual_break=True,
+            )
 
         return items
 
@@ -914,6 +1036,17 @@ class IndexTTS2:
                   f"emo_vector:{emo_vector}, use_emo_text:{use_emo_text}, "
                   f"emo_text:{emo_text}, seed:{seed}, lock_seed:{lock_seed}")
         start_time = time.perf_counter()
+        emo_text_vector_cache = {}
+
+        def get_emo_vector_from_text(text_prompt):
+            txt = (text_prompt or "").strip()
+            if not txt:
+                return None
+            if txt not in emo_text_vector_cache:
+                emo_dict = self.qwen_emo.inference(txt)
+                print(f"detected emotion vectors from text: {emo_dict}")
+                emo_text_vector_cache[txt] = [float(v) for v in emo_dict.values()]
+            return emo_text_vector_cache[txt]
 
         if lock_seed:
             seed_value = 42 if seed is None else int(seed)
@@ -929,17 +1062,14 @@ class IndexTTS2:
             # "emotion reference voice", to ensure we use correct emotion mixing!
             emo_audio_prompt = None
 
-        if use_emo_text:
-            # automatically generate emotion vectors from text prompt
-            if emo_text is None:
-                emo_text = text  # use main text prompt
-            emo_dict = self.qwen_emo.inference(emo_text)
-            print(f"detected emotion vectors from text: {emo_dict}")
-            # convert ordered dict to list of vectors; the order is VERY important!
-            emo_vector = list(emo_dict.values())
+        if use_emo_text and emo_text is None:
+            emo_text = text  # use main text prompt
 
+        global_emo_vector = None
         if emo_vector is not None:
-            emo_vector = [float(x) for x in emo_vector]
+            global_emo_vector = [float(x) for x in emo_vector]
+        elif use_emo_text:
+            global_emo_vector = get_emo_vector_from_text(emo_text)
 
         if emo_audio_prompt is None:
             # we are not using any external "emotion reference voice"; use
@@ -993,15 +1123,8 @@ class IndexTTS2:
             spk_cond_emb = self.cache_spk_cond
             ref_mel = self.cache_mel
 
-        if emo_vector is not None:
-            base_weight_vector = torch.tensor(emo_vector, device=self.device)
-            if use_random:
-                random_index = [random.randint(0, x - 1) for x in self.emo_num]
-            else:
-                random_index = [find_most_similar_cosine(style, tmp) for tmp in self.spk_matrix]
-
-            emo_matrix = [tmp[index].unsqueeze(0) for index, tmp in zip(random_index, self.emo_matrix)]
-            emo_matrix = torch.cat(emo_matrix, 0)
+        global_emo_weight_vector = torch.tensor(global_emo_vector, device=self.device) if global_emo_vector is not None else None
+        emo_matrix = None
 
         if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
             if self.cache_emo_cond is not None:
@@ -1109,10 +1232,16 @@ class IndexTTS2:
             segment_top_k = segment_overrides.get("top_k", top_k)
             segment_temperature = segment_overrides.get("temperature", temperature)
             segment_emo_alpha = self._clamp_value(float(segment_overrides.get("emo_alpha", emo_alpha)), 0.0, 1.0)
+            segment_emo_text = segment_overrides.get("emo_text")
             segment_speed_scale = float(segment_overrides.get("speed_scale", speed_scale))
             segment_volume_scale = self._clamp_value(float(segment_overrides.get("volume_scale", 1.0)), 0.20, 2.00)
             segment_fade_in_ms = int(self._clamp_value(int(segment_overrides.get("fade_in_ms", 0)), 0, 300))
             segment_fade_out_ms = int(self._clamp_value(int(segment_overrides.get("fade_out_ms", 0)), 0, 300))
+            if segment_emo_text:
+                active_emo_vector = get_emo_vector_from_text(segment_emo_text)
+                active_emo_weight_vector = torch.tensor(active_emo_vector, device=self.device) if active_emo_vector is not None else None
+            else:
+                active_emo_weight_vector = global_emo_weight_vector
 
             seg_idx = real_seg_idx
             real_seg_idx += 1
@@ -1143,8 +1272,17 @@ class IndexTTS2:
                         alpha=segment_emo_alpha
                     )
 
-                    if emo_vector is not None:
-                        segment_weight_vector = base_weight_vector * segment_emo_alpha
+                    if active_emo_weight_vector is not None:
+                        if emo_matrix is None:
+                            if use_random:
+                                random_index = [random.randint(0, x - 1) for x in self.emo_num]
+                            else:
+                                random_index = [find_most_similar_cosine(style, tmp) for tmp in self.spk_matrix]
+
+                            emo_matrix = [tmp[index].unsqueeze(0) for index, tmp in zip(random_index, self.emo_matrix)]
+                            emo_matrix = torch.cat(emo_matrix, 0)
+
+                        segment_weight_vector = active_emo_weight_vector * segment_emo_alpha
                         emovec_mat = segment_weight_vector.unsqueeze(1) * emo_matrix
                         emovec_mat = torch.sum(emovec_mat, 0).unsqueeze(0)
                         emovec = emovec_mat + (1 - torch.sum(segment_weight_vector)) * emovec
