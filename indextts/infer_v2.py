@@ -2,9 +2,13 @@ import os
 from subprocess import CalledProcessError
 
 os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+# reduce CUDA memory fragmentation by default; allow user override
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+import gc
 import json
 import re
 import time
+import threading
 import librosa
 import torch
 import torchaudio
@@ -34,6 +38,11 @@ import safetensors
 from transformers import SeamlessM4TFeatureExtractor
 import random
 import torch.nn.functional as F
+
+
+class GenerationStoppedError(RuntimeError):
+    pass
+
 
 class IndexTTS2:
     def __init__(
@@ -213,6 +222,7 @@ class IndexTTS2:
         # 进度引用显示（可选）
         self.gr_progress = None
         self.model_version = self.cfg.version if hasattr(self.cfg, "version") else None
+        self.stop_generation_event = threading.Event()
 
     @torch.no_grad()
     def get_emb(self, input_features, attention_mask):
@@ -322,6 +332,53 @@ class IndexTTS2:
     def _set_gr_progress(self, value, desc):
         if self.gr_progress is not None:
             self.gr_progress(value, desc=desc)
+
+    def request_stop_generation(self):
+        self.stop_generation_event.set()
+
+    def clear_stop_generation(self):
+        self.stop_generation_event.clear()
+
+    def _check_generation_stopped(self):
+        if self.stop_generation_event.is_set():
+            raise GenerationStoppedError("generation stopped by user")
+
+    def _clear_runtime_condition_cache(self):
+        self.cache_spk_cond = None
+        self.cache_s2mel_style = None
+        self.cache_s2mel_prompt = None
+        self.cache_spk_audio_prompt = None
+        self.cache_emo_cond = None
+        self.cache_emo_audio_prompt = None
+        self.cache_mel = None
+
+    def _release_runtime_memory(self, clear_condition_cache=True, verbose=False):
+        if clear_condition_cache:
+            self._clear_runtime_condition_cache()
+
+        gc.collect()
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                try:
+                    torch.cuda.ipc_collect()
+                except Exception:
+                    pass
+        elif hasattr(torch, "xpu") and torch.xpu.is_available() and hasattr(torch.xpu, "empty_cache"):
+            try:
+                torch.xpu.empty_cache()
+            except Exception:
+                pass
+
+        if hasattr(torch, "mps") and torch.backends.mps.is_available() and hasattr(torch.mps, "empty_cache"):
+            try:
+                torch.mps.empty_cache()
+            except Exception:
+                pass
+
+        if verbose:
+            print(">> runtime memory released (clear_condition_cache=%s)" % bool(clear_condition_cache))
 
     def _load_and_cut_audio(self,audio_path,max_audio_length_seconds,verbose=False,sr=None):
         if not sr:
@@ -618,33 +675,79 @@ class IndexTTS2:
     def _raise_control_error(self, message, pos):
         raise ValueError(f"{message}（位置: {pos + 1}）")
 
-    def _validate_opening_tag(self, tag, pos):
+    def _iter_bracket_tags(self, text):
+        i = 0
+        while i < len(text):
+            if text[i] != "[":
+                i += 1
+                continue
+            j = text.find("]", i + 1)
+            if j < 0:
+                i += 1
+                continue
+            yield i, j + 1, text[i:j + 1]
+            i = j + 1
+
+    def _parse_open_control_tag(self, tag, pos):
         if re.fullmatch(r"\[KEEP\]", tag, flags=re.I):
-            return "KEEP"
-        if re.fullmatch(r"\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
-            return "SPD"
-        if re.fullmatch(r"\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
-            return "EMO_A"
-        if re.fullmatch(r"\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\]", tag, flags=re.I):
-            return "VOL"
+            return {"name": "KEEP", "overrides": {}, "preview_prefix": "[KEEP]", "is_keep": True, "tag": tag, "pos": pos}
+
+        spd_m = re.fullmatch(r"\[SPD\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\]", tag, flags=re.I)
+        if spd_m:
+            spd = self._clamp_value(float(spd_m.group(1)), 1.45, 2.00)
+            return {"name": "SPD", "overrides": {"speed_scale": spd}, "preview_prefix": f"[SPD={spd:.2f}]", "is_keep": False, "tag": tag, "pos": pos}
+
+        emo_m = re.fullmatch(r"\[EMO_A\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\]", tag, flags=re.I)
+        if emo_m:
+            emo_alpha = self._clamp_value(float(emo_m.group(1)), 0.0, 1.0)
+            return {"name": "EMO_A", "overrides": {"emo_alpha": emo_alpha}, "preview_prefix": f"[EMO_A={emo_alpha:.2f}]", "is_keep": False, "tag": tag, "pos": pos}
+
+        vol_m = re.fullmatch(r"\[VOL\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\]", tag, flags=re.I)
+        if vol_m:
+            volume_scale = self._clamp_value(float(vol_m.group(1)), 0.20, 2.00)
+            return {"name": "VOL", "overrides": {"volume_scale": volume_scale}, "preview_prefix": f"[VOL={volume_scale:.2f}]", "is_keep": False, "tag": tag, "pos": pos}
+
         if re.fullmatch(r"\[GEN\b[^\]]*\]", tag, flags=re.I):
             attr_text = tag[4:-1]
             try:
-                self._parse_gen_overrides(attr_text)
+                overrides, preview_prefix = self._parse_gen_overrides(attr_text)
             except ValueError as e:
                 self._raise_control_error(str(e), pos)
-            return "GEN"
+            return {"name": "GEN", "overrides": overrides, "preview_prefix": preview_prefix, "is_keep": False, "tag": tag, "pos": pos}
+
         if re.fullmatch(r"\[FADE\b[^\]]*\]", tag, flags=re.I):
             attr_text = tag[5:-1]
             try:
-                self._parse_fade_overrides(attr_text)
+                overrides, preview_prefix = self._parse_fade_overrides(attr_text)
             except ValueError as e:
                 self._raise_control_error(str(e), pos)
-            return "FADE"
+            return {"name": "FADE", "overrides": overrides, "preview_prefix": preview_prefix, "is_keep": False, "tag": tag, "pos": pos}
 
-        if re.fullmatch(r"\[/?[A-Za-z_][A-Za-z0-9_]*.*\]", tag):
-            self._raise_control_error(f"未知控制标签: {tag}", pos)
         return None
+
+    def _parse_close_control_tag(self, tag):
+        close_m = re.fullmatch(r"\[/([A-Za-z_]+)\]", tag)
+        if not close_m:
+            return None
+        return close_m.group(1).upper()
+
+    def _classify_control_tag(self, tag, pos):
+        pause_m = re.fullmatch(r"\[p(\d+)\]", tag, flags=re.I)
+        if pause_m:
+            return "pause", int(pause_m.group(1))
+
+        open_ctx = self._parse_open_control_tag(tag, pos)
+        if open_ctx is not None:
+            return "open", open_ctx
+
+        close_name = self._parse_close_control_tag(tag)
+        if close_name is not None:
+            return "close", close_name
+
+        if re.fullmatch(r"\[/?[A-Za-z_][A-Za-z0-9_]*(?:[^\]]*)\]", tag):
+            return "unknown_ascii", tag
+
+        return None, None
 
     def validate_text_controls(self, text):
         """
@@ -655,43 +758,41 @@ class IndexTTS2:
         if not text.strip():
             return
 
-        tag_pattern = re.compile(r"\[[^\[\]]+\]")
         stack = []
+        valid_names = {"KEEP", "SPD", "GEN", "EMO_A", "VOL", "FADE"}
 
-        for m in tag_pattern.finditer(text):
-            tag = m.group(0)
-            pos = m.start()
-
-            pause_m = re.fullmatch(r"\[p(\d+)\]", tag, flags=re.I)
-            if pause_m:
-                if stack:
-                    self._raise_control_error(f"{stack[-1]['name']} 块内不支持嵌套 [pN] 标签", pos)
+        for start, _, tag in self._iter_bracket_tags(text):
+            tag_type, tag_value = self._classify_control_tag(tag, start)
+            if tag_type is None:
                 continue
 
-            close_m = re.fullmatch(r"\[/([A-Za-z_]+)\]", tag)
-            if close_m:
-                name = close_m.group(1).upper()
-                if name not in {"KEEP", "SPD", "GEN", "EMO_A", "VOL", "FADE"}:
-                    self._raise_control_error(f"未知结束标签: {tag}", pos)
-                if not stack:
-                    self._raise_control_error(f"未匹配到开始标签: {tag}", pos)
-                if stack[-1]["name"] != name:
-                    self._raise_control_error(
-                        f"结束标签不匹配，期望 [/{stack[-1]['name']}] 实际 {tag}",
-                        pos
-                    )
-                stack.pop()
+            if tag_type == "unknown_ascii":
+                self._raise_control_error(f"未知控制标签: {tag}", start)
+
+            if tag_type == "pause":
                 continue
 
-            open_name = self._validate_opening_tag(tag, pos)
-            if open_name is None:
+            if tag_type == "open":
+                stack.append(tag_value)
                 continue
-            if stack:
-                self._raise_control_error(
-                    f"[{stack[-1]['name']}] 块内不支持嵌套控制标签，检测到: {tag}",
-                    pos
-                )
-            stack.append({"name": open_name, "pos": pos, "tag": tag})
+
+            # close tag
+            close_name = tag_value
+            if close_name not in valid_names:
+                self._raise_control_error(f"未知结束标签: {tag}", start)
+            if not stack:
+                self._raise_control_error(f"未匹配到开始标签: {tag}", start)
+
+            # allow stacked coexistence:
+            # [FADE][EMO_A][SPD] ... [/FADE] will auto-close SPD+EMO_A+FADE
+            match_idx = -1
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx]["name"] == close_name:
+                    match_idx = idx
+                    break
+            if match_idx < 0:
+                self._raise_control_error(f"未匹配到开始标签: {tag}", start)
+            del stack[match_idx:]
 
         if stack:
             unclosed = stack[-1]
@@ -709,7 +810,7 @@ class IndexTTS2:
         7. [情感描述]句子内容                 -> 句首情感描述（句号/换行为止）
         8. [VOL=0.85]...[/VOL]              -> 段级音量
         9. [FADE in=80 out=120]...[/FADE]   -> 段级淡入淡出
-        不支持嵌套控制块。
+        控制标签支持叠加与共存，后出现的同名参数覆盖前者。
 
         Return format (list[dict]):
         - {"type": "pause", "ms": int}
@@ -719,12 +820,6 @@ class IndexTTS2:
         if not text:
             return []
         self.validate_text_controls(text)
-
-        pattern = re.compile(
-            r"(\[KEEP\].*?\[/KEEP\]|\[SPD\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/SPD\]|\[GEN\b[^\]]*\].*?\[/GEN\]|\[EMO_A\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/EMO_A\]|\[VOL\s*=\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)\].*?\[/VOL\]|\[FADE\b[^\]]*\].*?\[/FADE\]|\[p\d+\])",
-            re.S | re.I
-        )
-        parts = pattern.split(text)
 
         items = []
 
@@ -762,127 +857,65 @@ class IndexTTS2:
 
                     if enable_manual_break and block_idx < len(blocks) - 1:
                         items.append({"type": "hard_break"})
+        stack = []
+        valid_names = {"KEEP", "SPD", "GEN", "EMO_A", "VOL", "FADE"}
+        cursor = 0
 
-        for part in parts:
-            if not part:
-                continue
-            part = part.strip()
-            if not part:
-                continue
+        def flush_plain_text(raw_text):
+            if not raw_text or not raw_text.strip():
+                return
 
-            pause_m = re.fullmatch(r"\[p(\d+)\]", part, flags=re.I)
-            if pause_m:
-                items.append({"type": "pause", "ms": int(pause_m.group(1))})
-                continue
-
-            keep_m = re.fullmatch(r"\[KEEP\](.*?)\[/KEEP\]", part, flags=re.S | re.I)
-            if keep_m:
-                keep_text = keep_m.group(1).strip()
-                if keep_text:
-                    self._assert_no_nested_controls(keep_text, "KEEP")
-                    append_text_items_with_emo(
-                        keep_text,
-                        item_type="keep",
-                        base_overrides={},
-                        base_prefix="[KEEP]",
-                        enable_manual_break=False,
-                    )
-                continue
-
-            spd_m = re.fullmatch(
-                r"\[SPD\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/SPD\]",
-                part,
-                flags=re.S | re.I,
-            )
-            if spd_m:
-                spd = self._clamp_value(float(spd_m.group(1)), 1.45, 2.00)
-                spd_text = spd_m.group(2).strip()
-                if spd_text:
-                    self._assert_no_nested_controls(spd_text, "SPD")
-                    append_text_items_with_emo(
-                        spd_text,
-                        item_type="text",
-                        base_overrides={"speed_scale": spd},
-                        base_prefix=f"[SPD={spd:.2f}]",
-                        enable_manual_break=False,
-                    )
-                continue
-
-            gen_m = re.fullmatch(r"\[GEN\b([^\]]*)\](.*?)\[/GEN\]", part, flags=re.S | re.I)
-            if gen_m:
-                gen_text = gen_m.group(2).strip()
-                if gen_text:
-                    self._assert_no_nested_controls(gen_text, "GEN")
-                    overrides, preview_prefix = self._parse_gen_overrides(gen_m.group(1))
-                    append_text_items_with_emo(
-                        gen_text,
-                        item_type="text",
-                        base_overrides=overrides,
-                        base_prefix=preview_prefix,
-                        enable_manual_break=False,
-                    )
-                continue
-
-            emo_m = re.fullmatch(
-                r"\[EMO_A\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/EMO_A\]",
-                part,
-                flags=re.S | re.I,
-            )
-            if emo_m:
-                emo_alpha = self._clamp_value(float(emo_m.group(1)), 0.0, 1.0)
-                emo_text = emo_m.group(2).strip()
-                if emo_text:
-                    self._assert_no_nested_controls(emo_text, "EMO_A")
-                    append_text_items_with_emo(
-                        emo_text,
-                        item_type="text",
-                        base_overrides={"emo_alpha": emo_alpha},
-                        base_prefix=f"[EMO_A={emo_alpha:.2f}]",
-                        enable_manual_break=False,
-                    )
-                continue
-
-            vol_m = re.fullmatch(
-                r"\[VOL\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\](.*?)\[/VOL\]",
-                part,
-                flags=re.S | re.I,
-            )
-            if vol_m:
-                volume_scale = self._clamp_value(float(vol_m.group(1)), 0.20, 2.00)
-                vol_text = vol_m.group(2).strip()
-                if vol_text:
-                    self._assert_no_nested_controls(vol_text, "VOL")
-                    append_text_items_with_emo(
-                        vol_text,
-                        item_type="text",
-                        base_overrides={"volume_scale": volume_scale},
-                        base_prefix=f"[VOL={volume_scale:.2f}]",
-                        enable_manual_break=False,
-                    )
-                continue
-
-            fade_m = re.fullmatch(r"\[FADE\b([^\]]*)\](.*?)\[/FADE\]", part, flags=re.S | re.I)
-            if fade_m:
-                fade_text = fade_m.group(2).strip()
-                if fade_text:
-                    self._assert_no_nested_controls(fade_text, "FADE")
-                    overrides, preview_prefix = self._parse_fade_overrides(fade_m.group(1))
-                    append_text_items_with_emo(
-                        fade_text,
-                        item_type="text",
-                        base_overrides=overrides,
-                        base_prefix=preview_prefix,
-                        enable_manual_break=False,
-                    )
-                continue
+            merged_overrides = {}
+            preview_parts = []
+            keep_mode = False
+            for ctx in stack:
+                merged_overrides.update(ctx.get("overrides", {}))
+                preview_prefix = ctx.get("preview_prefix")
+                if preview_prefix:
+                    preview_parts.append(preview_prefix)
+                if ctx.get("is_keep"):
+                    keep_mode = True
 
             append_text_items_with_emo(
-                part,
-                item_type="text",
-                base_overrides={},
-                base_prefix=None,
-                enable_manual_break=True,
+                raw_text,
+                item_type="keep" if keep_mode else "text",
+                base_overrides=merged_overrides,
+                base_prefix="".join(preview_parts) if preview_parts else None,
+                enable_manual_break=not keep_mode,
             )
+
+        for start, end, tag in self._iter_bracket_tags(text):
+            tag_type, tag_value = self._classify_control_tag(tag, start)
+            if tag_type is None:
+                continue
+            if tag_type == "unknown_ascii":
+                self._raise_control_error(f"未知控制标签: {tag}", start)
+
+            flush_plain_text(text[cursor:start])
+            cursor = end
+
+            if tag_type == "pause":
+                items.append({"type": "pause", "ms": int(tag_value)})
+                continue
+
+            if tag_type == "open":
+                stack.append(tag_value)
+                continue
+
+            close_name = tag_value
+            if close_name not in valid_names:
+                self._raise_control_error(f"未知结束标签: {tag}", start)
+
+            match_idx = -1
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx]["name"] == close_name:
+                    match_idx = idx
+                    break
+            if match_idx < 0:
+                self._raise_control_error(f"未匹配到开始标签: {tag}", start)
+            del stack[match_idx:]
+
+        flush_plain_text(text[cursor:])
 
         return items
 
@@ -996,9 +1029,9 @@ class IndexTTS2:
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200, speed_scale=1.72,
               enable_punct_pause=False, punct_pause_map=None,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0,
-              seed=None, lock_seed=False, **generation_kwargs):
+              seed=None, lock_seed=False, release_memory_after_infer=True, **generation_kwargs):
         if stream_return:
-            return self.infer_generator(
+            base_generator = self.infer_generator(
                 spk_audio_prompt, text, output_path,
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
@@ -1007,6 +1040,17 @@ class IndexTTS2:
                 verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
                 seed, lock_seed, **generation_kwargs
             )
+            if not release_memory_after_infer:
+                return base_generator
+
+            def wrapped_generator():
+                try:
+                    for chunk in base_generator:
+                        yield chunk
+                finally:
+                    self._release_runtime_memory(clear_condition_cache=True, verbose=verbose)
+
+            return wrapped_generator()
         else:
             try:
                 return list(self.infer_generator(
@@ -1020,6 +1064,9 @@ class IndexTTS2:
                 ))[0]
             except IndexError:
                 return None
+            finally:
+                if release_memory_after_infer:
+                    self._release_runtime_memory(clear_condition_cache=True, verbose=verbose)
 
     def infer_generator(self, spk_audio_prompt, text, output_path,
               emo_audio_prompt=None, emo_alpha=1.0,
@@ -1028,6 +1075,7 @@ class IndexTTS2:
               enable_punct_pause=False, punct_pause_map=None,
               verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0,
               seed=None, lock_seed=False, **generation_kwargs):
+        self._check_generation_stopped()
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
         if verbose:
@@ -1143,6 +1191,7 @@ class IndexTTS2:
         else:
             emo_cond_emb = self.cache_emo_cond
 
+        self._check_generation_stopped()
         self._set_gr_progress(0.1, "text processing...")
 
         plan, text_tokens_list = self.build_generation_plan(
@@ -1197,6 +1246,7 @@ class IndexTTS2:
         prev_item_type = None
         real_seg_idx = 0
         for item_type, item_value in plan:
+            self._check_generation_stopped()
             if item_type == "boundary":
                 # boundary exists for preview/planning only; keep prev_item_type unchanged
                 continue
@@ -1243,6 +1293,11 @@ class IndexTTS2:
             else:
                 active_emo_weight_vector = global_emo_weight_vector
 
+            # `do_sample=True` with beam search has high VRAM cost and little benefit for this path.
+            # Force beam size to 1 in sampling mode to reduce KV cache pressure.
+            segment_num_beams = 1 if bool(segment_do_sample) else int(num_beams)
+            segment_max_mel_tokens = int(max_mel_tokens)
+
             seg_idx = real_seg_idx
             real_seg_idx += 1
             self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
@@ -1264,6 +1319,7 @@ class IndexTTS2:
             m_start_time = time.perf_counter()
             with torch.no_grad():
                 with torch.amp.autocast(text_tokens.device.type, enabled=self.dtype is not None, dtype=self.dtype):
+                    self._check_generation_stopped()
                     emovec = self.gpt.merge_emovec(
                         spk_cond_emb,
                         emo_cond_emb,
@@ -1287,24 +1343,63 @@ class IndexTTS2:
                         emovec_mat = torch.sum(emovec_mat, 0).unsqueeze(0)
                         emovec = emovec_mat + (1 - torch.sum(segment_weight_vector)) * emovec
 
-                    codes, speech_conditioning_latent = self.gpt.inference_speech(
-                        spk_cond_emb,
-                        text_tokens,
-                        emo_cond_emb,
-                        cond_lengths=torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
-                        emo_cond_lengths=torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
-                        emo_vec=emovec,
-                        do_sample=segment_do_sample,
-                        top_p=segment_top_p,
-                        top_k=segment_top_k,
-                        temperature=segment_temperature,
-                        num_return_sequences=autoregressive_batch_size,
-                        length_penalty=length_penalty,
-                        num_beams=num_beams,
-                        repetition_penalty=repetition_penalty,
-                        max_generate_length=max_mel_tokens,
-                        **generation_kwargs
-                    )
+                    try:
+                        self._check_generation_stopped()
+                        codes, speech_conditioning_latent = self.gpt.inference_speech(
+                            spk_cond_emb,
+                            text_tokens,
+                            emo_cond_emb,
+                            cond_lengths=torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
+                            emo_cond_lengths=torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
+                            emo_vec=emovec,
+                            do_sample=segment_do_sample,
+                            top_p=segment_top_p,
+                            top_k=segment_top_k,
+                            temperature=segment_temperature,
+                            num_return_sequences=autoregressive_batch_size,
+                            length_penalty=length_penalty,
+                            num_beams=segment_num_beams,
+                            repetition_penalty=repetition_penalty,
+                            max_generate_length=segment_max_mel_tokens,
+                            **generation_kwargs
+                        )
+                    except torch.OutOfMemoryError as oom:
+                        self._check_generation_stopped()
+                        fallback_num_beams = 1
+                        fallback_max_mel_tokens = max(300, int(segment_max_mel_tokens * 0.7))
+                        can_retry = (
+                            torch.cuda.is_available()
+                            and (segment_num_beams > fallback_num_beams or segment_max_mel_tokens > fallback_max_mel_tokens)
+                        )
+                        if not can_retry:
+                            raise oom
+
+                        warnings.warn(
+                            f"WARN: CUDA OOM in GPT inference, retrying with safer params: "
+                            f"num_beams {segment_num_beams}->{fallback_num_beams}, "
+                            f"max_mel_tokens {segment_max_mel_tokens}->{fallback_max_mel_tokens}",
+                            category=RuntimeWarning,
+                        )
+                        torch.cuda.empty_cache()
+                        self._check_generation_stopped()
+                        codes, speech_conditioning_latent = self.gpt.inference_speech(
+                            spk_cond_emb,
+                            text_tokens,
+                            emo_cond_emb,
+                            cond_lengths=torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
+                            emo_cond_lengths=torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
+                            emo_vec=emovec,
+                            do_sample=segment_do_sample,
+                            top_p=segment_top_p,
+                            top_k=segment_top_k,
+                            temperature=segment_temperature,
+                            num_return_sequences=autoregressive_batch_size,
+                            length_penalty=length_penalty,
+                            num_beams=fallback_num_beams,
+                            repetition_penalty=repetition_penalty,
+                            max_generate_length=fallback_max_mel_tokens,
+                            **generation_kwargs
+                        )
 
                 gpt_gen_time += time.perf_counter() - m_start_time
                 if not has_warned and (codes[:, -1] != self.stop_mel_token).any():
@@ -1343,6 +1438,7 @@ class IndexTTS2:
                 m_start_time = time.perf_counter()
                 use_speed = torch.zeros(spk_cond_emb.size(0)).to(spk_cond_emb.device).long()
                 with torch.amp.autocast(text_tokens.device.type, enabled=self.dtype is not None, dtype=self.dtype):
+                    self._check_generation_stopped()
                     latent = self.gpt(
                         speech_conditioning_latent,
                         text_tokens,
@@ -1359,6 +1455,7 @@ class IndexTTS2:
 
                 dtype = None
                 with torch.amp.autocast(text_tokens.device.type, enabled=dtype is not None, dtype=dtype):
+                    self._check_generation_stopped()
                     m_start_time = time.perf_counter()
                     diffusion_steps = 25
                     inference_cfg_rate = 0.7
@@ -1399,6 +1496,7 @@ class IndexTTS2:
                 prev_item_type = "segment"
         end_time = time.perf_counter()
 
+        self._check_generation_stopped()
         self._set_gr_progress(0.9, "saving audio...")
         wav = torch.cat(wavs, dim=1)
         wav_length = wav.shape[-1] / sampling_rate

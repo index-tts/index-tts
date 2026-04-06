@@ -47,7 +47,7 @@ for file in [
         sys.exit(1)
 
 import gradio as gr
-from indextts.infer_v2 import IndexTTS2
+from indextts.infer_v2 import IndexTTS2, GenerationStoppedError
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
@@ -155,7 +155,7 @@ def gen_single(emo_control_method,prompt, text,
                vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                emo_text,emo_random,
                max_text_tokens_per_segment=120, interval_silence=200, speed_scale=1.72,
-               seed=42, lock_seed=False,
+               seed=42, lock_seed=False, release_memory_after_infer=True,
                enable_punct_pause=False, pause_comma=120, pause_period=220, pause_exclamation=240,
                pause_question=240, pause_semicolon=180, pause_colon=160,
                 *args, progress=gr.Progress()):
@@ -163,6 +163,7 @@ def gen_single(emo_control_method,prompt, text,
         tts.validate_text_controls(text or "")
     except Exception as e:
         raise gr.Error(f"文本控制校验失败: {e}")
+    tts.clear_stop_generation()
 
     output_path = None
     if not output_path:
@@ -209,21 +210,33 @@ def gen_single(emo_control_method,prompt, text,
         "semicolon": int(pause_semicolon),
         "colon": int(pause_colon),
     }
-    output = tts.infer(spk_audio_prompt=prompt, text=text,
-                       output_path=output_path,
-                       emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
-                       emo_vector=vec,
-                       use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
-                       interval_silence=int(interval_silence),
-                       speed_scale=float(speed_scale),
-                       seed=seed_value,
-                       lock_seed=bool(lock_seed),
-                       enable_punct_pause=bool(enable_punct_pause),
-                       punct_pause_map=punct_pause_map,
-                       verbose=cmd_args.verbose,
-                       max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-                       **kwargs)
-    return gr.update(value=output,visible=True)
+    try:
+        output = tts.infer(spk_audio_prompt=prompt, text=text,
+                           output_path=output_path,
+                           emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
+                           emo_vector=vec,
+                           use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
+                           interval_silence=int(interval_silence),
+                           speed_scale=float(speed_scale),
+                           seed=seed_value,
+                           lock_seed=bool(lock_seed),
+                           release_memory_after_infer=bool(release_memory_after_infer),
+                           enable_punct_pause=bool(enable_punct_pause),
+                           punct_pause_map=punct_pause_map,
+                           verbose=cmd_args.verbose,
+                           max_text_tokens_per_segment=int(max_text_tokens_per_segment),
+                           **kwargs)
+        return gr.update(value=output,visible=True)
+    except GenerationStoppedError:
+        gr.Info(i18n("已请求停止，当前生成已中断"), duration=2)
+        return gr.update()
+    finally:
+        tts.clear_stop_generation()
+
+
+def stop_generation():
+    tts.request_stop_generation()
+    gr.Info(i18n("正在请求停止生成..."), duration=2)
 
 def update_prompt_audio():
     update_button = gr.update(interactive=True)
@@ -255,7 +268,9 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                 default = prompt_list[0]
             with gr.Column():
                 input_text_single = gr.TextArea(label=i18n("文本"),key="input_text_single", placeholder=i18n("请输入目标文本"), info=f"{i18n('当前模型版本')}{tts.model_version or '1.0'}")
-                gen_button = gr.Button(i18n("生成语音"), key="gen_button",interactive=True)
+                with gr.Row():
+                    gen_button = gr.Button(i18n("生成语音"), key="gen_button",interactive=True)
+                    stop_button = gr.Button(i18n("停止生成"), key="stop_button", variant="stop")
             output_audio = gr.Audio(label=i18n("生成结果"), visible=True,key="output_audio")
 
         with gr.Row():
@@ -343,7 +358,14 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                     with gr.Row():
                         top_p = gr.Slider(label="top_p", minimum=0.0, maximum=1.0, value=0.8, step=0.01)
                         top_k = gr.Slider(label="top_k", minimum=0, maximum=100, value=30, step=1)
-                        num_beams = gr.Slider(label="num_beams", value=3, minimum=1, maximum=10, step=1)
+                        num_beams = gr.Slider(
+                            label="num_beams",
+                            value=1,
+                            minimum=1,
+                            maximum=10,
+                            step=1,
+                            info=i18n("显存敏感参数；do_sample开启时会自动按1处理以降低显存占用"),
+                        )
                     with gr.Row():
                         repetition_penalty = gr.Number(label="repetition_penalty", precision=None, value=10.0, minimum=0.1, maximum=20.0, step=0.1)
                         length_penalty = gr.Number(label="length_penalty", precision=None, value=0.0, minimum=-2.0, maximum=2.0, step=0.1)
@@ -379,6 +401,12 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                             label=i18n("锁定seed"),
                             value=False,
                             info=i18n("开启后每次生成前固定随机源"),
+                        )
+                    with gr.Row():
+                        release_memory_after_infer = gr.Checkbox(
+                            label=i18n("生成后释放显存"),
+                            value=True,
+                            info=i18n("每次生成后清理缓存并释放显存，降低OOM概率（会稍慢）"),
                         )
                     with gr.Row():
                         enable_punct_pause = gr.Checkbox(
@@ -832,16 +860,24 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         outputs=[glossary_table]
     )
 
-    gen_button.click(gen_single,
-                     inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
-                            vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
-                             emo_text,emo_random,
-                             max_text_tokens_per_segment, interval_silence, speed_scale, seed, lock_seed,
-                             enable_punct_pause, pause_comma, pause_period, pause_exclamation,
-                             pause_question, pause_semicolon, pause_colon,
-                             *advanced_params,
-                     ],
-                     outputs=[output_audio])
+    gen_event = gen_button.click(gen_single,
+                                 inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
+                                        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+                                        emo_text,emo_random,
+                                        max_text_tokens_per_segment, interval_silence, speed_scale, seed, lock_seed, release_memory_after_infer,
+                                        enable_punct_pause, pause_comma, pause_period, pause_exclamation,
+                                        pause_question, pause_semicolon, pause_colon,
+                                        *advanced_params,
+                                 ],
+                                 outputs=[output_audio])
+
+    stop_button.click(
+        stop_generation,
+        inputs=[],
+        outputs=[],
+        cancels=[gen_event],
+        queue=False,
+    )
 
 
 
