@@ -38,7 +38,8 @@ import torch.nn.functional as F
 class IndexTTS2:
     def __init__(
             self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, device=None,
-            use_cuda_kernel=None,use_deepspeed=False, use_accel=False, use_torch_compile=False
+            use_cuda_kernel=None,use_deepspeed=False, use_accel=False, use_torch_compile=False,
+            skip_qwen_emo=False
     ):
         """
         Args:
@@ -50,6 +51,10 @@ class IndexTTS2:
             use_deepspeed (bool): whether to use DeepSpeed or not.
             use_accel (bool): whether to use acceleration engine for GPT2 or not.
             use_torch_compile (bool): whether to use torch.compile for optimization or not.
+            skip_qwen_emo (bool): if True, skip loading the QwenEmotion text-to-emotion model.
+                Saves VRAM and startup time for pure voice-cloning workloads that never call
+                ``infer(..., use_emo_text=True)``. Attempting to use emotion-text guidance when
+                this is enabled will raise a RuntimeError.
         """
         if device is not None:
             self.device = device
@@ -80,7 +85,11 @@ class IndexTTS2:
         self.use_accel = use_accel
         self.use_torch_compile = use_torch_compile
 
-        self.qwen_emo = QwenEmotion(os.path.join(self.model_dir, self.cfg.qwen_emo_path))
+        if skip_qwen_emo:
+            self.qwen_emo = None
+            print(">> QwenEmotion skipped (skip_qwen_emo=True)")
+        else:
+            self.qwen_emo = QwenEmotion(os.path.join(self.model_dir, self.cfg.qwen_emo_path))
 
         self.gpt = UnifiedVoice(**self.cfg.gpt, use_accel=self.use_accel)
         self.gpt_path = os.path.join(self.model_dir, self.cfg.gpt_checkpoint)
@@ -400,6 +409,11 @@ class IndexTTS2:
 
         if use_emo_text:
             # automatically generate emotion vectors from text prompt
+            if self.qwen_emo is None:
+                raise RuntimeError(
+                    "use_emo_text=True requires QwenEmotion, but it was skipped at init "
+                    "(skip_qwen_emo=True). Re-construct IndexTTS2 with skip_qwen_emo=False."
+                )
             if emo_text is None:
                 emo_text = text  # use main text prompt
             emo_dict = self.qwen_emo.inference(emo_text)
