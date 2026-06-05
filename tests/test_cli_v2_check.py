@@ -395,6 +395,193 @@ class SynthCommandTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["emo_text"], "warm and calm")
         self.assertEqual(calls[1][1]["emo_alpha"], 0.6)
 
+    def test_synth_uses_emotion_vector_and_weight(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-vector",
+                    "0,0,0.8,0,0,0,0,0",
+                    "--emotion-weight",
+                    "0.7",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_vector"], [0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.7)
+        self.assertNotIn("emo_audio_prompt", calls[1][1])
+        self.assertNotIn("use_emo_text", calls[1][1])
+        self.assertNotIn("emo_text", calls[1][1])
+
+    def test_synth_accepts_python_list_style_emotion_vector(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-vector",
+                    "[0, 0, 0.8, 0, 0, 0, 0, 0]",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_vector"], [0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertEqual(calls[1][1]["emo_alpha"], 1.0)
+
+    def test_synth_does_not_rewrite_valid_emotion_vector(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-vector",
+                    "0.12,0.03,0.25,0.04,0,0.11,0.07,0.02",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_vector"], [0.12, 0.03, 0.25, 0.04, 0.0, 0.11, 0.07, 0.02])
+
+    def test_synth_returns_input_error_when_emotion_vector_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-vector",
+                    "",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --emotion-vector must not be empty", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_emotion_vector_is_invalid(self):
+        cases = [
+            ("0,0,nope,0,0,0,0,0", "entries must be numeric"),
+            ("0,0,0.8,0,0,0,0", "exactly 8 values"),
+            ("0,0,0.8,0,0,0,0,0,0", "exactly 8 values"),
+            ("0,0,-0.1,0,0,0,0,0", "between 0.0 and 1.0"),
+            ("0,0,1.1,0,0,0,0,0", "between 0.0 and 1.0"),
+            ("0.2,0.2,0.2,0.2,0.1,0,0,0", "sum must be <= 0.8"),
+        ]
+
+        for vector, expected_error in cases:
+            with self.subTest(vector=vector):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    voice_path = temp_path / "voice.wav"
+                    output_path = temp_path / "out.wav"
+                    voice_path.write_bytes(b"voice")
+
+                    exit_code, stdout, stderr, calls = self.run_synth(
+                        temp_path,
+                        [
+                            "synth",
+                            "--text",
+                            "hello",
+                            "--voice",
+                            str(voice_path),
+                            "--emotion-vector",
+                            vector,
+                            "--output",
+                            str(output_path),
+                        ],
+                    )
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn("ERROR: --emotion-vector", stderr)
+                self.assertIn(expected_error, stderr)
+                self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_emotion_vector_conflicts_with_other_emotion_sources(self):
+        for other_emotion_args in (["--emotion-audio"], ["--emotion-text", "warm and calm"]):
+            with self.subTest(other_emotion_args=other_emotion_args):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    voice_path = temp_path / "voice.wav"
+                    emotion_path = temp_path / "emotion.wav"
+                    output_path = temp_path / "out.wav"
+                    voice_path.write_bytes(b"voice")
+                    emotion_path.write_bytes(b"emotion")
+                    args = [
+                        "synth",
+                        "--text",
+                        "hello",
+                        "--voice",
+                        str(voice_path),
+                        "--emotion-vector",
+                        "0,0,0.8,0,0,0,0,0",
+                        "--output",
+                        str(output_path),
+                    ]
+                    if other_emotion_args == ["--emotion-audio"]:
+                        args.extend(["--emotion-audio", str(emotion_path)])
+                    else:
+                        args.extend(other_emotion_args)
+
+                    exit_code, stdout, stderr, calls = self.run_synth(temp_path, args)
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn("--emotion-vector, --emotion-audio and --emotion-text are mutually exclusive", stderr)
+                self.assertEqual(calls, [])
+
     def test_synth_returns_input_error_when_emotion_text_is_empty(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -450,7 +637,7 @@ class SynthCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout, "")
-        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertIn("ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive", stderr)
         self.assertEqual(calls, [])
 
     def test_synth_returns_input_error_when_empty_emotion_audio_conflicts_with_emotion_text(self):
@@ -479,7 +666,7 @@ class SynthCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout, "")
-        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertIn("ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive", stderr)
         self.assertEqual(calls, [])
 
     def test_synth_returns_resource_error_when_emotion_audio_is_missing(self):
