@@ -107,11 +107,9 @@ def _run_synth(args, tts_factory=None, stdin=None):
     if not voice_path.is_file():
         print(f"ERROR: voice reference audio does not exist: {voice_path}", file=sys.stderr)
         return EXIT_MISSING_RESOURCE
-    if _emotion_source_count(args) > 1:
-        print(
-            "ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive",
-            file=sys.stderr,
-        )
+    emotion_conflict_error = _emotion_conflict_error(args)
+    if emotion_conflict_error is not None:
+        print(emotion_conflict_error, file=sys.stderr)
         return EXIT_INPUT_ERROR
     emotion_vector = None
     if args.emotion_vector is not None:
@@ -203,6 +201,14 @@ def _emotion_source_count(args):
             args.emotion_vector is not None,
         )
     )
+
+
+def _emotion_conflict_error(args):
+    if _emotion_source_count(args) <= 1:
+        return None
+    if args.emotion_vector is None and args.emotion_audio is not None and args.emotion_text is not None:
+        return "ERROR: --emotion-audio and --emotion-text are mutually exclusive"
+    return "ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive"
 
 
 def _read_synth_text(args, stdin):

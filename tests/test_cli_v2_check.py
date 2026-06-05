@@ -637,7 +637,7 @@ class SynthCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout, "")
-        self.assertIn("ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
         self.assertEqual(calls, [])
 
     def test_synth_returns_input_error_when_empty_emotion_audio_conflicts_with_emotion_text(self):
@@ -666,7 +666,7 @@ class SynthCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stdout, "")
-        self.assertIn("ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
         self.assertEqual(calls, [])
 
     def test_synth_returns_resource_error_when_emotion_audio_is_missing(self):
