@@ -329,6 +329,219 @@ class SynthCommandTests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertEqual(calls[1][1]["text"], "stdin text")
 
+    def test_synth_uses_emotion_audio_and_weight(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            emotion_path = temp_path / "emotion.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            emotion_path.write_bytes(b"emotion")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-audio",
+                    str(emotion_path),
+                    "--emotion-weight",
+                    "0.75",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_audio_prompt"], str(emotion_path))
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.75)
+        self.assertNotIn("use_emo_text", calls[1][1])
+        self.assertNotIn("emo_text", calls[1][1])
+
+    def test_synth_uses_emotion_text_and_weight(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-text",
+                    "warm and calm",
+                    "--emotion-weight",
+                    "0.6",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertNotIn("emo_audio_prompt", calls[1][1])
+        self.assertEqual(calls[1][1]["use_emo_text"], True)
+        self.assertEqual(calls[1][1]["emo_text"], "warm and calm")
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.6)
+
+    def test_synth_returns_input_error_when_emotion_text_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-text",
+                    "",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --emotion-text must not be empty", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_emotion_sources_conflict(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            emotion_path = temp_path / "emotion.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            emotion_path.write_bytes(b"emotion")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-audio",
+                    str(emotion_path),
+                    "--emotion-text",
+                    "warm and calm",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_empty_emotion_audio_conflicts_with_emotion_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-audio",
+                    "",
+                    "--emotion-text",
+                    "warm and calm",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --emotion-audio and --emotion-text are mutually exclusive", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_resource_error_when_emotion_audio_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            emotion_path = temp_path / "missing-emotion.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-audio",
+                    str(emotion_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: emotion reference audio does not exist", stderr)
+        self.assertIn(str(emotion_path), stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_emotion_weight_is_not_a_float(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            emotion_path = temp_path / "emotion.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            emotion_path.write_bytes(b"emotion")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-audio",
+                    str(emotion_path),
+                    "--emotion-weight",
+                    "strong",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --emotion-weight must be a float", stderr)
+        self.assertEqual(calls, [])
+
     def test_synth_returns_input_error_when_text_source_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
