@@ -61,6 +61,13 @@ def _build_parser():
     synth.add_argument("--text-file", help="UTF-8 text file to synthesize")
     synth.add_argument("--stdin", action="store_true", help="Read text from standard input")
     synth.add_argument("--voice", help="Path to the speaker reference audio")
+    synth.add_argument("--emotion-audio", help="Path to the emotion reference audio")
+    synth.add_argument("--emotion-text", help="Emotion description text")
+    synth.add_argument(
+        "--emotion-weight",
+        default="1.0",
+        help="Emotion weight mapped to IndexTTS2 emo_alpha",
+    )
     synth.add_argument("--output", help="Path to write generated audio")
     synth.add_argument("--force", action="store_true", help="Overwrite output if it exists")
     synth.add_argument(
@@ -94,6 +101,21 @@ def _run_synth(args, tts_factory=None, stdin=None):
     if not voice_path.is_file():
         print(f"ERROR: voice reference audio does not exist: {voice_path}", file=sys.stderr)
         return EXIT_MISSING_RESOURCE
+    if args.emotion_audio is not None and args.emotion_text is not None:
+        print("ERROR: --emotion-audio and --emotion-text are mutually exclusive", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    if args.emotion_text is not None and not args.emotion_text.strip():
+        print("ERROR: --emotion-text must not be empty", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    emotion_path = Path(args.emotion_audio) if args.emotion_audio is not None else None
+    if emotion_path is not None and not emotion_path.is_file():
+        print(f"ERROR: emotion reference audio does not exist: {emotion_path}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    try:
+        emotion_weight = float(args.emotion_weight)
+    except ValueError:
+        print(f"ERROR: --emotion-weight must be a float: {args.emotion_weight}", file=sys.stderr)
+        return EXIT_INPUT_ERROR
     if not args.output:
         print("ERROR: --output is required", file=sys.stderr)
         return EXIT_INPUT_ERROR
@@ -127,11 +149,21 @@ def _run_synth(args, tts_factory=None, stdin=None):
                 use_cuda_kernel=args.cuda_kernel,
                 use_deepspeed=args.deepspeed,
             )
+            infer_kwargs = {
+                "spk_audio_prompt": str(voice_path),
+                "text": text,
+                "output_path": str(output_path),
+                "verbose": args.verbose,
+            }
+            if emotion_path is not None:
+                infer_kwargs["emo_audio_prompt"] = str(emotion_path)
+                infer_kwargs["emo_alpha"] = emotion_weight
+            if args.emotion_text is not None:
+                infer_kwargs["use_emo_text"] = True
+                infer_kwargs["emo_text"] = args.emotion_text
+                infer_kwargs["emo_alpha"] = emotion_weight
             tts.infer(
-                spk_audio_prompt=str(voice_path),
-                text=text,
-                output_path=str(output_path),
-                verbose=args.verbose,
+                **infer_kwargs,
             )
     except Exception as exc:
         print(f"ERROR: inference failed: {exc}", file=sys.stderr)
