@@ -47,6 +47,9 @@ for file in [
         print(f"Required file {file_path} does not exist. Please download it.")
         sys.exit(1)
 
+hf_cache_dir = os.path.abspath(os.path.join(cmd_args.model_dir, "hf_cache"))
+os.environ.setdefault("HF_HUB_CACHE", hf_cache_dir)
+
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2
 from tools.i18n.i18n import I18nAuto
