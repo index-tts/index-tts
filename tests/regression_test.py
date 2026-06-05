@@ -1,7 +1,8 @@
 from indextts.infer import IndexTTS
+from indextts.utils.examples_downloader import ensure_test_sample_available
 
 if __name__ == "__main__":
-    prompt_wav="tests/sample_prompt.wav"
+    prompt_wav = ensure_test_sample_available()
     tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=True, use_cuda_kernel=False)
     # 单音频推理测试
     text="晕 XUAN4 是 一 种 GAN3 觉"

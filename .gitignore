@@ -29,3 +29,7 @@ desktop.ini
 /checkpoints/*
 !/checkpoints/*.yaml
 /outputs/
+
+# Example audio files (downloaded on demand, not stored in git)
+/examples/*.wav
+/tests/sample_prompt.wav

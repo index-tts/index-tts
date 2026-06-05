@@ -1,6 +1,7 @@
 import torch
 import torchaudio
 from indextts.infer import IndexTTS
+from indextts.utils.examples_downloader import ensure_test_sample_available
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 from torch.nn import functional as F
 
@@ -20,7 +21,8 @@ if __name__ == "__main__":
         model_dir = sys.argv[1]
     else:
         model_dir = "checkpoints"
-    audio_prompt="tests/sample_prompt.wav"
+
+    audio_prompt = ensure_test_sample_available()
     tts = IndexTTS(cfg_path=f"{model_dir}/config.yaml", model_dir=model_dir, use_fp16=False, use_cuda_kernel=False)
     text = "晕 XUAN4 是 一 种 not very good GAN3 觉"
     text_tokens = tts.tokenizer.encode(text)
