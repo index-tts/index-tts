@@ -1,5 +1,7 @@
 import argparse
+import contextlib
 import importlib
+import io
 import sys
 from pathlib import Path
 
@@ -8,6 +10,7 @@ EXIT_SUCCESS = 0
 EXIT_INPUT_ERROR = 1
 EXIT_MISSING_RESOURCE = 2
 EXIT_RUNTIME_UNAVAILABLE = 3
+EXIT_INFERENCE_ERROR = 4
 
 REQUIRED_MODEL_FILES = (
     "config.yaml",
@@ -19,12 +22,14 @@ REQUIRED_MODEL_FILES = (
 REQUIRED_PACKAGES = ("torch", "torchaudio", "indextts")
 
 
-def main(argv=None):
+def main(argv=None, tts_factory=None, stdin=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "check":
         return _run_check(args)
+    if args.command == "synth":
+        return _run_synth(args, tts_factory=tts_factory, stdin=stdin)
 
     parser.print_help(sys.stderr)
     return EXIT_INPUT_ERROR
@@ -48,7 +53,116 @@ def _build_parser():
         default=None,
         help="Required runtime device, e.g. cpu, cuda, cuda:0, mps or xpu",
     )
+    synth = subparsers.add_parser(
+        "synth",
+        help="Synthesize one text input with IndexTTS2",
+    )
+    synth.add_argument("--text", help="Text to synthesize")
+    synth.add_argument("--text-file", help="UTF-8 text file to synthesize")
+    synth.add_argument("--stdin", action="store_true", help="Read text from standard input")
+    synth.add_argument("--voice", help="Path to the speaker reference audio")
+    synth.add_argument("--output", help="Path to write generated audio")
+    synth.add_argument("--force", action="store_true", help="Overwrite output if it exists")
+    synth.add_argument(
+        "--model-dir",
+        default="checkpoints",
+        help="Path to the IndexTTS2 model directory",
+    )
+    synth.add_argument("--device", default=None, help="Runtime device")
+    synth.add_argument("--fp16", action="store_true", help="Use FP16 inference")
+    synth.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
+    synth.add_argument("--cuda-kernel", action="store_true", help="Use CUDA kernel")
+    synth.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     return parser
+
+
+def _run_synth(args, tts_factory=None, stdin=None):
+    if _text_source_count(args) != 1:
+        print("ERROR: provide exactly one text source: --text, --text-file or --stdin", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    if args.text_file and not Path(args.text_file).is_file():
+        print(f"ERROR: text file does not exist: {args.text_file}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    text = _read_synth_text(args, stdin)
+    if not text:
+        print("ERROR: text is empty", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    if not args.voice:
+        print("ERROR: --voice is required", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    voice_path = Path(args.voice)
+    if not voice_path.is_file():
+        print(f"ERROR: voice reference audio does not exist: {voice_path}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    if not args.output:
+        print("ERROR: --output is required", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    output_path = Path(args.output)
+    if output_path.exists() and not args.force:
+        print(f"ERROR: output file already exists: {output_path}", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    model_dir = Path(args.model_dir)
+    missing_files = _missing_model_files(model_dir)
+    if missing_files is None:
+        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    if missing_files:
+        missing = ", ".join(missing_files)
+        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if tts_factory is None:
+        try:
+            tts_factory = _load_indextts2()
+        except (ImportError, OSError) as exc:
+            print(f"ERROR: runtime unavailable: {exc}", file=sys.stderr)
+            return EXIT_RUNTIME_UNAVAILABLE
+    try:
+        with _synth_stdout_context(args.verbose):
+            tts = tts_factory(
+                cfg_path=str(model_dir / "config.yaml"),
+                model_dir=args.model_dir,
+                use_fp16=args.fp16,
+                device=args.device,
+                use_cuda_kernel=args.cuda_kernel,
+                use_deepspeed=args.deepspeed,
+            )
+            tts.infer(
+                spk_audio_prompt=str(voice_path),
+                text=text,
+                output_path=str(output_path),
+                verbose=args.verbose,
+            )
+    except Exception as exc:
+        print(f"ERROR: inference failed: {exc}", file=sys.stderr)
+        return EXIT_INFERENCE_ERROR
+    print(f"Generated: {output_path}")
+    return EXIT_SUCCESS
+
+
+def _text_source_count(args):
+    return sum((args.text is not None, args.text_file is not None, args.stdin))
+
+
+def _read_synth_text(args, stdin):
+    if args.stdin:
+        source = sys.stdin if stdin is None else stdin
+        return source.read().strip()
+    if args.text_file:
+        return Path(args.text_file).read_text(encoding="utf-8").strip()
+    return args.text.strip()
+
+
+def _load_indextts2():
+    from indextts.infer_v2 import IndexTTS2
+
+    return IndexTTS2
+
+
+def _synth_stdout_context(verbose):
+    if verbose:
+        return contextlib.nullcontext()
+    return contextlib.redirect_stdout(io.StringIO())
 
 
 def _run_check(args):

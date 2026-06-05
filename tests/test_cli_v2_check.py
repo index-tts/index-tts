@@ -190,5 +190,677 @@ class CheckCommandTests(unittest.TestCase):
             self.assertIn("ERROR: requested device is not available: xpu:1", stderr.getvalue())
 
 
+class SynthCommandTests(unittest.TestCase):
+    def run_synth(
+        self,
+        temp_path,
+        args,
+        stdin=None,
+        fail_init=False,
+        fail_infer=False,
+        noisy=False,
+        add_model_dir=True,
+    ):
+        calls = []
+        if add_model_dir and "--model-dir" not in args:
+            model_dir = make_model_dir(temp_path)
+            args = [*args, "--model-dir", str(model_dir)]
+
+        class FakeIndexTTS2:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
+                if noisy:
+                    print("model init noise")
+                if fail_init:
+                    raise RuntimeError("load boom")
+
+            def infer(self, **kwargs):
+                calls.append(("infer", kwargs))
+                if noisy:
+                    print("model infer noise")
+                if fail_infer:
+                    raise RuntimeError("boom")
+
+        from indextts.cli_v2 import main
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(args, tts_factory=FakeIndexTTS2, stdin=stdin)
+        return exit_code, stdout.getvalue(), stderr.getvalue(), calls
+
+    def test_synth_generates_audio_from_inline_text(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "  hello  ",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "init",
+                    {
+                        "cfg_path": str(temp_path / "checkpoints" / "config.yaml"),
+                        "model_dir": str(temp_path / "checkpoints"),
+                        "use_fp16": False,
+                        "device": None,
+                        "use_cuda_kernel": False,
+                        "use_deepspeed": False,
+                    },
+                ),
+                (
+                    "infer",
+                    {
+                        "spk_audio_prompt": str(voice_path),
+                        "text": "hello",
+                        "output_path": str(output_path),
+                        "verbose": False,
+                    },
+                ),
+            ],
+        )
+
+    def test_synth_generates_audio_from_utf8_text_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            text_path = temp_path / "input.txt"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            text_path.write_text("  你好, IndexTTS2  ", encoding="utf-8")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text-file",
+                    str(text_path),
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["text"], "你好, IndexTTS2")
+
+    def test_synth_generates_audio_from_stdin(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--stdin",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+                stdin=io.StringIO("  stdin text  "),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["text"], "stdin text")
+
+    def test_synth_returns_input_error_when_text_source_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: provide exactly one text source", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_text_sources_conflict(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            text_path = temp_path / "input.txt"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            text_path.write_text("file text", encoding="utf-8")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "inline",
+                    "--text-file",
+                    str(text_path),
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: provide exactly one text source", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_empty_text_source_conflicts_with_stdin(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "",
+                    "--stdin",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+                stdin=io.StringIO("stdin text"),
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: provide exactly one text source", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_text_is_empty_after_trimming(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    " \t\r\n ",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: text is empty", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_resource_error_when_text_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            text_path = temp_path / "missing.txt"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text-file",
+                    str(text_path),
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: text file does not exist", stderr)
+        self.assertIn(str(text_path), stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_resource_error_when_voice_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "missing.wav"
+            output_path = temp_path / "out.wav"
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: voice reference audio does not exist", stderr)
+        self.assertIn(str(voice_path), stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_voice_argument_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            output_path = temp_path / "out.wav"
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --voice is required", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_output_exists_without_force(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            output_path.write_bytes(b"existing")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: output file already exists", stderr)
+        self.assertIn(str(output_path), stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_input_error_when_output_argument_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                ],
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: --output is required", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_allows_existing_output_when_force_is_set(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+            output_path.write_bytes(b"existing")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                    "--force",
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["output_path"], str(output_path))
+
+    def test_synth_creates_output_parent_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "nested" / "audio" / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+            )
+            output_parent_exists = output_path.parent.is_dir()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(output_parent_exists)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["output_path"], str(output_path))
+
+    def test_synth_maps_runtime_options_to_indextts2(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = temp_path / "models"
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            model_dir.mkdir()
+            for filename in REQUIRED_MODEL_FILES:
+                (model_dir / filename).write_text("placeholder", encoding="utf-8")
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                    "--model-dir",
+                    str(model_dir),
+                    "--device",
+                    "cuda:0",
+                    "--fp16",
+                    "--deepspeed",
+                    "--cuda-kernel",
+                    "--verbose",
+                ],
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            calls[0][1],
+            {
+                "cfg_path": str(model_dir / "config.yaml"),
+                "model_dir": str(model_dir),
+                "use_fp16": True,
+                "device": "cuda:0",
+                "use_cuda_kernel": True,
+                "use_deepspeed": True,
+            },
+        )
+        self.assertTrue(calls[1][1]["verbose"])
+
+    def test_synth_returns_inference_error_when_indextts2_infer_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+                fail_infer=True,
+            )
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: inference failed: boom", stderr)
+        self.assertEqual(calls[0][0], "init")
+        self.assertEqual(calls[1][0], "infer")
+
+    def test_synth_returns_inference_error_when_indextts2_initialization_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+                fail_init=True,
+            )
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: inference failed: load boom", stderr)
+        self.assertEqual(calls[0][0], "init")
+
+    def test_synth_returns_resource_error_when_model_directory_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            missing_model_dir = temp_path / "missing-models"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                    "--model-dir",
+                    str(missing_model_dir),
+                ],
+                add_model_dir=False,
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: model directory does not exist", stderr)
+        self.assertIn(str(missing_model_dir), stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_resource_error_when_model_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = temp_path / "models"
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            model_dir.mkdir()
+            (model_dir / "config.yaml").write_text("placeholder", encoding="utf-8")
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                    "--model-dir",
+                    str(model_dir),
+                ],
+                add_model_dir=False,
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: missing required model files", stderr)
+        self.assertIn("bpe.model", stderr)
+        self.assertEqual(calls, [])
+
+    def test_synth_returns_runtime_error_when_indextts2_import_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            from indextts.cli_v2 import main
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with mock.patch("indextts.cli_v2._load_indextts2", side_effect=ImportError("torch")):
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    exit_code = main(
+                        [
+                            "synth",
+                            "--text",
+                            "hello",
+                            "--voice",
+                            str(voice_path),
+                            "--output",
+                            str(output_path),
+                            "--model-dir",
+                            str(model_dir),
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 3)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("ERROR: runtime unavailable: torch", stderr.getvalue())
+
+    def test_synth_suppresses_model_stdout_when_not_verbose(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                ],
+                noisy=True,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertNotIn("model init noise", stdout)
+        self.assertNotIn("model infer noise", stdout)
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][0], "infer")
+
+    def test_synth_allows_model_stdout_when_verbose(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            voice_path.write_bytes(b"voice")
+
+            exit_code, stdout, stderr, calls = self.run_synth(
+                temp_path,
+                [
+                    "synth",
+                    "--text",
+                    "hello",
+                    "--voice",
+                    str(voice_path),
+                    "--output",
+                    str(output_path),
+                    "--verbose",
+                ],
+                noisy=True,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("model init noise", stdout)
+        self.assertIn("model infer noise", stdout)
+        self.assertIn(f"Generated: {output_path}\n", stdout)
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][0], "infer")
+
+
 if __name__ == "__main__":
     unittest.main()
