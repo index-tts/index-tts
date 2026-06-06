@@ -87,6 +87,11 @@ def _build_parser():
         help="Validate the batch file without loading model weights",
     )
     batch.add_argument("--force", action="store_true", help="Overwrite output if it exists")
+    batch.add_argument("--device", default=None, help="Runtime device")
+    batch.add_argument("--fp16", action="store_true", help="Use FP16 inference")
+    batch.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
+    batch.add_argument("--cuda-kernel", action="store_true", help="Use CUDA kernel")
+    batch.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     synth = subparsers.add_parser(
         "synth",
         help="Synthesize one text input with IndexTTS2",
@@ -220,7 +225,7 @@ def _run_synth(args, tts_factory=None, stdin=None):
 
 def _run_batch(args, tts_factory=None):
     try:
-        tasks = _load_batch_tasks(Path(args.batch_file))
+        tasks = _load_batch_tasks(Path(args.batch_file), force=args.force)
     except BatchFileError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return exc.exit_code
@@ -237,8 +242,44 @@ def _run_batch(args, tts_factory=None):
     if args.dry_run:
         print(f"Batch file OK: {len(tasks)} tasks")
         return EXIT_SUCCESS
-    print("ERROR: batch execution is not implemented yet; use --dry-run", file=sys.stderr)
-    return EXIT_INPUT_ERROR
+    if tts_factory is None:
+        try:
+            tts_factory = _load_indextts2()
+        except (ImportError, OSError) as exc:
+            print(f"ERROR: runtime unavailable: {exc}", file=sys.stderr)
+            return EXIT_RUNTIME_UNAVAILABLE
+    verbose = getattr(args, "verbose", False)
+    try:
+        with _synth_stdout_context(verbose):
+            tts = tts_factory(
+                cfg_path=str(model_dir / "config.yaml"),
+                model_dir=args.model_dir,
+                use_fp16=getattr(args, "fp16", False),
+                device=getattr(args, "device", None),
+                use_cuda_kernel=getattr(args, "cuda_kernel", False),
+                use_deepspeed=getattr(args, "deepspeed", False),
+            )
+    except Exception as exc:
+        print(f"ERROR: inference failed: {exc}", file=sys.stderr)
+        return EXIT_INFERENCE_ERROR
+
+    for task in tasks:
+        output_path = task["output_path"]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with _synth_stdout_context(verbose):
+                tts.infer(
+                    spk_audio_prompt=str(task["voice_path"]),
+                    text=task["text"],
+                    output_path=str(output_path),
+                    verbose=verbose,
+                )
+        except Exception as exc:
+            print(f"ERROR: batch file line {task['line_number']} inference failed: {exc}", file=sys.stderr)
+            return EXIT_INFERENCE_ERROR
+        print(f"Generated: {output_path}")
+    print(f"Batch complete: {len(tasks)} tasks generated")
+    return EXIT_SUCCESS
 
 
 def _text_source_count(args):
@@ -272,7 +313,7 @@ def _read_synth_text(args, stdin):
     return args.text.strip()
 
 
-def _load_batch_tasks(batch_file):
+def _load_batch_tasks(batch_file, force=False):
     if not batch_file.is_file():
         raise BatchFileError(f"batch file does not exist: {batch_file}", EXIT_MISSING_RESOURCE)
 
@@ -348,6 +389,11 @@ def _load_batch_tasks(batch_file):
                 EXIT_INPUT_ERROR,
             )
         outputs[output_key] = line_number
+        if output_path.exists() and not force:
+            raise BatchFileError(
+                f"batch file line {line_number} output file already exists: {output_path}",
+                EXIT_INPUT_ERROR,
+            )
         tasks.append(
             {
                 "line_number": line_number,
