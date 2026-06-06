@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import importlib
 import io
+import json
 import math
 import sys
 from pathlib import Path
@@ -27,6 +28,12 @@ class InputValidationError(ValueError):
     pass
 
 
+class BatchFileError(ValueError):
+    def __init__(self, message, exit_code):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
 def main(argv=None, tts_factory=None, stdin=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -35,6 +42,8 @@ def main(argv=None, tts_factory=None, stdin=None):
         return _run_check(args)
     if args.command == "synth":
         return _run_synth(args, tts_factory=tts_factory, stdin=stdin)
+    if args.command == "batch":
+        return _run_batch(args, tts_factory=tts_factory)
 
     parser.print_help(sys.stderr)
     return EXIT_INPUT_ERROR
@@ -58,6 +67,26 @@ def _build_parser():
         default=None,
         help="Required runtime device, e.g. cpu, cuda, cuda:0, mps or xpu",
     )
+    batch = subparsers.add_parser(
+        "batch",
+        help="Validate a batch file and run batch synthesis",
+    )
+    batch.add_argument(
+        "--batch-file",
+        required=True,
+        help="Path to the JSON Lines batch file",
+    )
+    batch.add_argument(
+        "--model-dir",
+        default="checkpoints",
+        help="Path to the IndexTTS2 model directory",
+    )
+    batch.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the batch file without loading model weights",
+    )
+    batch.add_argument("--force", action="store_true", help="Overwrite output if it exists")
     synth = subparsers.add_parser(
         "synth",
         help="Synthesize one text input with IndexTTS2",
@@ -189,6 +218,29 @@ def _run_synth(args, tts_factory=None, stdin=None):
     return EXIT_SUCCESS
 
 
+def _run_batch(args, tts_factory=None):
+    try:
+        tasks = _load_batch_tasks(Path(args.batch_file))
+    except BatchFileError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return exc.exit_code
+
+    model_dir = Path(args.model_dir)
+    missing_files = _missing_model_files(model_dir)
+    if missing_files is None:
+        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    if missing_files:
+        missing = ", ".join(missing_files)
+        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+        return EXIT_MISSING_RESOURCE
+    if args.dry_run:
+        print(f"Batch file OK: {len(tasks)} tasks")
+        return EXIT_SUCCESS
+    print("ERROR: batch execution is not implemented yet; use --dry-run", file=sys.stderr)
+    return EXIT_INPUT_ERROR
+
+
 def _text_source_count(args):
     return sum((args.text is not None, args.text_file is not None, args.stdin))
 
@@ -218,6 +270,115 @@ def _read_synth_text(args, stdin):
     if args.text_file:
         return Path(args.text_file).read_text(encoding="utf-8").strip()
     return args.text.strip()
+
+
+def _load_batch_tasks(batch_file):
+    if not batch_file.is_file():
+        raise BatchFileError(f"batch file does not exist: {batch_file}", EXIT_MISSING_RESOURCE)
+
+    batch_dir = batch_file.parent
+    tasks = []
+    outputs = {}
+    allowed_fields = {"output", "text", "text_file", "voice"}
+    for line_number, raw_line in enumerate(batch_file.read_text(encoding="utf-8").splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            task = json.loads(raw_line)
+        except json.JSONDecodeError as exc:
+            raise BatchFileError(f"batch file line {line_number} is not valid JSON: {exc.msg}", EXIT_INPUT_ERROR) from exc
+        if not isinstance(task, dict):
+            raise BatchFileError(
+                f"batch file line {line_number} must be a JSON object",
+                EXIT_INPUT_ERROR,
+            )
+        unknown_fields = sorted(set(task) - allowed_fields)
+        if unknown_fields:
+            unknown = ", ".join(unknown_fields)
+            raise BatchFileError(
+                f"batch file line {line_number} has unknown fields: {unknown}",
+                EXIT_INPUT_ERROR,
+            )
+
+        text_source_count = sum(key in task for key in ("text", "text_file"))
+        if text_source_count != 1:
+            raise BatchFileError(
+                f"batch file line {line_number} must provide exactly one text source: text or text_file",
+                EXIT_INPUT_ERROR,
+            )
+        if "text" in task:
+            if not isinstance(task["text"], str):
+                raise BatchFileError(
+                    f"batch file line {line_number} field 'text' must be a string",
+                    EXIT_INPUT_ERROR,
+                )
+            text = task["text"].strip()
+            if not text:
+                raise BatchFileError(f"batch file line {line_number} text is empty", EXIT_INPUT_ERROR)
+        else:
+            text_file = _require_batch_string(task, "text_file", line_number)
+            text_path = _resolve_batch_path(batch_dir, text_file)
+            if not text_path.is_file():
+                raise BatchFileError(
+                    f"batch file line {line_number} text file does not exist: {text_path}",
+                    EXIT_MISSING_RESOURCE,
+                )
+            text = text_path.read_text(encoding="utf-8").strip()
+            if not text:
+                raise BatchFileError(f"batch file line {line_number} text is empty", EXIT_INPUT_ERROR)
+
+        voice_value = task.get("voice")
+        if voice_value is None:
+            raise BatchFileError(f"batch file line {line_number} missing required field: voice", EXIT_INPUT_ERROR)
+        voice_path = _resolve_batch_path(batch_dir, _require_batch_string(task, "voice", line_number))
+        if not voice_path.is_file():
+            raise BatchFileError(
+                f"batch file line {line_number} voice reference audio does not exist: {voice_path}",
+                EXIT_MISSING_RESOURCE,
+            )
+
+        output_value = task.get("output")
+        if output_value is None:
+            raise BatchFileError(f"batch file line {line_number} missing required field: output", EXIT_INPUT_ERROR)
+        output_path = _resolve_batch_path(batch_dir, _require_batch_string(task, "output", line_number))
+        output_key = str(output_path.resolve(strict=False))
+        if output_key in outputs:
+            raise BatchFileError(
+                f"batch file line {line_number} has duplicate output path: {output_path}",
+                EXIT_INPUT_ERROR,
+            )
+        outputs[output_key] = line_number
+        tasks.append(
+            {
+                "line_number": line_number,
+                "text": text,
+                "voice_path": voice_path,
+                "output_path": output_path,
+            }
+        )
+    return tasks
+
+
+def _require_batch_string(task, field_name, line_number):
+    value = task[field_name]
+    if not isinstance(value, str):
+        raise BatchFileError(
+            f"batch file line {line_number} field '{field_name}' must be a string",
+            EXIT_INPUT_ERROR,
+        )
+    if not value.strip():
+        raise BatchFileError(
+            f"batch file line {line_number} field '{field_name}' must not be empty",
+            EXIT_INPUT_ERROR,
+        )
+    return value
+
+
+def _resolve_batch_path(batch_dir, path_value):
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = batch_dir / path
+    return path
 
 
 def _parse_emotion_vector(value):
