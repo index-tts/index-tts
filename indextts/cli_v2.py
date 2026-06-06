@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import importlib
 import io
+import math
 import sys
 from pathlib import Path
 
@@ -20,6 +21,10 @@ REQUIRED_MODEL_FILES = (
     "wav2vec2bert_stats.pt",
 )
 REQUIRED_PACKAGES = ("torch", "torchaudio", "indextts")
+
+
+class InputValidationError(ValueError):
+    pass
 
 
 def main(argv=None, tts_factory=None, stdin=None):
@@ -63,6 +68,7 @@ def _build_parser():
     synth.add_argument("--voice", help="Path to the speaker reference audio")
     synth.add_argument("--emotion-audio", help="Path to the emotion reference audio")
     synth.add_argument("--emotion-text", help="Emotion description text")
+    synth.add_argument("--emotion-vector", help="Comma-separated 8-dimensional emotion vector")
     synth.add_argument(
         "--emotion-weight",
         default="1.0",
@@ -101,9 +107,17 @@ def _run_synth(args, tts_factory=None, stdin=None):
     if not voice_path.is_file():
         print(f"ERROR: voice reference audio does not exist: {voice_path}", file=sys.stderr)
         return EXIT_MISSING_RESOURCE
-    if args.emotion_audio is not None and args.emotion_text is not None:
-        print("ERROR: --emotion-audio and --emotion-text are mutually exclusive", file=sys.stderr)
+    emotion_conflict_error = _emotion_conflict_error(args)
+    if emotion_conflict_error is not None:
+        print(emotion_conflict_error, file=sys.stderr)
         return EXIT_INPUT_ERROR
+    emotion_vector = None
+    if args.emotion_vector is not None:
+        try:
+            emotion_vector = _parse_emotion_vector(args.emotion_vector)
+        except InputValidationError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return EXIT_INPUT_ERROR
     if args.emotion_text is not None and not args.emotion_text.strip():
         print("ERROR: --emotion-text must not be empty", file=sys.stderr)
         return EXIT_INPUT_ERROR
@@ -162,6 +176,9 @@ def _run_synth(args, tts_factory=None, stdin=None):
                 infer_kwargs["use_emo_text"] = True
                 infer_kwargs["emo_text"] = args.emotion_text
                 infer_kwargs["emo_alpha"] = emotion_weight
+            if emotion_vector is not None:
+                infer_kwargs["emo_vector"] = emotion_vector
+                infer_kwargs["emo_alpha"] = emotion_weight
             tts.infer(
                 **infer_kwargs,
             )
@@ -176,6 +193,24 @@ def _text_source_count(args):
     return sum((args.text is not None, args.text_file is not None, args.stdin))
 
 
+def _emotion_source_count(args):
+    return sum(
+        (
+            args.emotion_audio is not None,
+            args.emotion_text is not None,
+            args.emotion_vector is not None,
+        )
+    )
+
+
+def _emotion_conflict_error(args):
+    if _emotion_source_count(args) <= 1:
+        return None
+    if args.emotion_vector is None and args.emotion_audio is not None and args.emotion_text is not None:
+        return "ERROR: --emotion-audio and --emotion-text are mutually exclusive"
+    return "ERROR: --emotion-vector, --emotion-audio and --emotion-text are mutually exclusive"
+
+
 def _read_synth_text(args, stdin):
     if args.stdin:
         source = sys.stdin if stdin is None else stdin
@@ -183,6 +218,30 @@ def _read_synth_text(args, stdin):
     if args.text_file:
         return Path(args.text_file).read_text(encoding="utf-8").strip()
     return args.text.strip()
+
+
+def _parse_emotion_vector(value):
+    value = value.strip()
+    if not value:
+        raise InputValidationError("--emotion-vector must not be empty")
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+    if not value.strip():
+        raise InputValidationError("--emotion-vector must not be empty")
+    parts = [part.strip() for part in value.split(",")]
+    try:
+        emotion_vector = [float(part) for part in parts]
+    except ValueError as exc:
+        raise InputValidationError("--emotion-vector entries must be numeric") from exc
+    if len(emotion_vector) != 8:
+        raise InputValidationError(f"--emotion-vector must contain exactly 8 values; got {len(emotion_vector)}")
+    out_of_range = [item for item in emotion_vector if not math.isfinite(item) or item < 0.0 or item > 1.0]
+    if out_of_range:
+        raise InputValidationError("--emotion-vector values must be between 0.0 and 1.0")
+    vector_sum = sum(emotion_vector)
+    if vector_sum > 0.8:
+        raise InputValidationError(f"--emotion-vector sum must be <= 0.8; got {vector_sum:g}")
+    return emotion_vector
 
 
 def _load_indextts2():
