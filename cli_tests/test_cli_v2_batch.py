@@ -431,6 +431,323 @@ class BatchCommandExecutionTests(unittest.TestCase):
         )
         self.assertTrue(calls[1][1]["verbose"])
 
+    def test_batch_applies_command_defaults_and_row_emotion_overrides(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            batch_dir = temp_path / "batch"
+            batch_dir.mkdir()
+            default_voice = temp_path / "default_voice.wav"
+            row_voice = batch_dir / "row_voice.wav"
+            default_emotion = temp_path / "default_emotion.wav"
+            row_emotion = batch_dir / "row_emotion.wav"
+            first_output = batch_dir / "first.wav"
+            second_output = batch_dir / "second.wav"
+            third_output = batch_dir / "third.wav"
+            batch_file = batch_dir / "batch.jsonl"
+            calls = []
+            default_voice.write_bytes(b"default voice")
+            row_voice.write_bytes(b"row voice")
+            default_emotion.write_bytes(b"default emotion")
+            row_emotion.write_bytes(b"row emotion")
+            batch_file.write_text(
+                "\n".join(
+                    [
+                        '{"text": "first", "output": "first.wav"}',
+                        '{"text": "second", "voice": "row_voice.wav", "emotion_audio": "row_emotion.wav", "emotion_weight": 0.25, "output": "second.wav"}',
+                        '{"text": "third", "emotion_vector": [0, 0, 0.5, 0, 0, 0, 0, 0], "emotion_weight": "0.4", "output": "third.wav"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--voice",
+                    str(default_voice),
+                    "--emotion-audio",
+                    str(default_emotion),
+                    "--emotion-weight",
+                    "0.75",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            stdout,
+            f"Generated: {first_output}\nGenerated: {second_output}\nGenerated: {third_output}\nBatch complete: 3 tasks generated\n",
+        )
+        self.assertEqual(calls[1][1]["spk_audio_prompt"], str(default_voice))
+        self.assertEqual(calls[1][1]["emo_audio_prompt"], str(default_emotion))
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.75)
+        self.assertEqual(calls[2][1]["spk_audio_prompt"], str(row_voice))
+        self.assertEqual(calls[2][1]["emo_audio_prompt"], str(row_emotion))
+        self.assertEqual(calls[2][1]["emo_alpha"], 0.25)
+        self.assertEqual(calls[3][1]["spk_audio_prompt"], str(default_voice))
+        self.assertEqual(calls[3][1]["emo_vector"], [0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertEqual(calls[3][1]["emo_alpha"], 0.4)
+        self.assertNotIn("emo_audio_prompt", calls[3][1])
+
+    def test_batch_row_emotion_weight_inherits_command_emotion_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            batch_file = temp_path / "batch.jsonl"
+            calls = []
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "emotion_weight": 0.3, "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-text",
+                    "warm and calm",
+                    "--emotion-weight",
+                    "0.8",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["use_emo_text"], True)
+        self.assertEqual(calls[1][1]["emo_text"], "warm and calm")
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.3)
+
+    def test_batch_inherits_command_emotion_vector(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            batch_file = temp_path / "batch.jsonl"
+            calls = []
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "output": "out.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--voice",
+                    str(voice_path),
+                    "--emotion-vector",
+                    "0,0,0.8,0,0,0,0,0",
+                    "--emotion-weight",
+                    "0.6",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_vector"], [0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.6)
+
+    def test_batch_accepts_row_emotion_vector_cli_style_string(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            output_path = temp_path / "out.wav"
+            batch_file = temp_path / "batch.jsonl"
+            calls = []
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "emotion_vector": "0,0,0.8,0,0,0,0,0", "emotion_weight": 0.45, "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(calls[1][1]["emo_vector"], [0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertEqual(calls[1][1]["emo_alpha"], 0.45)
+
+    def test_batch_rejects_row_emotion_weight_without_emotion_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "emotion_weight": 0.3, "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("emotion_weight", stderr)
+        self.assertIn("requires an emotion source", stderr)
+
+    def test_batch_rejects_conflicting_row_emotion_sources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            emotion_path = temp_path / "emotion.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            emotion_path.write_bytes(b"emotion")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "emotion_audio": "emotion.wav", "emotion_text": "calm", "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("mutually exclusive", stderr)
+
+    def test_batch_reuses_synth_emotion_vector_validation_for_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "emotion_vector": "0.5,0.5,0,0,0,0,0,0", "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("emotion_vector", stderr)
+        self.assertIn("sum must be <= 0.8", stderr)
+
+    def test_batch_rejects_boolean_entries_in_json_emotion_vector(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "emotion_vector": [true, 0, 0, 0, 0, 0, 0, 0], "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("emotion_vector", stderr)
+        self.assertIn("entries must be numeric", stderr)
+
     def test_batch_stops_on_first_inference_failure_and_keeps_prior_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

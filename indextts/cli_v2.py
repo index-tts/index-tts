@@ -92,6 +92,15 @@ def _build_parser():
     batch.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
     batch.add_argument("--cuda-kernel", action="store_true", help="Use CUDA kernel")
     batch.add_argument("--verbose", action="store_true", help="Show verbose inference output")
+    batch.add_argument("--voice", help="Default speaker reference audio for every batch task")
+    batch.add_argument("--emotion-audio", help="Default emotion reference audio for every batch task")
+    batch.add_argument("--emotion-text", help="Default emotion description text for every batch task")
+    batch.add_argument("--emotion-vector", help="Default comma-separated 8-dimensional emotion vector")
+    batch.add_argument(
+        "--emotion-weight",
+        default="1.0",
+        help="Default emotion weight mapped to IndexTTS2 emo_alpha",
+    )
     synth = subparsers.add_parser(
         "synth",
         help="Synthesize one text input with IndexTTS2",
@@ -225,7 +234,8 @@ def _run_synth(args, tts_factory=None, stdin=None):
 
 def _run_batch(args, tts_factory=None):
     try:
-        tasks = _load_batch_tasks(Path(args.batch_file), force=args.force)
+        defaults = _validate_batch_defaults(args)
+        tasks = _load_batch_tasks(Path(args.batch_file), force=args.force, defaults=defaults)
     except BatchFileError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return exc.exit_code
@@ -268,12 +278,14 @@ def _run_batch(args, tts_factory=None):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with _synth_stdout_context(verbose):
-                tts.infer(
-                    spk_audio_prompt=str(task["voice_path"]),
-                    text=task["text"],
-                    output_path=str(output_path),
-                    verbose=verbose,
-                )
+                infer_kwargs = {
+                    "spk_audio_prompt": str(task["voice_path"]),
+                    "text": task["text"],
+                    "output_path": str(output_path),
+                    "verbose": verbose,
+                }
+                infer_kwargs.update(task["emotion_kwargs"])
+                tts.infer(**infer_kwargs)
         except Exception as exc:
             print(f"ERROR: batch file line {task['line_number']} inference failed: {exc}", file=sys.stderr)
             return EXIT_INFERENCE_ERROR
@@ -313,14 +325,74 @@ def _read_synth_text(args, stdin):
     return args.text.strip()
 
 
-def _load_batch_tasks(batch_file, force=False):
+def _validate_batch_defaults(args):
+    emotion_conflict_error = _emotion_conflict_error(args)
+    if emotion_conflict_error is not None:
+        raise BatchFileError(_strip_error_prefix(emotion_conflict_error), EXIT_INPUT_ERROR)
+
+    try:
+        emotion_weight = _parse_emotion_weight(args.emotion_weight, "--emotion-weight")
+    except InputValidationError as exc:
+        raise BatchFileError(str(exc), EXIT_INPUT_ERROR) from exc
+
+    voice_path = None
+    if args.voice is not None:
+        voice_path = Path(args.voice)
+        if not voice_path.is_file():
+            raise BatchFileError(f"voice reference audio does not exist: {voice_path}", EXIT_MISSING_RESOURCE)
+
+    emotion_source = None
+    if args.emotion_audio is not None:
+        emotion_path = Path(args.emotion_audio)
+        if not emotion_path.is_file():
+            raise BatchFileError(
+                f"emotion reference audio does not exist: {emotion_path}",
+                EXIT_MISSING_RESOURCE,
+            )
+        emotion_source = ("emotion_audio", emotion_path)
+    elif args.emotion_text is not None:
+        if not args.emotion_text.strip():
+            raise BatchFileError("--emotion-text must not be empty", EXIT_INPUT_ERROR)
+        emotion_source = ("emotion_text", args.emotion_text)
+    elif args.emotion_vector is not None:
+        try:
+            emotion_source = ("emotion_vector", _parse_emotion_vector(args.emotion_vector))
+        except InputValidationError as exc:
+            raise BatchFileError(str(exc), EXIT_INPUT_ERROR) from exc
+
+    return {
+        "voice_path": voice_path,
+        "emotion_source": emotion_source,
+        "emotion_weight": emotion_weight,
+    }
+
+
+def _strip_error_prefix(message):
+    prefix = "ERROR: "
+    if message.startswith(prefix):
+        return message[len(prefix) :]
+    return message
+
+
+def _load_batch_tasks(batch_file, force=False, defaults=None):
     if not batch_file.is_file():
         raise BatchFileError(f"batch file does not exist: {batch_file}", EXIT_MISSING_RESOURCE)
 
+    if defaults is None:
+        defaults = {"voice_path": None, "emotion_source": None, "emotion_weight": 1.0}
     batch_dir = batch_file.parent
     tasks = []
     outputs = {}
-    allowed_fields = {"output", "text", "text_file", "voice"}
+    allowed_fields = {
+        "output",
+        "text",
+        "text_file",
+        "voice",
+        "emotion_audio",
+        "emotion_text",
+        "emotion_vector",
+        "emotion_weight",
+    }
     for line_number, raw_line in enumerate(batch_file.read_text(encoding="utf-8").splitlines(), start=1):
         if not raw_line.strip():
             continue
@@ -368,10 +440,12 @@ def _load_batch_tasks(batch_file, force=False):
             if not text:
                 raise BatchFileError(f"batch file line {line_number} text is empty", EXIT_INPUT_ERROR)
 
-        voice_value = task.get("voice")
-        if voice_value is None:
+        if "voice" in task:
+            voice_path = _resolve_batch_path(batch_dir, _require_batch_string(task, "voice", line_number))
+        else:
+            voice_path = defaults["voice_path"]
+        if voice_path is None:
             raise BatchFileError(f"batch file line {line_number} missing required field: voice", EXIT_INPUT_ERROR)
-        voice_path = _resolve_batch_path(batch_dir, _require_batch_string(task, "voice", line_number))
         if not voice_path.is_file():
             raise BatchFileError(
                 f"batch file line {line_number} voice reference audio does not exist: {voice_path}",
@@ -394,15 +468,81 @@ def _load_batch_tasks(batch_file, force=False):
                 f"batch file line {line_number} output file already exists: {output_path}",
                 EXIT_INPUT_ERROR,
             )
+        emotion_kwargs = _batch_emotion_kwargs(task, batch_dir, line_number, defaults)
         tasks.append(
             {
                 "line_number": line_number,
                 "text": text,
                 "voice_path": voice_path,
                 "output_path": output_path,
+                "emotion_kwargs": emotion_kwargs,
             }
         )
     return tasks
+
+
+def _batch_emotion_kwargs(task, batch_dir, line_number, defaults):
+    row_source_fields = [
+        field_name for field_name in ("emotion_audio", "emotion_text", "emotion_vector") if field_name in task
+    ]
+    if len(row_source_fields) > 1:
+        raise BatchFileError(
+            f"batch file line {line_number} emotion_audio, emotion_text and emotion_vector are mutually exclusive",
+            EXIT_INPUT_ERROR,
+        )
+
+    if "emotion_weight" in task:
+        try:
+            emotion_weight = _parse_emotion_weight(
+                task["emotion_weight"],
+                f"batch file line {line_number} field 'emotion_weight'",
+            )
+        except InputValidationError as exc:
+            raise BatchFileError(str(exc), EXIT_INPUT_ERROR) from exc
+    else:
+        emotion_weight = defaults["emotion_weight"]
+
+    if row_source_fields:
+        source = _parse_batch_emotion_source(task, row_source_fields[0], batch_dir, line_number)
+    else:
+        source = defaults["emotion_source"]
+
+    if source is None:
+        if "emotion_weight" in task:
+            raise BatchFileError(
+                f"batch file line {line_number} field 'emotion_weight' requires an emotion source",
+                EXIT_INPUT_ERROR,
+            )
+        return {}
+
+    source_name, source_value = source
+    if source_name == "emotion_audio":
+        return {"emo_audio_prompt": str(source_value), "emo_alpha": emotion_weight}
+    if source_name == "emotion_text":
+        return {"use_emo_text": True, "emo_text": source_value, "emo_alpha": emotion_weight}
+    return {"emo_vector": source_value, "emo_alpha": emotion_weight}
+
+
+def _parse_batch_emotion_source(task, field_name, batch_dir, line_number):
+    if field_name == "emotion_audio":
+        emotion_path = _resolve_batch_path(batch_dir, _require_batch_string(task, field_name, line_number))
+        if not emotion_path.is_file():
+            raise BatchFileError(
+                f"batch file line {line_number} emotion reference audio does not exist: {emotion_path}",
+                EXIT_MISSING_RESOURCE,
+            )
+        return ("emotion_audio", emotion_path)
+    if field_name == "emotion_text":
+        emotion_text = _require_batch_string(task, field_name, line_number)
+        return ("emotion_text", emotion_text)
+    try:
+        emotion_vector = _parse_emotion_vector(
+            task[field_name],
+            f"batch file line {line_number} field 'emotion_vector'",
+        )
+    except InputValidationError as exc:
+        raise BatchFileError(str(exc), EXIT_INPUT_ERROR) from exc
+    return ("emotion_vector", emotion_vector)
 
 
 def _require_batch_string(task, field_name, line_number):
@@ -427,28 +567,46 @@ def _resolve_batch_path(batch_dir, path_value):
     return path
 
 
-def _parse_emotion_vector(value):
-    value = value.strip()
-    if not value:
-        raise InputValidationError("--emotion-vector must not be empty")
-    if value.startswith("[") and value.endswith("]"):
-        value = value[1:-1]
-    if not value.strip():
-        raise InputValidationError("--emotion-vector must not be empty")
-    parts = [part.strip() for part in value.split(",")]
+def _parse_emotion_vector(value, label="--emotion-vector"):
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            raise InputValidationError(f"{label} must not be empty")
+        if value.startswith("[") and value.endswith("]"):
+            value = value[1:-1]
+        if not value.strip():
+            raise InputValidationError(f"{label} must not be empty")
+        parts = [part.strip() for part in value.split(",")]
+    elif isinstance(value, list):
+        if not value:
+            raise InputValidationError(f"{label} must not be empty")
+        if any(isinstance(part, bool) for part in value):
+            raise InputValidationError(f"{label} entries must be numeric")
+        parts = value
+    else:
+        raise InputValidationError(f"{label} must be a string or JSON array")
     try:
         emotion_vector = [float(part) for part in parts]
-    except ValueError as exc:
-        raise InputValidationError("--emotion-vector entries must be numeric") from exc
+    except (TypeError, ValueError) as exc:
+        raise InputValidationError(f"{label} entries must be numeric") from exc
     if len(emotion_vector) != 8:
-        raise InputValidationError(f"--emotion-vector must contain exactly 8 values; got {len(emotion_vector)}")
+        raise InputValidationError(f"{label} must contain exactly 8 values; got {len(emotion_vector)}")
     out_of_range = [item for item in emotion_vector if not math.isfinite(item) or item < 0.0 or item > 1.0]
     if out_of_range:
-        raise InputValidationError("--emotion-vector values must be between 0.0 and 1.0")
+        raise InputValidationError(f"{label} values must be between 0.0 and 1.0")
     vector_sum = sum(emotion_vector)
     if vector_sum > 0.8:
-        raise InputValidationError(f"--emotion-vector sum must be <= 0.8; got {vector_sum:g}")
+        raise InputValidationError(f"{label} sum must be <= 0.8; got {vector_sum:g}")
     return emotion_vector
+
+
+def _parse_emotion_weight(value, label):
+    if isinstance(value, bool):
+        raise InputValidationError(f"{label} must be a float: {value}")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise InputValidationError(f"{label} must be a float: {value}") from exc
 
 
 def _load_indextts2():
