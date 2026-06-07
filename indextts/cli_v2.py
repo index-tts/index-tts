@@ -5,6 +5,7 @@ import io
 import json
 import math
 import sys
+import wave
 from pathlib import Path
 
 
@@ -34,6 +35,12 @@ class BatchFileError(ValueError):
         self.exit_code = exit_code
 
 
+class ConcatFileError(ValueError):
+    def __init__(self, message, exit_code):
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
 def main(argv=None, tts_factory=None, stdin=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -44,6 +51,8 @@ def main(argv=None, tts_factory=None, stdin=None):
         return _run_synth(args, tts_factory=tts_factory, stdin=stdin)
     if args.command == "batch":
         return _run_batch(args, tts_factory=tts_factory)
+    if args.command == "concat":
+        return _run_concat(args)
 
     parser.print_help(sys.stderr)
     return EXIT_INPUT_ERROR
@@ -100,6 +109,22 @@ def _build_parser():
         "--emotion-weight",
         default="1.0",
         help="Default emotion weight mapped to IndexTTS2 emo_alpha",
+    )
+    concat = subparsers.add_parser(
+        "concat",
+        help="Validate an audio concat file",
+    )
+    concat.add_argument(
+        "--concat-file",
+        required=True,
+        help="Path to the JSON Lines concat file",
+    )
+    concat.add_argument("--output", required=True, help="Path to write concatenated WAV audio")
+    concat.add_argument("--force", action="store_true", help="Overwrite output if it exists")
+    concat.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the concat file without creating output audio",
     )
     synth = subparsers.add_parser(
         "synth",
@@ -291,6 +316,23 @@ def _run_batch(args, tts_factory=None):
             return EXIT_INFERENCE_ERROR
         print(f"Generated: {output_path}")
     print(f"Batch complete: {len(tasks)} tasks generated")
+    return EXIT_SUCCESS
+
+
+def _run_concat(args):
+    if not args.dry_run:
+        print("ERROR: concat currently supports --dry-run only", file=sys.stderr)
+        return EXIT_INPUT_ERROR
+    try:
+        segments = _load_concat_segments(
+            _resolve_command_path(args.concat_file),
+            _resolve_command_path(args.output),
+            force=args.force,
+        )
+    except ConcatFileError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return exc.exit_code
+    print(f"Concat file OK: {len(segments)} segments")
     return EXIT_SUCCESS
 
 
@@ -565,6 +607,185 @@ def _resolve_batch_path(batch_dir, path_value):
     if not path.is_absolute():
         path = batch_dir / path
     return path
+
+
+def _load_concat_segments(concat_file, output_path, force=False):
+    if not concat_file.is_file():
+        raise ConcatFileError(f"concat file does not exist: {concat_file}", EXIT_MISSING_RESOURCE)
+    if _normalized_path_key(output_path) == _normalized_path_key(concat_file):
+        raise ConcatFileError("--output must not be the same path as --concat-file", EXIT_INPUT_ERROR)
+    if not _has_wav_extension(output_path):
+        raise ConcatFileError(f"--output must be a .wav file: {output_path}", EXIT_INPUT_ERROR)
+    _reject_concat_output_parent_conflicts(output_path)
+
+    concat_dir = concat_file.parent
+    segments = []
+    expected_format = None
+    expected_format_line = None
+    allowed_fields = {"audio", "silence_after_ms"}
+    for line_number, raw_line in enumerate(concat_file.read_text(encoding="utf-8").splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            segment = json.loads(raw_line)
+        except json.JSONDecodeError as exc:
+            raise ConcatFileError(
+                f"concat file line {line_number} is not valid JSON: {exc.msg}",
+                EXIT_INPUT_ERROR,
+            ) from exc
+        if not isinstance(segment, dict):
+            raise ConcatFileError(
+                f"concat file line {line_number} must be a JSON object",
+                EXIT_INPUT_ERROR,
+            )
+        unknown_fields = sorted(set(segment) - allowed_fields)
+        if unknown_fields:
+            unknown = ", ".join(unknown_fields)
+            raise ConcatFileError(
+                f"concat file line {line_number} has unknown fields: {unknown}",
+                EXIT_INPUT_ERROR,
+            )
+        audio_path = _resolve_concat_audio_path(concat_dir, _require_concat_string(segment, "audio", line_number))
+        if not _has_wav_extension(audio_path):
+            raise ConcatFileError(
+                f"concat file line {line_number} field 'audio' must be a .wav file: {audio_path}",
+                EXIT_INPUT_ERROR,
+            )
+        silence_after_ms = _parse_concat_silence_after_ms(segment, line_number)
+        audio_format = _read_concat_wav_format(audio_path, line_number)
+        if expected_format is None:
+            expected_format = audio_format
+            expected_format_line = line_number
+        elif audio_format != expected_format:
+            raise ConcatFileError(
+                f"concat file line {line_number} WAV format does not match baseline line {expected_format_line}",
+                EXIT_INPUT_ERROR,
+            )
+        segments.append(
+            {
+                "line_number": line_number,
+                "audio_path": audio_path,
+                "silence_after_ms": silence_after_ms,
+                "format": audio_format,
+            }
+        )
+    if not segments:
+        raise ConcatFileError("concat file must contain at least one segment", EXIT_INPUT_ERROR)
+    _reject_concat_input_conflicts(output_path, segments)
+    _reject_concat_output_file_conflicts(output_path, force=force)
+    return segments
+
+
+def _resolve_command_path(path_value):
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path
+
+
+def _resolve_concat_audio_path(concat_dir, path_value):
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = concat_dir / path
+    return path
+
+
+def _has_wav_extension(path):
+    return path.suffix.lower() == ".wav"
+
+
+def _normalized_path_key(path):
+    return str(path.resolve(strict=False)).casefold()
+
+
+def _reject_concat_output_parent_conflicts(output_path):
+    parent = output_path.parent
+    existing_parent = parent
+    while not existing_parent.exists():
+        if existing_parent.parent == existing_parent:
+            break
+        existing_parent = existing_parent.parent
+    if existing_parent.exists() and not existing_parent.is_dir():
+        raise ConcatFileError(
+            f"output parent path cannot be created because a file exists: {existing_parent}",
+            EXIT_INPUT_ERROR,
+        )
+
+
+def _reject_concat_output_file_conflicts(output_path, force=False):
+    if output_path.exists() and not force:
+        raise ConcatFileError(f"output file already exists: {output_path}", EXIT_INPUT_ERROR)
+
+
+def _reject_concat_input_conflicts(output_path, segments):
+    output_key = _normalized_path_key(output_path)
+    for segment in segments:
+        if output_key == _normalized_path_key(segment["audio_path"]):
+            raise ConcatFileError(
+                f"concat file line {segment['line_number']} audio conflicts with --output: {segment['audio_path']}",
+                EXIT_INPUT_ERROR,
+            )
+
+
+def _require_concat_string(segment, field_name, line_number):
+    if field_name not in segment:
+        raise ConcatFileError(f"concat file line {line_number} missing required field: {field_name}", EXIT_INPUT_ERROR)
+    value = segment[field_name]
+    if not isinstance(value, str):
+        raise ConcatFileError(
+            f"concat file line {line_number} field '{field_name}' must be a string",
+            EXIT_INPUT_ERROR,
+        )
+    if not value.strip():
+        raise ConcatFileError(
+            f"concat file line {line_number} field '{field_name}' must not be empty",
+            EXIT_INPUT_ERROR,
+        )
+    return value
+
+
+def _parse_concat_silence_after_ms(segment, line_number):
+    if "silence_after_ms" not in segment:
+        return 0
+    value = segment["silence_after_ms"]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConcatFileError(
+            f"concat file line {line_number} field 'silence_after_ms' must be a non-negative integer",
+            EXIT_INPUT_ERROR,
+        )
+    if value < 0:
+        raise ConcatFileError(
+            f"concat file line {line_number} field 'silence_after_ms' must be a non-negative integer",
+            EXIT_INPUT_ERROR,
+        )
+    return value
+
+
+def _read_concat_wav_format(audio_path, line_number):
+    if not audio_path.is_file():
+        raise ConcatFileError(
+            f"concat file line {line_number} audio file does not exist: {audio_path}",
+            EXIT_MISSING_RESOURCE,
+        )
+    try:
+        with wave.open(str(audio_path), "rb") as wav_file:
+            audio_format = (
+                wav_file.getframerate(),
+                wav_file.getnchannels(),
+                wav_file.getsampwidth(),
+            )
+            frame_count = wav_file.getnframes()
+    except (wave.Error, EOFError, OSError) as exc:
+        raise ConcatFileError(
+            f"concat file line {line_number} audio file is not a readable WAV: {audio_path}",
+            EXIT_INPUT_ERROR,
+        ) from exc
+    if frame_count <= 0:
+        raise ConcatFileError(
+            f"concat file line {line_number} audio file is empty: {audio_path}",
+            EXIT_INPUT_ERROR,
+        )
+    return audio_format
 
 
 def _parse_emotion_vector(value, label="--emotion-vector"):
