@@ -321,6 +321,352 @@ class BatchCommandDryRunTests(unittest.TestCase):
         self.assertIn("line 2", stderr)
         self.assertIn("duplicate output", stderr)
 
+    def test_batch_concat_dry_run_validates_manifest_without_loading_model_or_creating_output_parent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            batch_dir = temp_path / "batch"
+            batch_dir.mkdir()
+            voice_path = batch_dir / "voice.wav"
+            batch_file = batch_dir / "batch.jsonl"
+            output_path = temp_path / "new-parent" / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "first", "voice": "voice.wav", "silence_after_ms": 125}\n',
+                encoding="utf-8",
+            )
+
+            def fail_if_called(**_kwargs):
+                raise AssertionError("tts factory must not be called during concat dry-run")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                    "--dry-run",
+                ],
+                tts_factory=fail_if_called,
+            )
+            output_parent_exists = output_path.parent.exists()
+            output_exists = output_path.exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, "Batch concat OK: 1 tasks\n")
+        self.assertEqual(stderr, "")
+        self.assertFalse(output_parent_exists)
+        self.assertFalse(output_exists)
+
+    def test_batch_concat_rejects_invalid_command_output_contracts(self):
+        cases = [
+            (["--concat"], "--output is required with --concat"),
+            (["--concat", "--output", "final.mp3"], "--output must be a .wav file"),
+            (["--output", "final.wav"], "--output is only valid with --concat"),
+            (["--keep-temp"], "--keep-temp requires --concat"),
+            (["--concat", "--output", "final.wav", "--output-dir", "auto"], "--concat cannot be used with --output-dir"),
+            (
+                ["--concat", "--output", "final.wav", "--output-prefix", "chapter"],
+                "--concat cannot be used with --output-prefix",
+            ),
+        ]
+        for extra_args, expected_message in cases:
+            with self.subTest(expected_message=expected_message):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    model_dir = make_model_dir(temp_path)
+                    voice_path = temp_path / "voice.wav"
+                    batch_file = temp_path / "batch.jsonl"
+                    voice_path.write_bytes(b"voice")
+                    batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+                    exit_code, stdout, stderr = self.run_batch(
+                        [
+                            "batch",
+                            "--batch-file",
+                            str(batch_file),
+                            "--model-dir",
+                            str(model_dir),
+                            "--dry-run",
+                            *extra_args,
+                        ]
+                    )
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn(expected_message, stderr)
+
+    def test_batch_concat_enforces_row_output_and_silence_after_ms_contracts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "output": "row.wav"}\n',
+                encoding="utf-8",
+            )
+
+            concat_exit_code, concat_stdout, concat_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(temp_path / "final.wav"),
+                    "--dry-run",
+                ]
+            )
+
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "silence_after_ms": 125, "output": "row.wav"}\n',
+                encoding="utf-8",
+            )
+            normal_exit_code, normal_stdout, normal_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--dry-run",
+                ]
+            )
+
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "silence_after_ms": 125}\n',
+                encoding="utf-8",
+            )
+            keep_temp_exit_code, keep_temp_stdout, keep_temp_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(temp_path / "final.wav"),
+                    "--keep-temp",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(concat_exit_code, 1)
+        self.assertEqual(concat_stdout, "")
+        self.assertIn("line 1", concat_stderr)
+        self.assertIn("field 'output' is not allowed with --concat", concat_stderr)
+        self.assertEqual(normal_exit_code, 1)
+        self.assertEqual(normal_stdout, "")
+        self.assertIn("line 1", normal_stderr)
+        self.assertIn("silence_after_ms", normal_stderr)
+        self.assertIn("only valid with --concat", normal_stderr)
+        self.assertEqual(keep_temp_exit_code, 0)
+        self.assertEqual(keep_temp_stdout, "Batch concat OK: 1 tasks\n")
+        self.assertEqual(keep_temp_stderr, "")
+
+    def test_batch_concat_execution_is_unavailable_until_concat_generation_slice(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            def fail_if_called(**_kwargs):
+                raise AssertionError("tts factory must not be called before concat generation is implemented")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                ],
+                tts_factory=fail_if_called,
+            )
+            output_exists = output_path.exists()
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("batch --concat execution is not implemented yet", stderr)
+        self.assertFalse(output_exists)
+
+    def test_batch_concat_dry_run_rejects_final_output_path_conflicts_without_side_effects(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            output_path.write_bytes(b"existing")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            voice_exit_code, voice_stdout, voice_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(voice_path),
+                    "--dry-run",
+                    "--force",
+                ]
+            )
+            existing_exit_code, existing_stdout, existing_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                    "--dry-run",
+                ]
+            )
+            force_exit_code, force_stdout, force_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                    "--dry-run",
+                    "--force",
+                ]
+            )
+            output_bytes = output_path.read_bytes()
+
+        self.assertEqual(voice_exit_code, 1)
+        self.assertEqual(voice_stdout, "")
+        self.assertIn("line 1", voice_stderr)
+        self.assertIn("conflicts with protected input path", voice_stderr)
+        self.assertIn(str(voice_path), voice_stderr)
+        self.assertEqual(existing_exit_code, 1)
+        self.assertEqual(existing_stdout, "")
+        self.assertIn("output file already exists", existing_stderr)
+        self.assertIn(str(output_path), existing_stderr)
+        self.assertEqual(force_exit_code, 0)
+        self.assertEqual(force_stdout, "Batch concat OK: 1 tasks\n")
+        self.assertEqual(force_stderr, "")
+        self.assertEqual(output_bytes, b"existing")
+
+    def test_batch_concat_dry_run_rejects_final_output_that_matches_batch_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(batch_file),
+                    "--dry-run",
+                    "--force",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("conflicts with protected input path", stderr)
+        self.assertIn(str(batch_file), stderr)
+
+    def test_batch_concat_dry_run_rejects_final_output_that_matches_empty_batch_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            batch_file = temp_path / "batch.wav"
+            batch_file.write_text("", encoding="utf-8")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(batch_file),
+                    "--dry-run",
+                    "--force",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("conflicts with protected input path", stderr)
+        self.assertIn(str(batch_file), stderr)
+
+    def test_batch_concat_dry_run_rejects_invalid_silence_after_ms_values(self):
+        cases = [
+            ('{"text": "hello", "voice": "voice.wav", "silence_after_ms": -1}\n', "non-negative integer"),
+            ('{"text": "hello", "voice": "voice.wav", "silence_after_ms": 1.5}\n', "non-negative integer"),
+            ('{"text": "hello", "voice": "voice.wav", "silence_after_ms": true}\n', "non-negative integer"),
+        ]
+        for manifest, expected_message in cases:
+            with self.subTest(expected_message=expected_message):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    model_dir = make_model_dir(temp_path)
+                    voice_path = temp_path / "voice.wav"
+                    batch_file = temp_path / "batch.jsonl"
+                    voice_path.write_bytes(b"voice")
+                    batch_file.write_text(manifest, encoding="utf-8")
+
+                    exit_code, stdout, stderr = self.run_batch(
+                        [
+                            "batch",
+                            "--batch-file",
+                            str(batch_file),
+                            "--model-dir",
+                            str(model_dir),
+                            "--concat",
+                            "--output",
+                            str(temp_path / "final.wav"),
+                            "--dry-run",
+                        ]
+                    )
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn("line 1", stderr)
+                self.assertIn("silence_after_ms", stderr)
+                self.assertIn(expected_message, stderr)
+
 
 class BatchCommandExecutionTests(unittest.TestCase):
     def run_batch(self, args, tts_factory=None):

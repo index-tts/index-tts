@@ -300,8 +300,14 @@ def _run_batch(args, tts_factory=None):
         print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
         return EXIT_MISSING_RESOURCE
     if args.dry_run:
-        print(f"Batch file OK: {len(tasks)} tasks")
+        if output_config["mode"] == "concat":
+            print(f"Batch concat OK: {len(tasks)} tasks")
+        else:
+            print(f"Batch file OK: {len(tasks)} tasks")
         return EXIT_SUCCESS
+    if output_config["mode"] == "concat":
+        print("ERROR: batch --concat execution is not implemented yet; use --dry-run for preflight", file=sys.stderr)
+        return EXIT_INPUT_ERROR
     if tts_factory is None:
         try:
             tts_factory = _load_indextts2()
@@ -448,7 +454,13 @@ def _validate_batch_output_config(args):
             raise BatchFileError("--concat cannot be used with --output-dir", EXIT_INPUT_ERROR)
         if args.output_prefix is not None:
             raise BatchFileError("--concat cannot be used with --output-prefix", EXIT_INPUT_ERROR)
-        raise BatchFileError("batch --concat is not implemented yet", EXIT_INPUT_ERROR)
+        if args.output is None:
+            raise BatchFileError("--output is required with --concat", EXIT_INPUT_ERROR)
+        output_path = _resolve_command_path(args.output)
+        if not _has_wav_extension(output_path):
+            raise BatchFileError(f"--output must be a .wav file: {output_path}", EXIT_INPUT_ERROR)
+        _reject_batch_auto_output_parent_conflicts(output_path)
+        return {"mode": "concat", "output_path": output_path}
     if args.output is not None:
         raise BatchFileError("--output is only valid with --concat", EXIT_INPUT_ERROR)
     if args.keep_temp:
@@ -503,6 +515,7 @@ def _load_batch_tasks(batch_file, force=False, defaults=None, output_config=None
         "emotion_text",
         "emotion_vector",
         "emotion_weight",
+        "silence_after_ms",
     }
     for line_number, raw_line in enumerate(batch_file.read_text(encoding="utf-8").splitlines(), start=1):
         if not raw_line.strip():
@@ -524,6 +537,12 @@ def _load_batch_tasks(batch_file, force=False, defaults=None, output_config=None
                 f"batch file line {line_number} has unknown fields: {unknown}",
                 EXIT_INPUT_ERROR,
             )
+        if "silence_after_ms" in task and output_config["mode"] != "concat":
+            raise BatchFileError(
+                f"batch file line {line_number} field 'silence_after_ms' is only valid with --concat",
+                EXIT_INPUT_ERROR,
+            )
+        silence_after_ms = _parse_batch_silence_after_ms(task, line_number)
 
         text_source_count = sum(key in task for key in ("text", "text_file"))
         if text_source_count != 1:
@@ -579,18 +598,25 @@ def _load_batch_tasks(batch_file, force=False, defaults=None, output_config=None
                 _batch_task_protected_input_paths(batch_file, text_path, voice_path, emotion_kwargs),
             )
             _reject_batch_auto_output_parent_conflicts(output_path)
-        output_key = str(output_path.resolve(strict=False))
-        if output_key in outputs:
-            raise BatchFileError(
-                f"batch file line {line_number} has duplicate output path: {output_path}",
-                EXIT_INPUT_ERROR,
+        if output_config["mode"] == "concat":
+            _reject_batch_auto_output_input_conflicts(
+                output_path,
+                line_number,
+                _batch_task_protected_input_paths(batch_file, text_path, voice_path, emotion_kwargs),
             )
-        outputs[output_key] = line_number
-        if output_path.exists() and not force:
-            raise BatchFileError(
-                f"batch file line {line_number} output file already exists: {output_path}",
-                EXIT_INPUT_ERROR,
-            )
+        else:
+            output_key = str(output_path.resolve(strict=False))
+            if output_key in outputs:
+                raise BatchFileError(
+                    f"batch file line {line_number} has duplicate output path: {output_path}",
+                    EXIT_INPUT_ERROR,
+                )
+            outputs[output_key] = line_number
+            if output_path.exists() and not force:
+                raise BatchFileError(
+                    f"batch file line {line_number} output file already exists: {output_path}",
+                    EXIT_INPUT_ERROR,
+                )
         tasks.append(
             {
                 "line_number": line_number,
@@ -598,8 +624,13 @@ def _load_batch_tasks(batch_file, force=False, defaults=None, output_config=None
                 "voice_path": voice_path,
                 "output_path": output_path,
                 "emotion_kwargs": emotion_kwargs,
+                "silence_after_ms": silence_after_ms,
             }
         )
+    if output_config["mode"] == "concat" and not tasks:
+        _reject_batch_concat_output_manifest_conflict(output_config["output_path"], batch_file)
+    if output_config["mode"] == "concat" and output_config["output_path"].exists() and not force:
+        raise BatchFileError(f"output file already exists: {output_config['output_path']}", EXIT_INPUT_ERROR)
     return tasks
 
 
@@ -611,6 +642,14 @@ def _batch_task_protected_input_paths(batch_file, text_path, voice_path, emotion
     if emotion_path is not None:
         protected_paths.append(Path(emotion_path))
     return protected_paths
+
+
+def _reject_batch_concat_output_manifest_conflict(output_path, batch_file):
+    if _normalized_path_key(output_path) == _normalized_path_key(batch_file):
+        raise BatchFileError(
+            f"generated output conflicts with protected input path: {batch_file}",
+            EXIT_INPUT_ERROR,
+        )
 
 
 def _reject_batch_auto_output_input_conflicts(output_path, line_number, protected_paths):
@@ -643,6 +682,14 @@ def _batch_task_output_path(task, batch_dir, line_number, task_number, output_co
         if output_value is None:
             raise BatchFileError(f"batch file line {line_number} missing required field: output", EXIT_INPUT_ERROR)
         return _resolve_batch_path(batch_dir, _require_batch_string(task, "output", line_number))
+
+    if output_config["mode"] == "concat":
+        if output_value is not None:
+            raise BatchFileError(
+                f"batch file line {line_number} field 'output' is not allowed with --concat",
+                EXIT_INPUT_ERROR,
+            )
+        return output_config["output_path"]
 
     if output_value is not None:
         raise BatchFileError(
@@ -721,6 +768,23 @@ def _parse_batch_emotion_source(task, field_name, batch_dir, line_number):
     except InputValidationError as exc:
         raise BatchFileError(str(exc), EXIT_INPUT_ERROR) from exc
     return ("emotion_vector", emotion_vector)
+
+
+def _parse_batch_silence_after_ms(task, line_number):
+    if "silence_after_ms" not in task:
+        return 0
+    value = task["silence_after_ms"]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise BatchFileError(
+            f"batch file line {line_number} field 'silence_after_ms' must be a non-negative integer",
+            EXIT_INPUT_ERROR,
+        )
+    if value < 0:
+        raise BatchFileError(
+            f"batch file line {line_number} field 'silence_after_ms' must be a non-negative integer",
+            EXIT_INPUT_ERROR,
+        )
+    return value
 
 
 def _require_batch_string(task, field_name, line_number):
