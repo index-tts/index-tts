@@ -4,7 +4,9 @@ import importlib
 import io
 import json
 import math
+import os
 import sys
+import tempfile
 import wave
 from pathlib import Path
 
@@ -39,6 +41,12 @@ class ConcatFileError(ValueError):
     def __init__(self, message, exit_code):
         super().__init__(message)
         self.exit_code = exit_code
+
+
+class ConcatExecutionError(RuntimeError):
+    def __init__(self, message, cleanup_error=None):
+        super().__init__(message)
+        self.cleanup_error = cleanup_error
 
 
 def main(argv=None, tts_factory=None, stdin=None):
@@ -320,18 +328,26 @@ def _run_batch(args, tts_factory=None):
 
 
 def _run_concat(args):
-    if not args.dry_run:
-        print("ERROR: concat currently supports --dry-run only", file=sys.stderr)
-        return EXIT_INPUT_ERROR
     try:
+        output_path = _resolve_command_path(args.output)
         segments = _load_concat_segments(
             _resolve_command_path(args.concat_file),
-            _resolve_command_path(args.output),
+            output_path,
             force=args.force,
         )
     except ConcatFileError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return exc.exit_code
+    if not args.dry_run:
+        try:
+            _concatenate_wav_segments(segments, output_path)
+        except ConcatExecutionError as exc:
+            print(f"ERROR: concat failed: {exc}", file=sys.stderr)
+            if exc.cleanup_error is not None:
+                print(f"WARNING: cleanup failed: {exc.cleanup_error}", file=sys.stderr)
+            return EXIT_INFERENCE_ERROR
+        print(f"Generated: {output_path}")
+        return EXIT_SUCCESS
     print(f"Concat file OK: {len(segments)} segments")
     return EXIT_SUCCESS
 
@@ -674,6 +690,53 @@ def _load_concat_segments(concat_file, output_path, force=False):
     _reject_concat_input_conflicts(output_path, segments)
     _reject_concat_output_file_conflicts(output_path, force=force)
     return segments
+
+
+def _concatenate_wav_segments(segments, output_path):
+    temp_path = None
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = _create_concat_temp_path(output_path)
+        _write_concat_wav(temp_path, segments)
+        os.replace(temp_path, output_path)
+        temp_path = None
+    except Exception as exc:
+        cleanup_error = None
+        if temp_path is not None:
+            cleanup_error = _cleanup_concat_temp_file(temp_path)
+        raise ConcatExecutionError(str(exc), cleanup_error=cleanup_error) from exc
+
+
+def _create_concat_temp_path(output_path):
+    with tempfile.NamedTemporaryFile(
+        prefix=f".{output_path.name}.",
+        suffix=".wav",
+        dir=output_path.parent,
+        delete=False,
+    ) as temp_file:
+        return Path(temp_file.name)
+
+
+def _write_concat_wav(temp_path, segments):
+    frame_rate, channels, sample_width = segments[0]["format"]
+    with wave.open(str(temp_path), "wb") as output_wav:
+        output_wav.setnchannels(channels)
+        output_wav.setsampwidth(sample_width)
+        output_wav.setframerate(frame_rate)
+        for segment in segments:
+            with wave.open(str(segment["audio_path"]), "rb") as input_wav:
+                output_wav.writeframes(input_wav.readframes(input_wav.getnframes()))
+            silence_frames = frame_rate * segment["silence_after_ms"] // 1000
+            if silence_frames:
+                output_wav.writeframes(b"\0" * channels * sample_width * silence_frames)
+
+
+def _cleanup_concat_temp_file(temp_path):
+    try:
+        temp_path.unlink(missing_ok=True)
+    except OSError as exc:
+        return exc
+    return None
 
 
 def _resolve_command_path(path_value):

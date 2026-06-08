@@ -22,6 +22,24 @@ def write_empty_wav(path, channels=1, sample_width=2, frame_rate=24000):
         wav_file.setframerate(frame_rate)
 
 
+def write_wav_frames(path, frames, channels=1, sample_width=1, frame_rate=1000):
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(frame_rate)
+        wav_file.writeframes(frames)
+
+
+def read_wav(path):
+    with wave.open(str(path), "rb") as wav_file:
+        return {
+            "channels": wav_file.getnchannels(),
+            "sample_width": wav_file.getsampwidth(),
+            "frame_rate": wav_file.getframerate(),
+            "frames": wav_file.readframes(wav_file.getnframes()),
+        }
+
+
 class working_directory:
     def __init__(self, path):
         self.path = path
@@ -430,14 +448,20 @@ class ConcatCommandDryRunTests(unittest.TestCase):
         self.assertEqual(force_stderr, "")
         self.assertEqual(output_bytes, b"existing output")
 
-    def test_concat_without_dry_run_is_rejected_before_creating_files(self):
+    def test_concat_generates_wav_with_manifest_order_and_silence(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            audio_path = temp_path / "clip.wav"
+            first_path = temp_path / "first.wav"
+            second_path = temp_path / "second.wav"
             concat_file = temp_path / "manifest.jsonl"
-            output_path = temp_path / "nested" / "out.wav"
-            write_wav(audio_path)
-            concat_file.write_text('{"audio": "clip.wav"}\n', encoding="utf-8")
+            output_path = temp_path / "out.wav"
+            write_wav_frames(first_path, b"\x01\x02")
+            write_wav_frames(second_path, b"\x03")
+            concat_file.write_text(
+                '{"audio": "first.wav", "silence_after_ms": 2}\n'
+                '{"audio": "second.wav", "silence_after_ms": 1}\n',
+                encoding="utf-8",
+            )
 
             exit_code, stdout, stderr = self.run_concat(
                 [
@@ -448,11 +472,140 @@ class ConcatCommandDryRunTests(unittest.TestCase):
                     str(output_path),
                 ]
             )
+            output_wav = read_wav(output_path)
 
-        self.assertEqual(exit_code, 1)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(output_wav["channels"], 1)
+        self.assertEqual(output_wav["sample_width"], 1)
+        self.assertEqual(output_wav["frame_rate"], 1000)
+        self.assertEqual(output_wav["frames"], b"\x01\x02\x00\x00\x03\x00")
+
+    def test_concat_force_overwrites_existing_output_during_real_execution(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            audio_path = temp_path / "clip.wav"
+            concat_file = temp_path / "manifest.jsonl"
+            output_path = temp_path / "out.wav"
+            write_wav_frames(audio_path, b"\x04\x05")
+            write_wav_frames(output_path, b"\x09")
+            concat_file.write_text('{"audio": "clip.wav"}\n', encoding="utf-8")
+
+            reject_exit_code, reject_stdout, reject_stderr = self.run_concat(
+                [
+                    "concat",
+                    "--concat-file",
+                    str(concat_file),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+            force_exit_code, force_stdout, force_stderr = self.run_concat(
+                [
+                    "concat",
+                    "--concat-file",
+                    str(concat_file),
+                    "--output",
+                    str(output_path),
+                    "--force",
+                ]
+            )
+            output_wav = read_wav(output_path)
+
+        self.assertEqual(reject_exit_code, 1)
+        self.assertEqual(reject_stdout, "")
+        self.assertIn("output file already exists", reject_stderr)
+        self.assertEqual(force_exit_code, 0)
+        self.assertEqual(force_stdout, f"Generated: {output_path}\n")
+        self.assertEqual(force_stderr, "")
+        self.assertEqual(output_wav["frames"], b"\x04\x05")
+
+    def test_concat_execution_failure_returns_code_4_and_removes_temporary_wav(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            audio_path = temp_path / "clip.wav"
+            concat_file = temp_path / "manifest.jsonl"
+            output_path = temp_path / "out.wav"
+            write_wav_frames(audio_path, b"\x06")
+            concat_file.write_text('{"audio": "clip.wav"}\n', encoding="utf-8")
+
+            import indextts.cli_v2 as cli_v2
+
+            original_replace = cli_v2.os.replace
+
+            def fail_replace(_source, _target):
+                raise OSError("replace failed")
+
+            cli_v2.os.replace = fail_replace
+            try:
+                exit_code, stdout, stderr = self.run_concat(
+                    [
+                        "concat",
+                        "--concat-file",
+                        str(concat_file),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+            finally:
+                cli_v2.os.replace = original_replace
+            temporary_wavs = list(temp_path.glob(f".{output_path.name}.*.wav"))
+
+        self.assertEqual(exit_code, 4)
         self.assertEqual(stdout, "")
-        self.assertIn("--dry-run", stderr)
-        self.assertFalse(output_path.parent.exists())
+        self.assertIn("ERROR: concat failed: replace failed", stderr)
+        self.assertNotIn("WARNING: cleanup failed", stderr)
+        self.assertFalse(output_path.exists())
+        self.assertEqual(temporary_wavs, [])
+
+    def test_concat_cleanup_failure_is_appended_without_overriding_primary_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            audio_path = temp_path / "clip.wav"
+            concat_file = temp_path / "manifest.jsonl"
+            output_path = temp_path / "out.wav"
+            write_wav_frames(audio_path, b"\x07")
+            concat_file.write_text('{"audio": "clip.wav"}\n', encoding="utf-8")
+
+            import indextts.cli_v2 as cli_v2
+
+            original_replace = cli_v2.os.replace
+            original_cleanup = cli_v2._cleanup_concat_temp_file
+
+            def fail_replace(_source, _target):
+                raise OSError("replace failed")
+
+            def fail_cleanup(_temp_path):
+                return OSError("cannot remove temp")
+
+            cli_v2.os.replace = fail_replace
+            cli_v2._cleanup_concat_temp_file = fail_cleanup
+            try:
+                exit_code, stdout, stderr = self.run_concat(
+                    [
+                        "concat",
+                        "--concat-file",
+                        str(concat_file),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+            finally:
+                cli_v2.os.replace = original_replace
+                cli_v2._cleanup_concat_temp_file = original_cleanup
+                for temp_wav in temp_path.glob(f".{output_path.name}.*.wav"):
+                    temp_wav.unlink()
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: concat failed: replace failed", stderr)
+        self.assertIn("WARNING: cleanup failed: cannot remove temp", stderr)
+        self.assertLess(
+            stderr.index("ERROR: concat failed: replace failed"),
+            stderr.index("WARNING: cleanup failed: cannot remove temp"),
+        )
+        self.assertFalse(output_path.exists())
 
 
 if __name__ == "__main__":
