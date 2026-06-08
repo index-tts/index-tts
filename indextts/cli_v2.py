@@ -5,6 +5,7 @@ import io
 import json
 import math
 import os
+import shutil
 import sys
 import tempfile
 import wave
@@ -305,9 +306,6 @@ def _run_batch(args, tts_factory=None):
         else:
             print(f"Batch file OK: {len(tasks)} tasks")
         return EXIT_SUCCESS
-    if output_config["mode"] == "concat":
-        print("ERROR: batch --concat execution is not implemented yet; use --dry-run for preflight", file=sys.stderr)
-        return EXIT_INPUT_ERROR
     if tts_factory is None:
         try:
             tts_factory = _load_indextts2()
@@ -329,6 +327,9 @@ def _run_batch(args, tts_factory=None):
         print(f"ERROR: inference failed: {exc}", file=sys.stderr)
         return EXIT_INFERENCE_ERROR
 
+    if output_config["mode"] == "concat":
+        return _run_batch_concat(args, tasks, tts, verbose, output_config["output_path"])
+
     for task in tasks:
         output_path = task["output_path"]
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -348,6 +349,103 @@ def _run_batch(args, tts_factory=None):
         print(f"Generated: {output_path}")
     print(f"Batch complete: {len(tasks)} tasks generated")
     return EXIT_SUCCESS
+
+
+def _run_batch_concat(args, tasks, tts, verbose, output_path):
+    temp_dir = None
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_dir = _create_batch_concat_temp_dir(output_path)
+        segments = []
+        expected_format = None
+        expected_format_line = None
+        for index, task in enumerate(tasks, start=1):
+            segment_path = temp_dir / f"{index:04d}.wav"
+            try:
+                with _synth_stdout_context(verbose):
+                    infer_kwargs = {
+                        "spk_audio_prompt": str(task["voice_path"]),
+                        "text": task["text"],
+                        "output_path": str(segment_path),
+                        "verbose": verbose,
+                    }
+                    infer_kwargs.update(task["emotion_kwargs"])
+                    tts.infer(**infer_kwargs)
+            except Exception as exc:
+                print(f"ERROR: batch file line {task['line_number']} inference failed: {exc}", file=sys.stderr)
+                _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=args.keep_temp)
+                return EXIT_INFERENCE_ERROR
+            try:
+                audio_format = _read_concat_wav_format(segment_path, task["line_number"])
+            except ConcatFileError as exc:
+                print(f"ERROR: batch file line {task['line_number']} inference failed: {exc}", file=sys.stderr)
+                _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=args.keep_temp)
+                return EXIT_INFERENCE_ERROR
+            if expected_format is None:
+                expected_format = audio_format
+                expected_format_line = task["line_number"]
+            elif audio_format != expected_format:
+                print(
+                    f"ERROR: batch file line {task['line_number']} inference failed: "
+                    f"generated WAV format does not match baseline line {expected_format_line}",
+                    file=sys.stderr,
+                )
+                _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=args.keep_temp)
+                return EXIT_INFERENCE_ERROR
+            segments.append(
+                {
+                    "line_number": task["line_number"],
+                    "audio_path": segment_path,
+                    "silence_after_ms": task["silence_after_ms"],
+                    "format": audio_format,
+                }
+            )
+        try:
+            _concatenate_wav_segments(segments, output_path)
+        except ConcatExecutionError as exc:
+            print(f"ERROR: concat failed: {exc}", file=sys.stderr)
+            if exc.cleanup_error is not None:
+                print(f"WARNING: cleanup failed: {exc.cleanup_error}", file=sys.stderr)
+            _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=args.keep_temp)
+            return EXIT_INFERENCE_ERROR
+        if args.keep_temp:
+            print(f"Generated: {output_path}")
+            print(f"Temp dir: {temp_dir}")
+        else:
+            cleanup_error = _cleanup_batch_concat_temp_dir(temp_dir)
+            if cleanup_error is not None:
+                print(f"ERROR: cleanup failed: {cleanup_error}", file=sys.stderr)
+                return EXIT_INFERENCE_ERROR
+            print(f"Generated: {output_path}")
+        return EXIT_SUCCESS
+    except Exception as exc:
+        print(f"ERROR: batch concat failed: {exc}", file=sys.stderr)
+        _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=args.keep_temp)
+        return EXIT_INFERENCE_ERROR
+
+
+def _create_batch_concat_temp_dir(output_path):
+    return Path(tempfile.mkdtemp(prefix=f".{output_path.name}.", dir=output_path.parent))
+
+
+def _cleanup_batch_concat_temp_dir(temp_dir):
+    if temp_dir is None:
+        return None
+    try:
+        shutil.rmtree(temp_dir)
+    except OSError as exc:
+        return exc
+    return None
+
+
+def _handle_batch_concat_temp_dir_after_failure(temp_dir, keep_temp=False):
+    if keep_temp:
+        if temp_dir is not None:
+            print(f"Temp dir: {temp_dir}", file=sys.stderr)
+        return
+    cleanup_error = _cleanup_batch_concat_temp_dir(temp_dir)
+    if cleanup_error is not None:
+        print(f"WARNING: cleanup failed: {cleanup_error}", file=sys.stderr)
 
 
 def _run_concat(args):

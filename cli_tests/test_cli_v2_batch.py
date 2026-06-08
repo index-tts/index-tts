@@ -3,6 +3,7 @@ import io
 import os
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +23,19 @@ def make_model_dir(base_dir):
     for filename in REQUIRED_MODEL_FILES:
         (model_dir / filename).write_text("placeholder", encoding="utf-8")
     return model_dir
+
+
+def write_wav_frames(path, frames, channels=1, sample_width=1, frame_rate=1000):
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(frame_rate)
+        wav_file.writeframes(frames)
+
+
+def read_wav_frames(path):
+    with wave.open(str(path), "rb") as wav_file:
+        return wav_file.readframes(wav_file.getnframes())
 
 
 class working_directory:
@@ -473,18 +487,29 @@ class BatchCommandDryRunTests(unittest.TestCase):
         self.assertEqual(keep_temp_stdout, "Batch concat OK: 1 tasks\n")
         self.assertEqual(keep_temp_stderr, "")
 
-    def test_batch_concat_execution_is_unavailable_until_concat_generation_slice(self):
+    def test_batch_concat_generates_final_wav_and_cleans_temp_dir_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
             output_path = temp_path / "final.wav"
+            calls = []
             voice_path.write_bytes(b"voice")
-            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+            batch_file.write_text(
+                '{"text": "first", "voice": "voice.wav", "silence_after_ms": 2}\n'
+                '{"text": "second", "voice": "voice.wav", "silence_after_ms": 1}\n',
+                encoding="utf-8",
+            )
 
-            def fail_if_called(**_kwargs):
-                raise AssertionError("tts factory must not be called before concat generation is implemented")
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    frames = b"\x01\x02" if kwargs["text"] == "first" else b"\x03"
+                    write_wav_frames(Path(kwargs["output_path"]), frames)
 
             exit_code, stdout, stderr = self.run_batch(
                 [
@@ -497,14 +522,297 @@ class BatchCommandDryRunTests(unittest.TestCase):
                     "--output",
                     str(output_path),
                 ],
-                tts_factory=fail_if_called,
+                tts_factory=FakeIndexTTS2,
             )
+            output_frames = read_wav_frames(output_path)
+            temp_dirs = [path for path in temp_path.iterdir() if path.is_dir() and path.name.startswith(".final.wav.")]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual([call[0] for call in calls], ["init", "infer", "infer"])
+        self.assertEqual(output_frames, b"\x01\x02\x00\x00\x03\x00")
+        self.assertEqual(temp_dirs, [])
+
+    def test_batch_concat_keep_temp_preserves_temp_dir_after_success(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    write_wav_frames(Path(kwargs["output_path"]), b"\x04")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                    "--keep-temp",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            temp_dirs = [path for path in temp_path.iterdir() if path.is_dir() and path.name.startswith(".final.wav.")]
+            temp_segment_exists = (temp_dirs[0] / "0001.wav").exists() if temp_dirs else False
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\nTemp dir: {temp_dirs[0]}\n")
+        self.assertEqual(stderr, "")
+        self.assertEqual(len(temp_dirs), 1)
+        self.assertTrue(temp_segment_exists)
+
+    def test_batch_concat_stops_on_inference_failure_and_cleans_temp_dir_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            calls = []
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "first", "voice": "voice.wav"}\n'
+                '{"text": "second", "voice": "voice.wav"}\n'
+                '{"text": "third", "voice": "voice.wav"}\n',
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    if kwargs["text"] == "second":
+                        raise RuntimeError("boom")
+                    write_wav_frames(Path(kwargs["output_path"]), kwargs["text"].encode("utf-8"))
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            temp_dirs = [path for path in temp_path.iterdir() if path.is_dir() and path.name.startswith(".final.wav.")]
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: batch file line 2 inference failed: boom", stderr)
+        self.assertEqual([call[0] for call in calls], ["init", "infer", "infer"])
+        self.assertFalse(output_path.exists())
+        self.assertEqual(temp_dirs, [])
+
+    def test_batch_concat_keep_temp_preserves_temp_dir_after_inference_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "first", "voice": "voice.wav"}\n'
+                '{"text": "second", "voice": "voice.wav"}\n',
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    if kwargs["text"] == "second":
+                        raise RuntimeError("boom")
+                    write_wav_frames(Path(kwargs["output_path"]), b"\x05")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                    "--keep-temp",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            temp_dirs = [path for path in temp_path.iterdir() if path.is_dir() and path.name.startswith(".final.wav.")]
+            temp_segment_exists = (temp_dirs[0] / "0001.wav").exists() if temp_dirs else False
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: batch file line 2 inference failed: boom", stderr)
+        self.assertEqual(len(temp_dirs), 1)
+        self.assertIn(f"Temp dir: {temp_dirs[0]}", stderr)
+        self.assertTrue(temp_segment_exists)
+        self.assertFalse(output_path.exists())
+
+    def test_batch_concat_rejects_mismatched_generated_segment_format_and_cleans_temp_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "first", "voice": "voice.wav"}\n'
+                '{"text": "second", "voice": "voice.wav"}\n',
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    frame_rate = 1000 if kwargs["text"] == "first" else 2000
+                    write_wav_frames(Path(kwargs["output_path"]), b"\x06", frame_rate=frame_rate)
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--concat",
+                    "--output",
+                    str(output_path),
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            temp_dirs = [path for path in temp_path.iterdir() if path.is_dir() and path.name.startswith(".final.wav.")]
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: batch file line 2 inference failed", stderr)
+        self.assertIn("generated WAV format does not match baseline line 1", stderr)
+        self.assertFalse(output_path.exists())
+        self.assertEqual(temp_dirs, [])
+
+    def test_batch_concat_temp_cleanup_failure_does_not_override_inference_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **_kwargs):
+                    raise RuntimeError("boom")
+
+            import indextts.cli_v2 as cli_v2
+
+            original_cleanup = cli_v2._cleanup_batch_concat_temp_dir
+
+            def fail_cleanup(_temp_dir):
+                return OSError("cannot remove temp dir")
+
+            cli_v2._cleanup_batch_concat_temp_dir = fail_cleanup
+            try:
+                exit_code, stdout, stderr = self.run_batch(
+                    [
+                        "batch",
+                        "--batch-file",
+                        str(batch_file),
+                        "--model-dir",
+                        str(model_dir),
+                        "--concat",
+                        "--output",
+                        str(output_path),
+                    ],
+                    tts_factory=FakeIndexTTS2,
+                )
+            finally:
+                cli_v2._cleanup_batch_concat_temp_dir = original_cleanup
+
+        self.assertEqual(exit_code, 4)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: batch file line 1 inference failed: boom", stderr)
+        self.assertIn("WARNING: cleanup failed: cannot remove temp dir", stderr)
+        self.assertLess(
+            stderr.index("ERROR: batch file line 1 inference failed: boom"),
+            stderr.index("WARNING: cleanup failed: cannot remove temp dir"),
+        )
+        self.assertFalse(output_path.exists())
+
+    def test_batch_concat_temp_cleanup_failure_after_success_returns_inference_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            output_path = temp_path / "final.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    write_wav_frames(Path(kwargs["output_path"]), b"\x07")
+
+            import indextts.cli_v2 as cli_v2
+
+            original_cleanup = cli_v2._cleanup_batch_concat_temp_dir
+
+            def fail_cleanup(_temp_dir):
+                return OSError("cannot remove temp dir")
+
+            cli_v2._cleanup_batch_concat_temp_dir = fail_cleanup
+            try:
+                exit_code, stdout, stderr = self.run_batch(
+                    [
+                        "batch",
+                        "--batch-file",
+                        str(batch_file),
+                        "--model-dir",
+                        str(model_dir),
+                        "--concat",
+                        "--output",
+                        str(output_path),
+                    ],
+                    tts_factory=FakeIndexTTS2,
+                )
+            finally:
+                cli_v2._cleanup_batch_concat_temp_dir = original_cleanup
             output_exists = output_path.exists()
 
-        self.assertEqual(exit_code, 1)
+        self.assertEqual(exit_code, 4)
         self.assertEqual(stdout, "")
-        self.assertIn("batch --concat execution is not implemented yet", stderr)
-        self.assertFalse(output_exists)
+        self.assertIn("ERROR: cleanup failed: cannot remove temp dir", stderr)
+        self.assertTrue(output_exists)
 
     def test_batch_concat_dry_run_rejects_final_output_path_conflicts_without_side_effects(self):
         with tempfile.TemporaryDirectory() as temp_dir:
