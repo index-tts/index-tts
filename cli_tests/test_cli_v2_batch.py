@@ -1,5 +1,6 @@
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +22,19 @@ def make_model_dir(base_dir):
     for filename in REQUIRED_MODEL_FILES:
         (model_dir / filename).write_text("placeholder", encoding="utf-8")
     return model_dir
+
+
+class working_directory:
+    def __init__(self, path):
+        self.path = path
+        self.previous = None
+
+    def __enter__(self):
+        self.previous = Path.cwd()
+        os.chdir(self.path)
+
+    def __exit__(self, _exc_type, _exc, _tb):
+        os.chdir(self.previous)
 
 
 class BatchCommandDryRunTests(unittest.TestCase):
@@ -375,6 +389,421 @@ class BatchCommandExecutionTests(unittest.TestCase):
         self.assertEqual(calls[2][1]["spk_audio_prompt"], str(voice_path))
         self.assertEqual(first_output_bytes, b"first")
         self.assertEqual(second_output_bytes, b"second")
+
+    def test_batch_auto_output_dir_generates_numbered_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            batch_dir = temp_path / "batch"
+            output_dir = temp_path / "auto"
+            batch_dir.mkdir()
+            voice_path = batch_dir / "voice.wav"
+            first_output = output_dir / "0001.wav"
+            second_output = output_dir / "0002.wav"
+            batch_file = batch_dir / "batch.jsonl"
+            calls = []
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                "\n".join(
+                    [
+                        '{"text": "first", "voice": "voice.wav"}',
+                        "",
+                        '{"text": "second", "voice": "voice.wav"}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            class FakeIndexTTS2:
+                def __init__(self, **kwargs):
+                    calls.append(("init", kwargs))
+
+                def infer(self, **kwargs):
+                    calls.append(("infer", kwargs))
+                    Path(kwargs["output_path"]).write_bytes(kwargs["text"].encode("utf-8"))
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            first_output_bytes = first_output.read_bytes()
+            second_output_bytes = second_output.read_bytes()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            stdout,
+            f"Generated: {first_output}\nGenerated: {second_output}\nBatch complete: 2 tasks generated\n",
+        )
+        self.assertEqual(stderr, "")
+        self.assertEqual([call[0] for call in calls], ["init", "infer", "infer"])
+        self.assertEqual(calls[1][1]["output_path"], str(first_output))
+        self.assertEqual(calls[2][1]["output_path"], str(second_output))
+        self.assertEqual(first_output_bytes, b"first")
+        self.assertEqual(second_output_bytes, b"second")
+
+    def test_batch_auto_output_dir_rejects_generated_output_that_conflicts_with_inputs_even_with_force(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            output_dir = temp_path / "auto"
+            output_dir.mkdir()
+            voice_path = output_dir / "0001.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "auto/0001.wav"}\n', encoding="utf-8")
+
+            def fail_if_called(**_kwargs):
+                raise AssertionError("tts factory must not be called when output precheck fails")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--force",
+                ],
+                tts_factory=fail_if_called,
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("conflicts with protected input path", stderr)
+        self.assertIn(str(voice_path), stderr)
+
+    def test_batch_auto_output_dir_rejects_generated_output_that_conflicts_with_batch_file_even_with_force(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            output_dir = temp_path / "auto"
+            output_dir.mkdir()
+            voice_path = temp_path / "voice.wav"
+            batch_file = output_dir / "0001.wav"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "../voice.wav"}\n', encoding="utf-8")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--force",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("conflicts with protected input path", stderr)
+        self.assertIn(str(batch_file), stderr)
+
+    def test_batch_auto_output_dir_uses_output_prefix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            output_dir = temp_path / "auto"
+            voice_path = temp_path / "voice.wav"
+            output_path = output_dir / "chapter-0001.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--output-prefix",
+                    "chapter",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(stderr, "")
+
+    def test_batch_auto_output_dir_rejects_invalid_output_configuration(self):
+        cases = [
+            (["--output-prefix", "chapter"], "--output-prefix requires --output-dir"),
+            (["--output-dir", "auto", "--output-prefix", "chapter.wav"], "file extension"),
+            (["--output-dir", "auto", "--output-prefix", "nested/chapter"], "path separators"),
+            (["--output-dir", "auto", "--output-prefix", "nested\\chapter"], "path separators"),
+        ]
+        for extra_args, expected_message in cases:
+            with self.subTest(expected_message=expected_message):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    model_dir = make_model_dir(temp_path)
+                    voice_path = temp_path / "voice.wav"
+                    batch_file = temp_path / "batch.jsonl"
+                    voice_path.write_bytes(b"voice")
+                    batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+                    exit_code, stdout, stderr = self.run_batch(
+                        [
+                            "batch",
+                            "--batch-file",
+                            str(batch_file),
+                            "--model-dir",
+                            str(model_dir),
+                            "--dry-run",
+                            *extra_args,
+                        ]
+                    )
+
+                self.assertEqual(exit_code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn(expected_message, stderr)
+
+    def test_batch_auto_output_dir_rejects_row_output(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "output": "row.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(temp_path / "auto"),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("line 1", stderr)
+        self.assertIn("not allowed with --output-dir", stderr)
+
+    def test_batch_auto_output_dir_rejects_concat_output_configuration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(temp_path / "auto"),
+                    "--concat",
+                    "--output",
+                    str(temp_path / "final.wav"),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("--concat", stderr)
+        self.assertIn("--output-dir", stderr)
+
+    def test_batch_auto_output_dir_dry_run_does_not_create_output_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            output_dir = temp_path / "auto"
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            def fail_if_called(**_kwargs):
+                raise AssertionError("tts factory must not be called during dry-run")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--dry-run",
+                ],
+                tts_factory=fail_if_called,
+            )
+            output_dir_exists = output_dir.exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, "Batch file OK: 1 tasks\n")
+        self.assertEqual(stderr, "")
+        self.assertFalse(output_dir_exists)
+
+    def test_batch_auto_output_dir_respects_force_for_existing_external_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            output_dir = temp_path / "auto"
+            output_dir.mkdir()
+            voice_path = temp_path / "voice.wav"
+            output_path = output_dir / "0001.wav"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path.write_bytes(b"voice")
+            output_path.write_bytes(b"existing")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    Path(kwargs["output_path"]).write_bytes(b"new audio")
+
+            reject_exit_code, reject_stdout, reject_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            force_exit_code, force_stdout, force_stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(output_dir),
+                    "--force",
+                ],
+                tts_factory=FakeIndexTTS2,
+            )
+            output_bytes = output_path.read_bytes()
+
+        self.assertEqual(reject_exit_code, 1)
+        self.assertEqual(reject_stdout, "")
+        self.assertIn("output file already exists", reject_stderr)
+        self.assertEqual(force_exit_code, 0)
+        self.assertEqual(force_stdout, f"Generated: {output_path}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(force_stderr, "")
+        self.assertEqual(output_bytes, b"new audio")
+
+    def test_batch_auto_output_dir_resolves_relative_to_current_working_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            cwd_path = temp_path / "cwd"
+            batch_dir = temp_path / "batch"
+            cwd_path.mkdir()
+            batch_dir.mkdir()
+            voice_path = batch_dir / "voice.wav"
+            batch_file = batch_dir / "batch.jsonl"
+            expected_output = cwd_path / "auto" / "0001.wav"
+            batch_relative_to_cwd = Path("..") / "batch" / "batch.jsonl"
+            model_relative_to_cwd = Path("..") / "checkpoints"
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            class FakeIndexTTS2:
+                def __init__(self, **_kwargs):
+                    pass
+
+                def infer(self, **kwargs):
+                    Path(kwargs["output_path"]).write_bytes(b"audio")
+
+            with working_directory(cwd_path):
+                exit_code, stdout, stderr = self.run_batch(
+                    [
+                        "batch",
+                        "--batch-file",
+                        str(batch_relative_to_cwd),
+                        "--model-dir",
+                        str(model_relative_to_cwd),
+                        "--output-dir",
+                        "auto",
+                    ],
+                    tts_factory=FakeIndexTTS2,
+                )
+            output_exists = expected_output.exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {expected_output}\nBatch complete: 1 tasks generated\n")
+        self.assertEqual(stderr, "")
+        self.assertTrue(output_exists)
+
+    def test_batch_auto_output_dir_rejects_output_parent_that_is_a_file_during_dry_run(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = make_model_dir(temp_path)
+            blocked_output_dir = temp_path / "blocked"
+            voice_path = temp_path / "voice.wav"
+            batch_file = temp_path / "batch.jsonl"
+            blocked_output_dir.write_text("file blocks output directory", encoding="utf-8")
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text('{"text": "hello", "voice": "voice.wav"}\n', encoding="utf-8")
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                    "--output-dir",
+                    str(blocked_output_dir),
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("output parent path cannot be created", stderr)
+        self.assertIn(str(blocked_output_dir), stderr)
 
     def test_batch_maps_command_runtime_options_to_indextts2_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:

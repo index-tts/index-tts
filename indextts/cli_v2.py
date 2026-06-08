@@ -104,6 +104,17 @@ def _build_parser():
         help="Validate the batch file without loading model weights",
     )
     batch.add_argument("--force", action="store_true", help="Overwrite output if it exists")
+    batch.add_argument(
+        "--output-dir",
+        help="Directory for automatically named independent WAV outputs",
+    )
+    batch.add_argument(
+        "--output-prefix",
+        help="Filename prefix for automatically named independent WAV outputs",
+    )
+    batch.add_argument("--concat", action="store_true", help="Generate one concatenated batch output")
+    batch.add_argument("--output", help="Path to write concatenated batch WAV audio")
+    batch.add_argument("--keep-temp", action="store_true", help="Keep internal batch concat temporary files")
     batch.add_argument("--device", default=None, help="Runtime device")
     batch.add_argument("--fp16", action="store_true", help="Use FP16 inference")
     batch.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
@@ -268,7 +279,13 @@ def _run_synth(args, tts_factory=None, stdin=None):
 def _run_batch(args, tts_factory=None):
     try:
         defaults = _validate_batch_defaults(args)
-        tasks = _load_batch_tasks(Path(args.batch_file), force=args.force, defaults=defaults)
+        output_config = _validate_batch_output_config(args)
+        tasks = _load_batch_tasks(
+            Path(args.batch_file),
+            force=args.force,
+            defaults=defaults,
+            output_config=output_config,
+        )
     except BatchFileError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return exc.exit_code
@@ -425,6 +442,40 @@ def _validate_batch_defaults(args):
     }
 
 
+def _validate_batch_output_config(args):
+    if args.concat:
+        if args.output_dir is not None:
+            raise BatchFileError("--concat cannot be used with --output-dir", EXIT_INPUT_ERROR)
+        if args.output_prefix is not None:
+            raise BatchFileError("--concat cannot be used with --output-prefix", EXIT_INPUT_ERROR)
+        raise BatchFileError("batch --concat is not implemented yet", EXIT_INPUT_ERROR)
+    if args.output is not None:
+        raise BatchFileError("--output is only valid with --concat", EXIT_INPUT_ERROR)
+    if args.keep_temp:
+        raise BatchFileError("--keep-temp requires --concat", EXIT_INPUT_ERROR)
+    if args.output_prefix is not None and args.output_dir is None:
+        raise BatchFileError("--output-prefix requires --output-dir", EXIT_INPUT_ERROR)
+    if args.output_prefix is not None:
+        _validate_batch_output_prefix(args.output_prefix)
+    if args.output_dir is None:
+        return {"mode": "row"}
+    return {
+        "mode": "auto",
+        "output_dir": _resolve_command_path(args.output_dir),
+        "output_prefix": args.output_prefix,
+    }
+
+
+def _validate_batch_output_prefix(output_prefix):
+    if "/" in output_prefix or "\\" in output_prefix:
+        raise BatchFileError("--output-prefix must not contain path separators", EXIT_INPUT_ERROR)
+    prefix_path = Path(output_prefix)
+    if prefix_path.suffix:
+        raise BatchFileError("--output-prefix must not include a file extension", EXIT_INPUT_ERROR)
+    if not output_prefix.strip():
+        raise BatchFileError("--output-prefix must not be empty", EXIT_INPUT_ERROR)
+
+
 def _strip_error_prefix(message):
     prefix = "ERROR: "
     if message.startswith(prefix):
@@ -432,12 +483,14 @@ def _strip_error_prefix(message):
     return message
 
 
-def _load_batch_tasks(batch_file, force=False, defaults=None):
+def _load_batch_tasks(batch_file, force=False, defaults=None, output_config=None):
     if not batch_file.is_file():
         raise BatchFileError(f"batch file does not exist: {batch_file}", EXIT_MISSING_RESOURCE)
 
     if defaults is None:
         defaults = {"voice_path": None, "emotion_source": None, "emotion_weight": 1.0}
+    if output_config is None:
+        output_config = {"mode": "row"}
     batch_dir = batch_file.parent
     tasks = []
     outputs = {}
@@ -454,6 +507,7 @@ def _load_batch_tasks(batch_file, force=False, defaults=None):
     for line_number, raw_line in enumerate(batch_file.read_text(encoding="utf-8").splitlines(), start=1):
         if not raw_line.strip():
             continue
+        text_path = None
         try:
             task = json.loads(raw_line)
         except json.JSONDecodeError as exc:
@@ -510,10 +564,21 @@ def _load_batch_tasks(batch_file, force=False, defaults=None):
                 EXIT_MISSING_RESOURCE,
             )
 
-        output_value = task.get("output")
-        if output_value is None:
-            raise BatchFileError(f"batch file line {line_number} missing required field: output", EXIT_INPUT_ERROR)
-        output_path = _resolve_batch_path(batch_dir, _require_batch_string(task, "output", line_number))
+        emotion_kwargs = _batch_emotion_kwargs(task, batch_dir, line_number, defaults)
+        output_path = _batch_task_output_path(
+            task,
+            batch_dir,
+            line_number,
+            len(tasks) + 1,
+            output_config,
+        )
+        if output_config["mode"] == "auto":
+            _reject_batch_auto_output_input_conflicts(
+                output_path,
+                line_number,
+                _batch_task_protected_input_paths(batch_file, text_path, voice_path, emotion_kwargs),
+            )
+            _reject_batch_auto_output_parent_conflicts(output_path)
         output_key = str(output_path.resolve(strict=False))
         if output_key in outputs:
             raise BatchFileError(
@@ -526,7 +591,6 @@ def _load_batch_tasks(batch_file, force=False, defaults=None):
                 f"batch file line {line_number} output file already exists: {output_path}",
                 EXIT_INPUT_ERROR,
             )
-        emotion_kwargs = _batch_emotion_kwargs(task, batch_dir, line_number, defaults)
         tasks.append(
             {
                 "line_number": line_number,
@@ -537,6 +601,62 @@ def _load_batch_tasks(batch_file, force=False, defaults=None):
             }
         )
     return tasks
+
+
+def _batch_task_protected_input_paths(batch_file, text_path, voice_path, emotion_kwargs):
+    protected_paths = [batch_file, voice_path]
+    if text_path is not None:
+        protected_paths.append(text_path)
+    emotion_path = emotion_kwargs.get("emo_audio_prompt")
+    if emotion_path is not None:
+        protected_paths.append(Path(emotion_path))
+    return protected_paths
+
+
+def _reject_batch_auto_output_input_conflicts(output_path, line_number, protected_paths):
+    output_key = _normalized_path_key(output_path)
+    for protected_path in protected_paths:
+        if output_key == _normalized_path_key(protected_path):
+            raise BatchFileError(
+                f"batch file line {line_number} generated output conflicts with protected input path: {protected_path}",
+                EXIT_INPUT_ERROR,
+            )
+
+
+def _reject_batch_auto_output_parent_conflicts(output_path):
+    parent = output_path.parent
+    existing_parent = parent
+    while not existing_parent.exists():
+        if existing_parent.parent == existing_parent:
+            break
+        existing_parent = existing_parent.parent
+    if existing_parent.exists() and not existing_parent.is_dir():
+        raise BatchFileError(
+            f"output parent path cannot be created because a file exists: {existing_parent}",
+            EXIT_INPUT_ERROR,
+        )
+
+
+def _batch_task_output_path(task, batch_dir, line_number, task_number, output_config):
+    output_value = task.get("output")
+    if output_config["mode"] == "row":
+        if output_value is None:
+            raise BatchFileError(f"batch file line {line_number} missing required field: output", EXIT_INPUT_ERROR)
+        return _resolve_batch_path(batch_dir, _require_batch_string(task, "output", line_number))
+
+    if output_value is not None:
+        raise BatchFileError(
+            f"batch file line {line_number} field 'output' is not allowed with --output-dir",
+            EXIT_INPUT_ERROR,
+        )
+    return output_config["output_dir"] / _auto_batch_output_name(task_number, output_config["output_prefix"])
+
+
+def _auto_batch_output_name(task_number, output_prefix):
+    stem = f"{task_number:04d}"
+    if output_prefix:
+        stem = f"{output_prefix}-{stem}"
+    return f"{stem}.wav"
 
 
 def _batch_emotion_kwargs(task, batch_dir, line_number, defaults):
