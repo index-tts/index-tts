@@ -5,6 +5,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -26,6 +27,13 @@ REQUIRED_MODEL_FILES = (
     "wav2vec2bert_stats.pt",
 )
 REQUIRED_PACKAGES = ("torch", "torchaudio", "indextts")
+PERSISTED_CONFIG_KEYS = (
+    "model_dir",
+    "default_device",
+    "use_fp16",
+    "use_deepspeed",
+    "use_cuda_kernel",
+)
 
 
 class InputValidationError(ValueError):
@@ -54,6 +62,10 @@ def main(argv=None, tts_factory=None, stdin=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "init":
+        return _run_init(args)
+    if args.command == "config":
+        return _run_config(args)
     if args.command == "check":
         return _run_check(args)
     if args.command == "synth":
@@ -71,13 +83,33 @@ def _build_parser():
     parser = argparse.ArgumentParser(prog="indextts2", description="IndexTTS2 command line")
     subparsers = parser.add_subparsers(dest="command")
 
+    init = subparsers.add_parser(
+        "init",
+        help="Create persistent IndexTTS2 CLI state without downloading model resources",
+    )
+    init.add_argument(
+        "--model-dir",
+        default=None,
+        help="Persist a model resource directory",
+    )
+    config = subparsers.add_parser(
+        "config",
+        help="Show or update persistent IndexTTS2 CLI configuration",
+    )
+    config_subparsers = config.add_subparsers(dest="config_command")
+    config_subparsers.add_parser("path", help="Print the persistent configuration file path")
+    config_subparsers.add_parser("get", help="Print the current persistent configuration")
+    config_set = config_subparsers.add_parser("set", help="Persist one configuration value")
+    config_set.add_argument("key", choices=PERSISTED_CONFIG_KEYS)
+    config_set.add_argument("value")
+
     check = subparsers.add_parser(
         "check",
         help="Check local IndexTTS2 prerequisites without loading model weights",
     )
     check.add_argument(
         "--model-dir",
-        default="checkpoints",
+        default=None,
         help="Path to the IndexTTS2 model directory",
     )
     check.add_argument(
@@ -96,7 +128,7 @@ def _build_parser():
     )
     batch.add_argument(
         "--model-dir",
-        default="checkpoints",
+        default=None,
         help="Path to the IndexTTS2 model directory",
     )
     batch.add_argument(
@@ -117,9 +149,9 @@ def _build_parser():
     batch.add_argument("--output", help="Path to write concatenated batch WAV audio")
     batch.add_argument("--keep-temp", action="store_true", help="Keep internal batch concat temporary files")
     batch.add_argument("--device", default=None, help="Runtime device")
-    batch.add_argument("--fp16", action="store_true", help="Use FP16 inference")
-    batch.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
-    batch.add_argument("--cuda-kernel", action="store_true", help="Use CUDA kernel")
+    batch.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=None, help="Use FP16 inference")
+    batch.add_argument("--deepspeed", action=argparse.BooleanOptionalAction, default=None, help="Use DeepSpeed")
+    batch.add_argument("--cuda-kernel", action=argparse.BooleanOptionalAction, default=None, help="Use CUDA kernel")
     batch.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     batch.add_argument("--voice", help="Default speaker reference audio for every batch task")
     batch.add_argument("--emotion-audio", help="Default emotion reference audio for every batch task")
@@ -166,15 +198,182 @@ def _build_parser():
     synth.add_argument("--force", action="store_true", help="Overwrite output if it exists")
     synth.add_argument(
         "--model-dir",
-        default="checkpoints",
+        default=None,
         help="Path to the IndexTTS2 model directory",
     )
     synth.add_argument("--device", default=None, help="Runtime device")
-    synth.add_argument("--fp16", action="store_true", help="Use FP16 inference")
-    synth.add_argument("--deepspeed", action="store_true", help="Use DeepSpeed")
-    synth.add_argument("--cuda-kernel", action="store_true", help="Use CUDA kernel")
+    synth.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=None, help="Use FP16 inference")
+    synth.add_argument("--deepspeed", action=argparse.BooleanOptionalAction, default=None, help="Use DeepSpeed")
+    synth.add_argument("--cuda-kernel", action=argparse.BooleanOptionalAction, default=None, help="Use CUDA kernel")
     synth.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     return parser
+
+
+def _run_init(args):
+    config = _load_persisted_config()
+    if args.model_dir is not None:
+        config["model_dir"] = _normalize_persisted_path(args.model_dir)
+    elif not config.get("model_dir"):
+        config["model_dir"] = _default_model_dir().as_posix()
+    _ensure_user_state(config)
+    print(f"Config: {_config_path()}")
+    print(f"Model directory: {Path(config['model_dir'])}")
+    return EXIT_SUCCESS
+
+
+def _run_config(args):
+    if args.config_command == "path":
+        print(_config_path())
+        return EXIT_SUCCESS
+    if args.config_command == "get":
+        print(_format_persisted_config(_load_persisted_config()), end="")
+        return EXIT_SUCCESS
+    if args.config_command == "set":
+        config = _load_persisted_config()
+        if args.key == "model_dir":
+            value = _normalize_persisted_path(args.value)
+            config[args.key] = value
+            _config_path().parent.mkdir(parents=True, exist_ok=True)
+            _save_persisted_config(config)
+            print(f"{args.key} = {Path(value)}")
+            return EXIT_SUCCESS
+        if args.key == "default_device":
+            config[args.key] = args.value
+            _config_path().parent.mkdir(parents=True, exist_ok=True)
+            _save_persisted_config(config)
+            print(f"{args.key} = {args.value}")
+            return EXIT_SUCCESS
+        if args.key in {"use_fp16", "use_deepspeed", "use_cuda_kernel"}:
+            value = _parse_config_bool(args.value)
+            if value is None:
+                print(f"ERROR: {args.key} must be true or false", file=sys.stderr)
+                return EXIT_INPUT_ERROR
+            config[args.key] = value
+            _config_path().parent.mkdir(parents=True, exist_ok=True)
+            _save_persisted_config(config)
+            print(f"{args.key} = {str(value).lower()}")
+            return EXIT_SUCCESS
+    print("ERROR: config requires a subcommand: path, get or set", file=sys.stderr)
+    return EXIT_INPUT_ERROR
+
+
+def _ensure_user_state(config=None):
+    if config is None:
+        config = _load_persisted_config()
+    model_dir = Path(config.get("model_dir") or _default_model_dir())
+    config["model_dir"] = model_dir.as_posix()
+    _config_path().parent.mkdir(parents=True, exist_ok=True)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    _save_persisted_config(config)
+
+
+def _resolve_model_dir(model_dir_arg=None):
+    if model_dir_arg is not None:
+        return Path(model_dir_arg)
+    env_model_dir = os.environ.get("INDEXTTS2_MODEL_DIR")
+    if env_model_dir:
+        return Path(env_model_dir)
+    config = _load_persisted_config()
+    if config.get("model_dir"):
+        return Path(config["model_dir"])
+    return _default_model_dir()
+
+
+def _resolve_runtime_options(args):
+    config = _load_persisted_config()
+    return argparse.Namespace(
+        device=args.device if args.device is not None else config.get("default_device"),
+        fp16=args.fp16 if args.fp16 is not None else bool(config.get("use_fp16", False)),
+        deepspeed=args.deepspeed if args.deepspeed is not None else bool(config.get("use_deepspeed", False)),
+        cuda_kernel=args.cuda_kernel
+        if args.cuda_kernel is not None
+        else bool(config.get("use_cuda_kernel", False)),
+    )
+
+
+def _load_persisted_config():
+    path = _config_path()
+    if not path.is_file():
+        return {}
+    config = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = [part.strip() for part in line.split("=", 1)]
+        if key not in PERSISTED_CONFIG_KEYS:
+            continue
+        if value in {"true", "false"}:
+            config[key] = value == "true"
+        elif value.startswith('"') and value.endswith('"'):
+            config[key] = _unquote_toml_string(value)
+    return config
+
+
+def _save_persisted_config(config):
+    _config_path().write_text(_format_persisted_config(config), encoding="utf-8")
+
+
+def _format_persisted_config(config):
+    lines = []
+    for key in PERSISTED_CONFIG_KEYS:
+        if key not in config or config[key] is None:
+            continue
+        value = config[key]
+        if isinstance(value, bool):
+            lines.append(f"{key} = {str(value).lower()}")
+        else:
+            lines.append(f'{key} = "{_quote_toml_string(str(value))}"')
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _quote_toml_string(value):
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _unquote_toml_string(value):
+    inner = value[1:-1]
+    return re.sub(r'\\(["\\])', r"\1", inner)
+
+
+def _normalize_persisted_path(path_value):
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return path.resolve(strict=False).as_posix()
+
+
+def _parse_config_bool(value):
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    return None
+
+
+def _config_path():
+    if sys.platform == "win32":
+        root = os.environ.get("APPDATA")
+        base = Path(root) if root else Path.home() / "AppData" / "Roaming"
+        return base / "IndexTTS" / "config.toml"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "IndexTTS" / "config.toml"
+    root = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(root) if root else Path.home() / ".config"
+    return base / "indextts" / "config.toml"
+
+
+def _default_model_dir():
+    if sys.platform == "win32":
+        root = os.environ.get("LOCALAPPDATA")
+        base = Path(root) if root else Path.home() / "AppData" / "Local"
+        return base / "IndexTTS" / "models" / "IndexTTS-2"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "IndexTTS" / "models" / "IndexTTS-2"
+    root = os.environ.get("XDG_DATA_HOME")
+    base = Path(root) if root else Path.home() / ".local" / "share"
+    return base / "indextts" / "models" / "IndexTTS-2"
 
 
 def _run_synth(args, tts_factory=None, stdin=None):
@@ -225,7 +424,9 @@ def _run_synth(args, tts_factory=None, stdin=None):
     if output_path.exists() and not args.force:
         print(f"ERROR: output file already exists: {output_path}", file=sys.stderr)
         return EXIT_INPUT_ERROR
-    model_dir = Path(args.model_dir)
+    _ensure_user_state()
+    model_dir = _resolve_model_dir(args.model_dir)
+    runtime = _resolve_runtime_options(args)
     missing_files = _missing_model_files(model_dir)
     if missing_files is None:
         print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
@@ -245,11 +446,11 @@ def _run_synth(args, tts_factory=None, stdin=None):
         with _synth_stdout_context(args.verbose):
             tts = tts_factory(
                 cfg_path=str(model_dir / "config.yaml"),
-                model_dir=args.model_dir,
-                use_fp16=args.fp16,
-                device=args.device,
-                use_cuda_kernel=args.cuda_kernel,
-                use_deepspeed=args.deepspeed,
+                model_dir=str(model_dir),
+                use_fp16=runtime.fp16,
+                device=runtime.device,
+                use_cuda_kernel=runtime.cuda_kernel,
+                use_deepspeed=runtime.deepspeed,
             )
             infer_kwargs = {
                 "spk_audio_prompt": str(voice_path),
@@ -291,7 +492,9 @@ def _run_batch(args, tts_factory=None):
         print(f"ERROR: {exc}", file=sys.stderr)
         return exc.exit_code
 
-    model_dir = Path(args.model_dir)
+    _ensure_user_state()
+    model_dir = _resolve_model_dir(args.model_dir)
+    runtime = _resolve_runtime_options(args)
     missing_files = _missing_model_files(model_dir)
     if missing_files is None:
         print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
@@ -317,11 +520,11 @@ def _run_batch(args, tts_factory=None):
         with _synth_stdout_context(verbose):
             tts = tts_factory(
                 cfg_path=str(model_dir / "config.yaml"),
-                model_dir=args.model_dir,
-                use_fp16=getattr(args, "fp16", False),
-                device=getattr(args, "device", None),
-                use_cuda_kernel=getattr(args, "cuda_kernel", False),
-                use_deepspeed=getattr(args, "deepspeed", False),
+                model_dir=str(model_dir),
+                use_fp16=runtime.fp16,
+                device=runtime.device,
+                use_cuda_kernel=runtime.cuda_kernel,
+                use_deepspeed=runtime.deepspeed,
             )
     except Exception as exc:
         print(f"ERROR: inference failed: {exc}", file=sys.stderr)
@@ -1188,7 +1391,8 @@ def _synth_stdout_context(verbose):
 
 
 def _run_check(args):
-    model_dir = Path(args.model_dir)
+    _ensure_user_state()
+    model_dir = _resolve_model_dir(args.model_dir)
     missing_files = _missing_model_files(model_dir)
     if missing_files is None:
         print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
