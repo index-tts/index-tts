@@ -73,6 +73,8 @@ def main(argv=None, tts_factory=None, stdin=None):
         return _run_init(args)
     if args.command == "config":
         return _run_config(args)
+    if args.command == "download":
+        return _run_download(args)
     if args.command == "check":
         return _run_check(args)
     if args.command == "synth":
@@ -109,6 +111,27 @@ def _build_parser():
     config_set = config_subparsers.add_parser("set", help="Persist one configuration value")
     config_set.add_argument("key", choices=PERSISTED_CONFIG_KEYS)
     config_set.add_argument("value")
+
+    download = subparsers.add_parser(
+        "download",
+        help="Download IndexTTS2 model resources",
+    )
+    download.add_argument(
+        "--source",
+        choices=("huggingface", "modelscope"),
+        default="huggingface",
+        help="Model download source",
+    )
+    download.add_argument(
+        "--model-dir",
+        default=None,
+        help="Path to the IndexTTS2 model resource directory",
+    )
+    download.add_argument(
+        "--no-save",
+        action="store_true",
+        help="Do not persist --model-dir after a successful download",
+    )
 
     check = subparsers.add_parser(
         "check",
@@ -262,6 +285,45 @@ def _run_config(args):
             return EXIT_SUCCESS
     print("ERROR: config requires a subcommand: path, get or set", file=sys.stderr)
     return EXIT_INPUT_ERROR
+
+
+def _run_download(args):
+    model_dir = _resolve_model_dir(args.model_dir)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        _download_model_resources(args.source, model_dir)
+    except (ImportError, OSError) as exc:
+        print(f"ERROR: runtime unavailable for {args.source} download source: {exc}", file=sys.stderr)
+        print(f"Install download support with: pip install {_download_support_package(args.source)}", file=sys.stderr)
+        return EXIT_RUNTIME_UNAVAILABLE
+
+    missing_exit_code = _report_missing_model_resources(model_dir)
+    if missing_exit_code is not None:
+        return EXIT_MISSING_RESOURCE
+
+    if args.model_dir is not None and not args.no_save:
+        config = _load_persisted_config()
+        config["model_dir"] = _normalize_persisted_path(args.model_dir)
+        _config_path().parent.mkdir(parents=True, exist_ok=True)
+        _save_persisted_config(config)
+
+    print(f"Downloaded model resources to: {model_dir}")
+    return EXIT_SUCCESS
+
+
+def _download_model_resources(source, model_dir):
+    if source == "huggingface":
+        huggingface_hub = importlib.import_module("huggingface_hub")
+        huggingface_hub.snapshot_download(repo_id=MODEL_REPO_ID, local_dir=str(model_dir))
+        return
+    modelscope = importlib.import_module("modelscope")
+    modelscope.snapshot_download(MODEL_REPO_ID, local_dir=str(model_dir))
+
+
+def _download_support_package(source):
+    if source == "huggingface":
+        return "huggingface_hub"
+    return "modelscope"
 
 
 def _ensure_user_state(config=None):
@@ -1438,6 +1500,7 @@ def _print_model_resource_help(model_dir, missing_summary):
     print(f'  modelscope download --model {MODEL_REPO_ID} --local_dir "{model_dir}"', file=sys.stderr)
     print("Persist a different model resource directory:", file=sys.stderr)
     print(f"  indextts2 config set model_dir {model_dir}", file=sys.stderr)
+    print("Hint: rerun indextts2 download or choose a different model resource directory.", file=sys.stderr)
 
 
 def _missing_model_files(model_dir):
