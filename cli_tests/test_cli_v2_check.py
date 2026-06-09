@@ -1309,6 +1309,27 @@ class SynthCommandTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("ERROR: runtime unavailable: torch", stderr.getvalue())
 
+    def test_load_indextts2_points_huggingface_cache_at_model_resource_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "models"
+
+            class FakeIndexTTS2:
+                pass
+
+            from indextts.cli_v2 import _load_indextts2
+
+            with mock.patch.dict(os.environ, {"HF_HUB_CACHE": "legacy-cache"}, clear=False):
+                with mock.patch.dict(
+                    sys.modules,
+                    {"indextts.infer_v2": SimpleNamespace(IndexTTS2=FakeIndexTTS2)},
+                    clear=False,
+                ):
+                    loaded = _load_indextts2(model_dir)
+                    hf_hub_cache = os.environ["HF_HUB_CACHE"]
+
+            self.assertIs(loaded, FakeIndexTTS2)
+            self.assertEqual(hf_hub_cache, str(model_dir / "hf_cache"))
+
     def test_synth_suppresses_model_stdout_when_not_verbose(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

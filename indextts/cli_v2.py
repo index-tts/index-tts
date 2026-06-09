@@ -502,7 +502,7 @@ def _run_synth(args, tts_factory=None, stdin=None):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if tts_factory is None:
         try:
-            tts_factory = _load_indextts2()
+            tts_factory = _load_indextts2(model_dir)
         except (ImportError, OSError) as exc:
             print(f"ERROR: runtime unavailable: {exc}", file=sys.stderr)
             return EXIT_RUNTIME_UNAVAILABLE
@@ -570,7 +570,7 @@ def _run_batch(args, tts_factory=None):
         return EXIT_SUCCESS
     if tts_factory is None:
         try:
-            tts_factory = _load_indextts2()
+            tts_factory = _load_indextts2(model_dir)
         except (ImportError, OSError) as exc:
             print(f"ERROR: runtime unavailable: {exc}", file=sys.stderr)
             return EXIT_RUNTIME_UNAVAILABLE
@@ -1437,10 +1437,16 @@ def _parse_emotion_weight(value, label):
         raise InputValidationError(f"{label} must be a float: {value}") from exc
 
 
-def _load_indextts2():
+def _load_indextts2(model_dir=None):
+    if model_dir is not None:
+        _configure_hf_cache(model_dir)
     from indextts.infer_v2 import IndexTTS2
 
     return IndexTTS2
+
+
+def _configure_hf_cache(model_dir):
+    os.environ["HF_HUB_CACHE"] = str(Path(model_dir) / "hf_cache")
 
 
 def _synth_stdout_context(verbose):
