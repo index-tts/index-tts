@@ -1,7 +1,7 @@
 import os
 from subprocess import CalledProcessError
 
-os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+os.environ.setdefault('HF_HUB_CACHE', './checkpoints/hf_cache')
 import json
 import re
 import time
