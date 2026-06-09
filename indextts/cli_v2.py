@@ -25,7 +25,14 @@ REQUIRED_MODEL_FILES = (
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
+    "pinyin.vocab",
+    "feat1.pt",
+    "feat2.pt",
 )
+REQUIRED_MODEL_DIRS = (
+    "qwen0.6bemo4-merge",
+)
+MODEL_REPO_ID = "IndexTeam/IndexTTS-2"
 REQUIRED_PACKAGES = ("torch", "torchaudio", "indextts")
 PERSISTED_CONFIG_KEYS = (
     "model_dir",
@@ -269,14 +276,14 @@ def _ensure_user_state(config=None):
 
 def _resolve_model_dir(model_dir_arg=None):
     if model_dir_arg is not None:
-        return Path(model_dir_arg)
+        return Path(model_dir_arg).expanduser().resolve(strict=False)
     env_model_dir = os.environ.get("INDEXTTS2_MODEL_DIR")
     if env_model_dir:
-        return Path(env_model_dir)
+        return Path(env_model_dir).expanduser().resolve(strict=False)
     config = _load_persisted_config()
     if config.get("model_dir"):
-        return Path(config["model_dir"])
-    return _default_model_dir()
+        return Path(config["model_dir"]).expanduser().resolve(strict=False)
+    return _default_model_dir().resolve(strict=False)
 
 
 def _resolve_runtime_options(args):
@@ -427,13 +434,8 @@ def _run_synth(args, tts_factory=None, stdin=None):
     _ensure_user_state()
     model_dir = _resolve_model_dir(args.model_dir)
     runtime = _resolve_runtime_options(args)
-    missing_files = _missing_model_files(model_dir)
-    if missing_files is None:
-        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
-        return EXIT_MISSING_RESOURCE
-    if missing_files:
-        missing = ", ".join(missing_files)
-        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+    missing_exit_code = _report_missing_model_resources(model_dir)
+    if missing_exit_code is not None:
         return EXIT_MISSING_RESOURCE
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if tts_factory is None:
@@ -495,13 +497,8 @@ def _run_batch(args, tts_factory=None):
     _ensure_user_state()
     model_dir = _resolve_model_dir(args.model_dir)
     runtime = _resolve_runtime_options(args)
-    missing_files = _missing_model_files(model_dir)
-    if missing_files is None:
-        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
-        return EXIT_MISSING_RESOURCE
-    if missing_files:
-        missing = ", ".join(missing_files)
-        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+    missing_exit_code = _report_missing_model_resources(model_dir)
+    if missing_exit_code is not None:
         return EXIT_MISSING_RESOURCE
     if args.dry_run:
         if output_config["mode"] == "concat":
@@ -1393,13 +1390,8 @@ def _synth_stdout_context(verbose):
 def _run_check(args):
     _ensure_user_state()
     model_dir = _resolve_model_dir(args.model_dir)
-    missing_files = _missing_model_files(model_dir)
-    if missing_files is None:
-        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
-        return EXIT_MISSING_RESOURCE
-    if missing_files:
-        missing = ", ".join(missing_files)
-        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+    missing_exit_code = _report_missing_model_resources(model_dir)
+    if missing_exit_code is not None:
         return EXIT_MISSING_RESOURCE
 
     imports = _import_required_packages()
@@ -1413,6 +1405,7 @@ def _run_check(args):
         print(f"ERROR: requested device is not available: {args.device}", file=sys.stderr)
         return EXIT_RUNTIME_UNAVAILABLE
 
+    print(f"Checking model directory: {model_dir}")
     print(f"OK: model directory {model_dir}")
     print("OK: required model files")
     print("OK: python packages")
@@ -1422,10 +1415,37 @@ def _run_check(args):
     return EXIT_SUCCESS
 
 
+def _report_missing_model_resources(model_dir):
+    missing_files = _missing_model_files(model_dir)
+    if missing_files is None:
+        print(f"ERROR: model directory does not exist: {model_dir}", file=sys.stderr)
+        _print_model_resource_help(model_dir, "model directory does not exist")
+        return EXIT_MISSING_RESOURCE
+    if missing_files:
+        missing = ", ".join(missing_files)
+        print(f"ERROR: missing required model files: {missing}", file=sys.stderr)
+        _print_model_resource_help(model_dir, missing)
+        return EXIT_MISSING_RESOURCE
+    return None
+
+
+def _print_model_resource_help(model_dir, missing_summary):
+    print(f"Model directory: {model_dir}", file=sys.stderr)
+    print(f"Missing resources: {missing_summary}", file=sys.stderr)
+    print("Download with HuggingFace:", file=sys.stderr)
+    print(f'  huggingface-cli download {MODEL_REPO_ID} --local-dir "{model_dir}"', file=sys.stderr)
+    print("Download with ModelScope:", file=sys.stderr)
+    print(f'  modelscope download --model {MODEL_REPO_ID} --local_dir "{model_dir}"', file=sys.stderr)
+    print("Persist a different model resource directory:", file=sys.stderr)
+    print(f"  indextts2 config set model_dir {model_dir}", file=sys.stderr)
+
+
 def _missing_model_files(model_dir):
     if not model_dir.is_dir():
         return None
-    return [filename for filename in REQUIRED_MODEL_FILES if not (model_dir / filename).is_file()]
+    missing_files = [filename for filename in REQUIRED_MODEL_FILES if not (model_dir / filename).is_file()]
+    missing_dirs = [dirname for dirname in REQUIRED_MODEL_DIRS if not (model_dir / dirname).is_dir()]
+    return missing_files + missing_dirs
 
 
 def _import_required_packages():

@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import sys
 import tempfile
 import unittest
 import wave
@@ -14,6 +15,12 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
+    "pinyin.vocab",
+    "feat1.pt",
+    "feat2.pt",
+]
+REQUIRED_MODEL_DIRS = [
+    "qwen0.6bemo4-merge",
 ]
 
 
@@ -22,7 +29,31 @@ def make_model_dir(base_dir):
     model_dir.mkdir()
     for filename in REQUIRED_MODEL_FILES:
         (model_dir / filename).write_text("placeholder", encoding="utf-8")
+    for dirname in REQUIRED_MODEL_DIRS:
+        (model_dir / dirname).mkdir()
     return model_dir
+
+
+def assert_model_resource_help(test_case, stderr, model_dir):
+    test_case.assertIn(f"Model directory: {model_dir}", stderr)
+    test_case.assertIn("Missing resources:", stderr)
+    test_case.assertIn("huggingface-cli download IndexTeam/IndexTTS-2", stderr)
+    test_case.assertIn("modelscope download --model IndexTeam/IndexTTS-2", stderr)
+    test_case.assertIn(f"indextts2 config set model_dir {model_dir}", stderr)
+
+
+def user_state_env(temp_path):
+    if sys.platform == "win32":
+        return {
+            "APPDATA": str(temp_path / "roaming"),
+            "LOCALAPPDATA": str(temp_path / "local"),
+        }
+    if sys.platform == "darwin":
+        return {"HOME": str(temp_path)}
+    return {
+        "XDG_CONFIG_HOME": str(temp_path / "config"),
+        "XDG_DATA_HOME": str(temp_path / "data"),
+    }
 
 
 def write_wav_frames(path, frames, channels=1, sample_width=1, frame_rate=1000):
@@ -52,6 +83,15 @@ class working_directory:
 
 
 class BatchCommandDryRunTests(unittest.TestCase):
+    def setUp(self):
+        self.user_state = tempfile.TemporaryDirectory()
+        self.env_patch = mock.patch.dict(os.environ, user_state_env(Path(self.user_state.name)), clear=False)
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        self.user_state.cleanup()
+
     def run_batch(self, args, tts_factory=None):
         from indextts.cli_v2 import main
 
@@ -977,6 +1017,15 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
 
 class BatchCommandExecutionTests(unittest.TestCase):
+    def setUp(self):
+        self.user_state = tempfile.TemporaryDirectory()
+        self.env_patch = mock.patch.dict(os.environ, user_state_env(Path(self.user_state.name)), clear=False)
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        self.user_state.cleanup()
+
     def run_batch(self, args, tts_factory=None):
         from indextts.cli_v2 import main
 
@@ -2014,6 +2063,37 @@ class BatchCommandExecutionTests(unittest.TestCase):
         self.assertEqual(stdout, "")
         self.assertIn("ERROR: model directory does not exist", stderr)
         self.assertIn(str(missing_model_dir), stderr)
+        assert_model_resource_help(self, stderr, missing_model_dir)
+
+    def test_batch_returns_resource_error_with_download_help_when_model_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            model_dir = temp_path / "models"
+            batch_file = temp_path / "batch.jsonl"
+            voice_path = temp_path / "voice.wav"
+            model_dir.mkdir()
+            (model_dir / "config.yaml").write_text("placeholder", encoding="utf-8")
+            voice_path.write_bytes(b"voice")
+            batch_file.write_text(
+                '{"text": "hello", "voice": "voice.wav", "output": "out.wav"}\n',
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = self.run_batch(
+                [
+                    "batch",
+                    "--batch-file",
+                    str(batch_file),
+                    "--model-dir",
+                    str(model_dir),
+                ]
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("ERROR: missing required model files", stderr)
+        self.assertIn("bpe.model", stderr)
+        assert_model_resource_help(self, stderr, model_dir)
 
     def test_batch_returns_runtime_error_when_indextts2_import_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:

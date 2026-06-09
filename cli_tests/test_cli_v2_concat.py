@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 
 def write_wav(path, channels=1, sample_width=2, frame_rate=24000, frames=8):
@@ -481,6 +482,36 @@ class ConcatCommandDryRunTests(unittest.TestCase):
         self.assertEqual(output_wav["sample_width"], 1)
         self.assertEqual(output_wav["frame_rate"], 1000)
         self.assertEqual(output_wav["frames"], b"\x01\x02\x00\x00\x03\x00")
+
+    def test_concat_execution_does_not_initialize_or_check_model_resources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            audio_path = temp_path / "clip.wav"
+            concat_file = temp_path / "manifest.jsonl"
+            output_path = temp_path / "out.wav"
+            write_wav_frames(audio_path, b"\x04\x05")
+            concat_file.write_text('{"audio": "clip.wav"}\n', encoding="utf-8")
+
+            with mock.patch(
+                "indextts.cli_v2._ensure_user_state",
+                side_effect=AssertionError("concat must not initialize user state"),
+            ), mock.patch(
+                "indextts.cli_v2._missing_model_files",
+                side_effect=AssertionError("concat must not check model resources"),
+            ):
+                exit_code, stdout, stderr = self.run_concat(
+                    [
+                        "concat",
+                        "--concat-file",
+                        str(concat_file),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout, f"Generated: {output_path}\n")
+        self.assertEqual(stderr, "")
 
     def test_concat_force_overwrites_existing_output_during_real_execution(self):
         with tempfile.TemporaryDirectory() as temp_dir:

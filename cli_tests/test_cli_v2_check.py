@@ -1,6 +1,8 @@
 import contextlib
 import importlib
 import io
+import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +16,12 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
+    "pinyin.vocab",
+    "feat1.pt",
+    "feat2.pt",
+]
+REQUIRED_MODEL_DIRS = [
+    "qwen0.6bemo4-merge",
 ]
 
 
@@ -22,7 +30,31 @@ def make_model_dir(base_dir):
     model_dir.mkdir()
     for filename in REQUIRED_MODEL_FILES:
         (model_dir / filename).write_text("placeholder", encoding="utf-8")
+    for dirname in REQUIRED_MODEL_DIRS:
+        (model_dir / dirname).mkdir()
     return model_dir
+
+
+def assert_model_resource_help(test_case, stderr, model_dir):
+    test_case.assertIn(f"Model directory: {model_dir}", stderr)
+    test_case.assertIn("Missing resources:", stderr)
+    test_case.assertIn("huggingface-cli download IndexTeam/IndexTTS-2", stderr)
+    test_case.assertIn("modelscope download --model IndexTeam/IndexTTS-2", stderr)
+    test_case.assertIn(f"indextts2 config set model_dir {model_dir}", stderr)
+
+
+def user_state_env(temp_path):
+    if sys.platform == "win32":
+        return {
+            "APPDATA": str(temp_path / "roaming"),
+            "LOCALAPPDATA": str(temp_path / "local"),
+        }
+    if sys.platform == "darwin":
+        return {"HOME": str(temp_path)}
+    return {
+        "XDG_CONFIG_HOME": str(temp_path / "config"),
+        "XDG_DATA_HOME": str(temp_path / "data"),
+    }
 
 
 def fake_torch(cuda=False, xpu=False, mps=False, cuda_device_count=0, xpu_device_count=0):
@@ -64,6 +96,15 @@ def patched_missing_import(missing_package, torch_module):
 
 
 class CheckCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.user_state = tempfile.TemporaryDirectory()
+        self.env_patch = mock.patch.dict(os.environ, user_state_env(Path(self.user_state.name)), clear=False)
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        self.user_state.cleanup()
+
     def test_pyproject_registers_indextts2_without_replacing_existing_indextts_command(self):
         pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
 
@@ -83,6 +124,7 @@ class CheckCommandTests(unittest.TestCase):
                     exit_code = main(["check", "--model-dir", str(model_dir), "--device", "cuda"])
 
             self.assertEqual(exit_code, 0)
+            self.assertIn(f"Checking model directory: {model_dir}", stdout.getvalue())
             self.assertIn("OK: model directory", stdout.getvalue())
             self.assertIn("OK: required model files", stdout.getvalue())
             self.assertIn("OK: python packages", stdout.getvalue())
@@ -123,6 +165,57 @@ class CheckCommandTests(unittest.TestCase):
             self.assertIn("ERROR: missing required model files", stderr.getvalue())
             self.assertIn("bpe.model", stderr.getvalue())
             self.assertIn("gpt.pth", stderr.getvalue())
+            assert_model_resource_help(self, stderr.getvalue(), model_dir)
+
+    def test_check_requires_the_full_key_model_resource_set(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "checkpoints"
+            model_dir.mkdir()
+            for filename in [
+                "config.yaml",
+                "bpe.model",
+                "gpt.pth",
+                "s2mel.pth",
+                "wav2vec2bert_stats.pt",
+            ]:
+                (model_dir / filename).write_text("placeholder", encoding="utf-8")
+
+            from indextts.cli_v2 import main
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exit_code = main(["check", "--model-dir", str(model_dir)])
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("pinyin.vocab", stderr.getvalue())
+            self.assertIn("feat1.pt", stderr.getvalue())
+            self.assertIn("feat2.pt", stderr.getvalue())
+            self.assertIn("qwen0.6bemo4-merge", stderr.getvalue())
+
+    def test_check_requires_file_resources_and_directory_resources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir) / "checkpoints"
+            model_dir.mkdir()
+            for filename in REQUIRED_MODEL_FILES:
+                if filename == "gpt.pth":
+                    (model_dir / filename).mkdir()
+                else:
+                    (model_dir / filename).write_text("placeholder", encoding="utf-8")
+            (model_dir / "qwen0.6bemo4-merge").write_text("placeholder", encoding="utf-8")
+
+            from indextts.cli_v2 import main
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exit_code = main(["check", "--model-dir", str(model_dir)])
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("gpt.pth", stderr.getvalue())
+            self.assertIn("qwen0.6bemo4-merge", stderr.getvalue())
 
     def test_check_returns_runtime_error_when_required_python_package_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -191,6 +284,15 @@ class CheckCommandTests(unittest.TestCase):
 
 
 class SynthCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.user_state = tempfile.TemporaryDirectory()
+        self.env_patch = mock.patch.dict(os.environ, user_state_env(Path(self.user_state.name)), clear=False)
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        self.user_state.cleanup()
+
     def run_synth(
         self,
         temp_path,
@@ -1018,6 +1120,8 @@ class SynthCommandTests(unittest.TestCase):
             model_dir.mkdir()
             for filename in REQUIRED_MODEL_FILES:
                 (model_dir / filename).write_text("placeholder", encoding="utf-8")
+            for dirname in REQUIRED_MODEL_DIRS:
+                (model_dir / dirname).mkdir()
             voice_path.write_bytes(b"voice")
 
             exit_code, stdout, stderr, calls = self.run_synth(
@@ -1170,6 +1274,7 @@ class SynthCommandTests(unittest.TestCase):
         self.assertEqual(stdout, "")
         self.assertIn("ERROR: missing required model files", stderr)
         self.assertIn("bpe.model", stderr)
+        assert_model_resource_help(self, stderr, model_dir)
         self.assertEqual(calls, [])
 
     def test_synth_returns_runtime_error_when_indextts2_import_fails(self):
