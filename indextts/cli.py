@@ -1,43 +1,90 @@
 import os
 import sys
 import warnings
-# Suppress warnings from tensorflow and other libraries
+
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="IndexTTS Command Line")
-    parser.add_argument("text", type=str, help="Text to be synthesized")
-    parser.add_argument("-v", "--voice", type=str, required=True, help="Path to the audio prompt file (wav format)")
-    parser.add_argument("-o", "--output_path", type=str, default="gen.wav", help="Path to the output wav file")
-    parser.add_argument("-c", "--config", type=str, default="checkpoints/config.yaml", help="Path to the config file. Default is 'checkpoints/config.yaml'")
-    parser.add_argument("--model_dir", type=str, default="checkpoints", help="Path to the model directory. Default is 'checkpoints'")
-    parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
-    parser.add_argument("-f", "--force", action="store_true", default=False, help="Force to overwrite the output file if it exists")
-    parser.add_argument("-d", "--device", type=str, default=None, help="Device to run the model on (cpu, cuda, mps, xpu)." )
-    args = parser.parse_args()
+
+_REQUIRED_MODEL_FILES = (
+    "bpe.model",
+    "gpt.pth",
+    "s2mel.pth",
+    "wav2vec2bert_stats.pt",
+)
+
+_MODEL_REPOS = {
+    "1": "IndexTeam/IndexTTS",
+    "2": "IndexTeam/IndexTTS-2",
+}
+
+
+def _cmd_download(args):
+    """Download all model files (main weights + auxiliary models)."""
+    model_dir = args.model_dir
+    version = args.version
+    repo_id = _MODEL_REPOS[version]
+
+    # 1. Main model weights
+    missing = [f for f in _REQUIRED_MODEL_FILES if not os.path.exists(os.path.join(model_dir, f))]
+    if missing:
+        print(f">> Downloading IndexTTS v{version} model to {model_dir}...")
+        from indextts.utils.model_download import snapshot_download
+        snapshot_download(repo_id, local_dir=model_dir)
+
+        still_missing = [f for f in _REQUIRED_MODEL_FILES if not os.path.exists(os.path.join(model_dir, f))]
+        if still_missing:
+            print(f"ERROR: Still missing after download: {', '.join(still_missing)}")
+            sys.exit(1)
+    else:
+        print(f">> Main model files already present in {model_dir}.")
+
+    # 2. config.yaml
+    from indextts.utils.model_download import ensure_config_available
+    ensure_config_available(model_dir)
+
+    # 3. Auxiliary models (v2 only: w2v-bert, bigvgan, campplus, semantic_codec)
+    if version == "2":
+        from indextts.utils.model_download import ensure_models_available
+        ensure_models_available(model_dir)
+
+    print(f">> IndexTTS v{version} models downloaded successfully.")
+
+
+def _cmd_infer(args):
+    """Run TTS inference."""
     if len(args.text.strip()) == 0:
         print("ERROR: Text is empty.")
-        parser.print_help()
         sys.exit(1)
     if not os.path.exists(args.voice):
         print(f"Audio prompt file {args.voice} does not exist.")
-        parser.print_help()
         sys.exit(1)
-    if not os.path.exists(args.config):
-        print(f"Config file {args.config} does not exist.")
-        parser.print_help()
-        sys.exit(1)
+
+    requested_config = args.config
+    if not os.path.exists(requested_config):
+        from indextts.utils.model_download import ensure_config_available
+        config_dir = os.path.dirname(requested_config) or "."
+        try:
+            ensure_config_available(config_dir)
+        except Exception as e:
+            print(f"Failed to download config.yaml: {e}")
+        downloaded_config = os.path.join(config_dir, "config.yaml")
+        if os.path.exists(requested_config):
+            args.config = requested_config
+        elif os.path.exists(downloaded_config):
+            print(f"Config file {requested_config} does not exist. Using {downloaded_config} instead.")
+            args.config = downloaded_config
+        else:
+            print(f"Config file {requested_config} does not exist.")
+            sys.exit(1)
 
     output_path = args.output_path
     if os.path.exists(output_path):
         if not args.force:
             print(f"ERROR: Output file {output_path} already exists. Use --force to overwrite.")
-            parser.print_help()
             sys.exit(1)
         else:
             os.remove(output_path)
-    
+
     try:
         import torch
     except ImportError:
@@ -53,13 +100,53 @@ def main():
             args.device = "mps"
         else:
             args.device = "cpu"
-            args.fp16 = False # Disable FP16 on CPU
+            args.fp16 = False
             print("WARNING: Running on CPU may be slow.")
 
-    # TODO: Add CLI support for IndexTTS2.
-    from indextts.infer import IndexTTS
-    tts = IndexTTS(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
-    tts.infer(audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
+    version = args.version
+    if version == "1":
+        from indextts.infer import IndexTTS
+        tts = IndexTTS(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
+        tts.infer(audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
+    else:
+        from indextts.infer_v2 import IndexTTS2
+        tts = IndexTTS2(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
+        tts.infer(spk_audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="IndexTTS Command Line")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # -- download subcommand --
+    dl_parser = subparsers.add_parser("download", help="Download model files")
+    dl_parser.add_argument("--model-dir", type=str, default="checkpoints", help="Model directory")
+    dl_parser.add_argument("--version", type=str, choices=["1", "2"], default="2", help="Model version (default: 2)")
+
+    # -- infer subcommand --
+    infer_parser = subparsers.add_parser("infer", help="Run TTS inference")
+    infer_parser.add_argument("text", type=str, help="Text to be synthesized")
+    infer_parser.add_argument("-v", "--voice", type=str, required=True, help="Path to the audio prompt file")
+    infer_parser.add_argument("-o", "--output_path", type=str, default="gen.wav", help="Path to the output wav file")
+    infer_parser.add_argument("-c", "--config", type=str, default="checkpoints/config.yaml", help="Path to the config file")
+    infer_parser.add_argument("--model-dir", type=str, default="checkpoints", help="Path to the model directory")
+    infer_parser.add_argument("--version", type=str, choices=["1", "2"], default="2", help="Model version (default: 2)")
+    infer_parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference")
+    infer_parser.add_argument("-f", "--force", action="store_true", default=False, help="Overwrite output file if exists")
+    infer_parser.add_argument("-d", "--device", type=str, default=None, help="Device (cpu, cuda, mps, xpu)")
+
+    args = parser.parse_args()
+
+    if args.command == "download":
+        _cmd_download(args)
+    elif args.command == "infer":
+        _cmd_infer(args)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -32,7 +32,6 @@ parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max to
 cmd_args = parser.parse_args()
 
 required_files = [
-    "config.yaml",
     "bpe.model",
     "gpt.pth",
     "s2mel.pth",
@@ -55,6 +54,13 @@ if missing:
         print(f"Failed to download model to {cmd_args.model_dir} (still missing: {', '.join(missing)}). Please download it manually.")
         sys.exit(1)
     print("Model downloaded successfully.")
+
+from indextts.utils.model_download import ensure_config_available
+try:
+    ensure_config_available(cmd_args.model_dir)
+except Exception as e:
+    print(f"Failed to download config.yaml: {e}")
+    sys.exit(1)
 
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2

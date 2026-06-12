@@ -33,3 +33,6 @@ desktop.ini
 # Example audio files (downloaded on demand, not stored in git)
 /examples/*.wav
 /tests/sample_prompt.wav
+
+.claude
+.memsearch

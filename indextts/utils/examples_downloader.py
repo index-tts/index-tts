@@ -4,7 +4,7 @@ Spaces or ModelScope Studio, depending on the detected network environment.
 
 The example files are hosted at:
 - HuggingFace: https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo
-- ModelScope: https://modelscope.cn/studios/IndexTeam/IndexTTS-2-Demo
+- ModelScope: https://modelscope.cn/studio/IndexTeam/IndexTTS-2-Demo
 
 File names are determined from ``examples/cases.jsonl``.
 """
