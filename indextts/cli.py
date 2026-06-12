@@ -12,24 +12,18 @@ _REQUIRED_MODEL_FILES = (
     "wav2vec2bert_stats.pt",
 )
 
-_MODEL_REPOS = {
-    "1": "IndexTeam/IndexTTS",
-    "2": "IndexTeam/IndexTTS-2",
-}
+_MODEL_REPO = "IndexTeam/IndexTTS"
 
 
 def _cmd_download(args):
-    """Download all model files (main weights + auxiliary models)."""
+    """Download IndexTTS v1 model files."""
     model_dir = args.model_dir
-    version = args.version
-    repo_id = _MODEL_REPOS[version]
 
-    # 1. Main model weights
     missing = [f for f in _REQUIRED_MODEL_FILES if not os.path.exists(os.path.join(model_dir, f))]
     if missing:
-        print(f">> Downloading IndexTTS v{version} model to {model_dir}...")
+        print(f">> Downloading IndexTTS model to {model_dir}...")
         from indextts.utils.model_download import snapshot_download
-        snapshot_download(repo_id, local_dir=model_dir)
+        snapshot_download(_MODEL_REPO, local_dir=model_dir)
 
         still_missing = [f for f in _REQUIRED_MODEL_FILES if not os.path.exists(os.path.join(model_dir, f))]
         if still_missing:
@@ -38,16 +32,10 @@ def _cmd_download(args):
     else:
         print(f">> Main model files already present in {model_dir}.")
 
-    # 2. config.yaml
     from indextts.utils.model_download import ensure_config_available
     ensure_config_available(model_dir)
 
-    # 3. Auxiliary models (v2 only: w2v-bert, bigvgan, campplus, semantic_codec)
-    if version == "2":
-        from indextts.utils.model_download import ensure_models_available
-        ensure_models_available(model_dir)
-
-    print(f">> IndexTTS v{version} models downloaded successfully.")
+    print(f">> IndexTTS models downloaded successfully.")
 
 
 def _cmd_infer(args):
@@ -103,15 +91,9 @@ def _cmd_infer(args):
             args.fp16 = False
             print("WARNING: Running on CPU may be slow.")
 
-    version = args.version
-    if version == "1":
-        from indextts.infer import IndexTTS
-        tts = IndexTTS(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
-        tts.infer(audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
-    else:
-        from indextts.infer_v2 import IndexTTS2
-        tts = IndexTTS2(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
-        tts.infer(spk_audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
+    from indextts.infer import IndexTTS
+    tts = IndexTTS(cfg_path=args.config, model_dir=args.model_dir, use_fp16=args.fp16, device=args.device)
+    tts.infer(audio_prompt=args.voice, text=args.text.strip(), output_path=output_path)
 
 
 def main():
@@ -123,7 +105,6 @@ def main():
     # -- download subcommand --
     dl_parser = subparsers.add_parser("download", help="Download model files")
     dl_parser.add_argument("--model-dir", type=str, default="checkpoints", help="Model directory")
-    dl_parser.add_argument("--version", type=str, choices=["1", "2"], default="2", help="Model version (default: 2)")
 
     # -- infer subcommand --
     infer_parser = subparsers.add_parser("infer", help="Run TTS inference")
@@ -132,7 +113,6 @@ def main():
     infer_parser.add_argument("-o", "--output_path", type=str, default="gen.wav", help="Path to the output wav file")
     infer_parser.add_argument("-c", "--config", type=str, default="checkpoints/config.yaml", help="Path to the config file")
     infer_parser.add_argument("--model-dir", type=str, default="checkpoints", help="Path to the model directory")
-    infer_parser.add_argument("--version", type=str, choices=["1", "2"], default="2", help="Model version (default: 2)")
     infer_parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference")
     infer_parser.add_argument("-f", "--force", action="store_true", default=False, help="Overwrite output file if exists")
     infer_parser.add_argument("-d", "--device", type=str, default=None, help="Device (cpu, cuda, mps, xpu)")
