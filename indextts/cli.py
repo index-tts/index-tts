@@ -25,9 +25,21 @@ def main():
         parser.print_help()
         sys.exit(1)
     if not os.path.exists(args.config):
-        print(f"Config file {args.config} does not exist.")
-        parser.print_help()
-        sys.exit(1)
+        from indextts.utils.model_download import ensure_config_available
+        config_dir = os.path.dirname(args.config) or "."
+        try:
+            ensure_config_available(config_dir)
+        except Exception as e:
+            print(f"Failed to download config.yaml: {e}")
+        downloaded_config = os.path.join(config_dir, "config.yaml")
+        if not os.path.exists(args.config):
+            if os.path.exists(downloaded_config):
+                print(f"Config file {args.config} does not exist. Using {downloaded_config} instead.")
+                args.config = downloaded_config
+            else:
+                print(f"Config file {args.config} does not exist.")
+                parser.print_help()
+                sys.exit(1)
 
     output_path = args.output_path
     if os.path.exists(output_path):
