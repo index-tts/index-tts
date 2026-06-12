@@ -1,6 +1,8 @@
+import os
 import torch
 import torchaudio
 from indextts.infer import IndexTTS
+from indextts.utils.examples_downloader import ensure_test_sample_available
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 from torch.nn import functional as F
 
@@ -20,8 +22,16 @@ if __name__ == "__main__":
         model_dir = sys.argv[1]
     else:
         model_dir = "checkpoints"
-    audio_prompt="tests/sample_prompt.wav"
-    tts = IndexTTS(cfg_path=f"{model_dir}/config.yaml", model_dir=model_dir, use_fp16=False, use_cuda_kernel=False)
+
+    cfg_path = f"{model_dir}/config.yaml"
+    if not os.path.exists(cfg_path):
+        raise SystemExit(
+            f"Model config not found: {cfg_path}. "
+            "Please download the model first (e.g. run webui.py or see README)."
+        )
+
+    audio_prompt = ensure_test_sample_available()
+    tts = IndexTTS(cfg_path=cfg_path, model_dir=model_dir, use_fp16=False, use_cuda_kernel=False)
     text = "晕 XUAN4 是 一 种 not very good GAN3 觉"
     text_tokens = tts.tokenizer.encode(text)
     text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=tts.device).unsqueeze(0) # [1, L]

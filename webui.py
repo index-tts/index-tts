@@ -31,28 +31,42 @@ parser.add_argument("--cuda_kernel", action="store_true", default=False, help="U
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
-if not os.path.exists(cmd_args.model_dir):
-    print(f"Model directory {cmd_args.model_dir} does not exist. Please download the model first.")
-    sys.exit(1)
-
-for file in [
+required_files = [
+    "config.yaml",
     "bpe.model",
     "gpt.pth",
-    "config.yaml",
     "s2mel.pth",
-    "wav2vec2bert_stats.pt"
-]:
-    file_path = os.path.join(cmd_args.model_dir, file)
-    if not os.path.exists(file_path):
-        print(f"Required file {file_path} does not exist. Please download it.")
+    "wav2vec2bert_stats.pt",
+]
+missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
+if missing:
+    print(
+        f"Model directory {cmd_args.model_dir} is incomplete (missing: {', '.join(missing)}). "
+        "Downloading IndexTTS-2 model..."
+    )
+    from indextts.utils.model_download import snapshot_download
+    try:
+        snapshot_download("IndexTeam/IndexTTS-2", local_dir=cmd_args.model_dir)
+    except Exception as e:
+        print(f"Failed to download model to {cmd_args.model_dir}: {e}")
         sys.exit(1)
+    missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
+    if missing:
+        print(f"Failed to download model to {cmd_args.model_dir} (still missing: {', '.join(missing)}). Please download it manually.")
+        sys.exit(1)
+    print("Model downloaded successfully.")
 
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2
+from indextts.utils.examples_downloader import ensure_examples_available
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
+
+# Download example audio files if missing
+ensure_examples_available()
+
 tts = IndexTTS2(model_dir=cmd_args.model_dir,
                 cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
                 use_fp16=cmd_args.fp16,
