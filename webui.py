@@ -31,12 +31,28 @@ parser.add_argument("--cuda_kernel", action="store_true", default=False, help="U
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
 cmd_args = parser.parse_args()
 
-if not os.path.exists(cmd_args.model_dir) or not os.path.exists(os.path.join(cmd_args.model_dir, "config.yaml")):
-    print(f"Model directory {cmd_args.model_dir} is incomplete. Downloading IndexTTS-2 model...")
+required_files = [
+    "config.yaml",
+    "bpe.model",
+    "gpt.pth",
+    "s2mel.pth",
+    "wav2vec2bert_stats.pt",
+]
+missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
+if missing:
+    print(
+        f"Model directory {cmd_args.model_dir} is incomplete (missing: {', '.join(missing)}). "
+        "Downloading IndexTTS-2 model..."
+    )
     from indextts.utils.model_download import snapshot_download
-    snapshot_download("IndexTeam/IndexTTS-2", local_dir=cmd_args.model_dir)
-    if not os.path.exists(os.path.join(cmd_args.model_dir, "config.yaml")):
-        print(f"Failed to download model to {cmd_args.model_dir}. Please download it manually.")
+    try:
+        snapshot_download("IndexTeam/IndexTTS-2", local_dir=cmd_args.model_dir)
+    except Exception as e:
+        print(f"Failed to download model to {cmd_args.model_dir}: {e}")
+        sys.exit(1)
+    missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
+    if missing:
+        print(f"Failed to download model to {cmd_args.model_dir} (still missing: {', '.join(missing)}). Please download it manually.")
         sys.exit(1)
     print("Model downloaded successfully.")
 
