@@ -23,8 +23,11 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Syntax check
-        run: python -m compileall -q indextts webui.py
+        run: uv run --no-project python -m compileall -q indextts webui.py
 
       - name: Unit tests
-        run: python -m unittest discover -s tests -p "test_*.py"
+        run: uv run --no-project python -m unittest discover -s tests -p "test_*.py"

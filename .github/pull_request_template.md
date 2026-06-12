@@ -26,5 +26,5 @@
 
 <!-- List commands run, or explain why validation is not needed. -->
 
-- [ ] `python -m compileall -q indextts webui.py`
-- [ ] `python -m unittest discover -s tests -p "test_*.py"`
+- [ ] `uv run --no-project python -m compileall -q indextts webui.py`
+- [ ] `uv run --no-project python -m unittest discover -s tests -p "test_*.py"`
