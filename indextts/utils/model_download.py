@@ -65,6 +65,7 @@ def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
 
 def ensure_config_available(model_dir: str) -> None:
     """Download only ``config.yaml`` if it is missing from *model_dir*."""
+    model_dir = model_dir or "."
     config_path = os.path.join(model_dir, "config.yaml")
     if os.path.isfile(config_path):
         return
