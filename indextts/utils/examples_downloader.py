@@ -136,11 +136,11 @@ def download_test_sample(force: bool = False) -> str:
     if os.path.exists(local_path) and not force:
         return local_path
 
-    base_url = _MS_RAW_URL if need_proxy() else _HF_RAW_URL
-    url = f"{base_url}/examples/voice_01.wav"
+base_url = _MS_RAW_URL if need_proxy() else _HF_RAW_URL
+url = f"{base_url}/examples/voice_01.wav"
 
-    _download_file(url, local_path)
-    return local_path
+_download_file(url, local_path, min_size=100)
+return local_path
 
 # Alias for backward compatibility (used by tests)
 ensure_test_sample_available = download_test_sample
