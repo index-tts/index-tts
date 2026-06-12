@@ -33,6 +33,7 @@ def main():
         except Exception as e:
             print(f"Failed to download config.yaml: {e}")
         downloaded_config = os.path.join(config_dir, "config.yaml")
+        # ensure_config_available() may create the requested path when it is config.yaml.
         if os.path.exists(requested_config):
             args.config = requested_config
         elif os.path.exists(downloaded_config):
