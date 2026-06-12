@@ -41,6 +41,11 @@ def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
             tmp = model_file_download(model_id=ms_model_id, file_path=filename)
             shutil.copy2(tmp, local_path)
             return local_path
+        except Exception as e:
+            logger.warning(
+                f"ModelScope download failed for {ms_model_id}/{filename}: {e}. Falling back to hf-mirror.",
+                exc_info=True,
+            )
         except Exception:
             pass
         # Fallback to hf-mirror.com
