@@ -1,10 +1,10 @@
 """
 Example file downloader that fetches example audio files from HuggingFace
-Spaces or ModelScope Studio, depending on the detected network environment.
+Spaces, using hf-mirror.com as a mirror for users in mainland China.
 
 The example files are hosted at:
 - HuggingFace: https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo
-- ModelScope: https://modelscope.cn/studios/IndexTeam/IndexTTS-2-Demo
+- HuggingFace Mirror (CN): https://hf-mirror.com/spaces/IndexTeam/IndexTTS-2-Demo
 
 File names are determined from ``examples/cases.jsonl``.
 """
@@ -26,7 +26,7 @@ _TESTS_DIR = os.path.join(_PROJECT_ROOT, "tests")
 
 # Remote repository configuration
 _HF_RAW_URL = "https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo/resolve/main"
-_MS_RAW_URL = "https://modelscope.cn/studios/IndexTeam/IndexTTS-2-Demo/resolve/master"
+_MS_RAW_URL = "https://hf-mirror.com/spaces/IndexTeam/IndexTTS-2-Demo/resolve/main"
 # Additional files not listed in cases.jsonl but needed by the code
 _EXTRA_FILES = [
     "voice_01.wav",  # used in infer.py and infer_v2.py __main__ blocks

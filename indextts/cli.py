@@ -25,9 +25,13 @@ def main():
         parser.print_help()
         sys.exit(1)
     if not os.path.exists(args.config):
-        print(f"Config file {args.config} does not exist.")
-        parser.print_help()
-        sys.exit(1)
+        try:
+            from indextts.utils.model_download import ensure_config_available
+            ensure_config_available(os.path.dirname(args.config))
+        except Exception as e:
+            print(f"Config file {args.config} does not exist and could not be downloaded: {e}")
+            parser.print_help()
+            sys.exit(1)
 
     output_path = args.output_path
     if os.path.exists(output_path):
