@@ -26,8 +26,5 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Syntax check
-        run: uv run --no-project python -m compileall -q indextts webui.py
-
-      - name: Unit tests
-        run: uv run --no-project python -m unittest discover -s tests -p "test_*.py"
+      - name: Run tests (no GPU)
+        run: uv run --extra test pytest -m "not gpu" -v

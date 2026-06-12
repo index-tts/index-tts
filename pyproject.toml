@@ -71,6 +71,15 @@ webui = [
 deepspeed = [
   "deepspeed==0.17.1",
 ]
+test = [
+  "pytest>=7.0",
+  "requests>=2.28",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "gpu: tests that require GPU and model checkpoints (deselect with '-m not gpu')",
+]
 
 [project.urls]
 Homepage = "https://github.com/index-tts/index-tts"

@@ -1,30 +1,30 @@
-## Summary
+## Description
 
-<!-- What changed and why? -->
+<!-- Briefly describe what this PR does and why. -->
 
-## Risk area
+## Type of change
 
-<!-- Check all that apply. -->
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Breaking change (fix or feature that changes existing behaviour)
+- [ ] Documentation / comments only
+- [ ] Build / CI / dependency change
+- [ ] Refactor (no behaviour change)
 
-- [ ] Model files / checkpoints
-- [ ] Download URLs or mirrors
-- [ ] HuggingFace / ModelScope cache layout
-- [ ] Example audio files
-- [ ] Inference behavior
-- [ ] Dependencies / packaging
-- [ ] Docs only
+## How has this been tested?
 
-## Regression checklist
+<!-- List test files and the command used. -->
 
-- [ ] Pulling this change will not delete user-downloaded model files.
-- [ ] Missing small files, such as `config.yaml`, do not trigger a full model re-download.
-- [ ] Existing auxiliary models in `checkpoints/hf_cache` can still be reused.
-- [ ] Existing auxiliary models in `~/.cache/huggingface/hub` can still be reused.
-- [ ] Download fallback paths are intentional and do not silently hide invalid URLs.
+```bash
+uv run pytest -m "not gpu"
+```
 
-## Validation
+## Checklist
 
-<!-- List commands run, or explain why validation is not needed. -->
+- [ ] Tests pass locally: `uv run pytest -m "not gpu"` (no GPU) or `uv run pytest tests/test_v2.py` (with GPU)
+- [ ] I have added or updated tests to cover my changes (where applicable).
+- [ ] I have added or updated docstrings for any changed public functions.
 
-- [ ] `uv run --no-project python -m compileall -q indextts webui.py`
-- [ ] `uv run --no-project python -m unittest discover -s tests -p "test_*.py"`
+## Screenshots / output (if relevant)
+
+<!-- Paste terminal output or screenshots here. -->
