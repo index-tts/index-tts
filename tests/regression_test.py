@@ -1,9 +1,17 @@
+import os
 from indextts.infer import IndexTTS
 from indextts.utils.examples_downloader import ensure_test_sample_available
 
 if __name__ == "__main__":
+    model_dir = "checkpoints"
+    cfg_path = f"{model_dir}/config.yaml"
+    if not os.path.exists(cfg_path):
+        raise SystemExit(
+            f"Model config not found: {cfg_path}. "
+            "Please download the model first (e.g. run webui.py or see README)."
+        )
     prompt_wav = ensure_test_sample_available()
-    tts = IndexTTS(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=True, use_cuda_kernel=False)
+    tts = IndexTTS(cfg_path=cfg_path, model_dir=model_dir, use_fp16=True, use_cuda_kernel=False)
     # 单音频推理测试
     text="晕 XUAN4 是 一 种 GAN3 觉"
     tts.infer(audio_prompt=prompt_wav, text=text, output_path=f"outputs/{text[:20]}.wav", verbose=True)
