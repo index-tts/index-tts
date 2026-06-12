@@ -26,7 +26,7 @@ _TESTS_DIR = os.path.join(_PROJECT_ROOT, "tests")
 
 # Remote repository configuration
 _HF_RAW_URL = "https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo/resolve/main"
-_MS_RAW_URL = "https://modelscope.cn/studios/IndexTeam/IndexTTS-2-Demo/resolve/master"
+_MS_RAW_URL = "https://modelscope.cn/studio/IndexTeam/IndexTTS-2-Demo/resolve/master"
 # Additional files not listed in cases.jsonl but needed by the code
 _EXTRA_FILES = [
     "voice_01.wav",  # used in infer.py and infer_v2.py __main__ blocks
