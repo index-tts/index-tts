@@ -94,6 +94,27 @@ class ModelDownloadCacheMigrationTest(unittest.TestCase):
             self.assertEqual(calls[0][1], "config.yaml")
             self.assertTrue(os.path.isfile(os.path.join(model_dir, "config.yaml")))
 
+    def test_empty_model_dir_downloads_config_to_current_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls = []
+
+            def fake_download(repo_id, filename, local_path):
+                calls.append((repo_id, filename, local_path))
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                with open(local_path, "w") as f:
+                    f.write("config")
+
+            with mock.patch.object(model_download, "_download_single_file", fake_download):
+                previous_cwd = os.getcwd()
+                try:
+                    os.chdir(tmp)
+                    model_download.ensure_config_available("")
+                finally:
+                    os.chdir(previous_cwd)
+
+            self.assertEqual(calls, [("IndexTeam/IndexTTS-2", "config.yaml", os.path.join(".", "config.yaml"))])
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "config.yaml")))
+
 
 if __name__ == "__main__":
     unittest.main()
