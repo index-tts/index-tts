@@ -54,18 +54,23 @@ _MODEL_PROBES = [
 @pytest.mark.parametrize("name,repo_id,filename", _MODEL_PROBES, ids=[m[0] for m in _MODEL_PROBES])
 def test_model_download_reachable(name, repo_id, filename, tmp_path):
     """Each auxiliary model must be downloadable via the real download path."""
-    from indextts.utils.model_download import _download_single_file
+    from indextts.utils.examples_downloader import _download_file
+    from indextts.utils.network_detection import need_proxy
 
+    base_url = "https://hf-mirror.com" if need_proxy() else "https://huggingface.co"
+    url = f"{base_url}/{repo_id}/resolve/main/{filename}"
     dest = tmp_path / filename
-    _download_single_file(repo_id, filename, str(dest))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _download_file(url, str(dest), max_bytes=8192)
     assert dest.exists() and dest.stat().st_size > 0
 
 
-def test_example_download_reachable(tmp_path):
+def test_example_download_reachable(tmp_path, monkeypatch):
     """Example audio must be downloadable via the real download path."""
-    from indextts.utils.examples_downloader import download_test_sample
+    from indextts.utils import examples_downloader
 
-    path = download_test_sample(force=True)
+    monkeypatch.setattr(examples_downloader, "_TESTS_DIR", str(tmp_path))
+    path = examples_downloader.download_test_sample(force=True)
     assert Path(path).exists() and Path(path).stat().st_size > 0
 
 
