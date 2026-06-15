@@ -37,39 +37,52 @@ _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": "IndexTTS/2.0"})
 
 
-def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int = 0) -> None:
+def _download_file(
+    url: str,
+    local_path: str,
+    timeout: int = 60,
+    min_size: int = 0,
+    max_bytes: int = 0,
+) -> None:
     """
     Download a file from a URL to a local path with validation.
 
     Raises RuntimeError if the server returns an error or non-binary content.
+    When *max_bytes* > 0 the download stops after that many bytes (useful for
+    reachability checks that don't need the full file).
     """
     resp = _SESSION.get(url, timeout=timeout, stream=True)
-    if resp.status_code < 200 or resp.status_code >= 300:
-        raise RuntimeError(f"Server returned HTTP {resp.status_code} for {url}")
-    content_type = resp.headers.get("Content-Type", "")
-    if "text/html" in content_type:
-        resp.close()
-        raise RuntimeError(
-            f"Server returned HTML instead of binary file for {url} "
-            f"(Content-Type: {content_type}). The URL may be invalid."
-        )
-
-    # Write to a temp file first, then rename atomically
-    tmp_path = local_path + ".tmp"
     try:
-        with open(tmp_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-        if min_size and os.path.getsize(tmp_path) < min_size:
+        if resp.status_code < 200 or resp.status_code >= 300:
+            raise RuntimeError(f"Server returned HTTP {resp.status_code} for {url}")
+        content_type = resp.headers.get("Content-Type", "")
+        if "text/html" in content_type:
             raise RuntimeError(
-                f"Downloaded file is suspiciously small "
-                f"({os.path.getsize(tmp_path)} bytes) for {url}"
+                f"Server returned HTML instead of binary file for {url} "
+                f"(Content-Type: {content_type}). The URL may be invalid."
             )
-        os.replace(tmp_path, local_path)
+
+        # Write to a temp file first, then rename atomically
+        tmp_path = local_path + ".tmp"
+        try:
+            with open(tmp_path, "wb") as f:
+                received = 0
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    received += len(chunk)
+                    if max_bytes and received >= max_bytes:
+                        break
+            if min_size and os.path.getsize(tmp_path) < min_size:
+                raise RuntimeError(
+                    f"Downloaded file is suspiciously small "
+                    f"({os.path.getsize(tmp_path)} bytes) for {url}"
+                )
+            os.replace(tmp_path, local_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
     finally:
         resp.close()
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
 
 def get_required_files() -> List[str]:

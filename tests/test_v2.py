@@ -80,7 +80,7 @@ def test_model_url_reachable(name, urls, tmp_path):
         dest = tmp_path / "out"
         dest.unlink(missing_ok=True)
         try:
-            _download_file(url, str(dest), timeout=30)
+            _download_file(url, str(dest), timeout=30, max_bytes=8192)
             if dest.exists() and dest.stat().st_size > 0:
                 return
         except Exception as e:
