@@ -76,7 +76,7 @@ python -m indextts.cli_v2 --help
 indextts2 init
 ```
 
-指定模型资源目录并写入持久化配置:
+指定模型资源目录并写入持久化配置（请将 `D:/models/IndexTTS-2` 替换为你的目标模型目录）:
 
 ```bash
 indextts2 init --model-dir D:/models/IndexTTS-2
@@ -86,7 +86,7 @@ indextts2 init --model-dir D:/models/IndexTTS-2
 
 ## 模型资源目录
 
-CLI v2 使用“模型资源目录”保存 IndexTTS2 的模型文件和配套资源。普通用户默认值不是仓库根目录下的 `checkpoints`, 而是平台标准用户数据目录。
+CLI v2 使用“模型资源目录”保存 IndexTTS2 的模型文件和配套资源。
 
 平台默认模型资源目录:
 
@@ -125,13 +125,15 @@ bpe.model
 gpt.pth
 s2mel.pth
 wav2vec2bert_stats.pt
-pinyin.vocab
 feat1.pt
 feat2.pt
 qwen0.6bemo4-merge
+hf_cache/w2v-bert-2.0
+hf_cache/semantic_codec_model.safetensors
+hf_cache/campplus_cn_common.bin
+hf_cache/bigvgan/config.json
+hf_cache/bigvgan/bigvgan_generator.pt
 ```
-
-当前 CLI v2 不提供独立 `--config` 参数, 以避免配置文件和模型资源目录不一致。
 
 ## 配置管理
 
