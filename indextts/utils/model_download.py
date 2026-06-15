@@ -9,7 +9,6 @@ via ``ensure_models_available()``, so no downloads happen during inference.
 import logging
 import os
 import shutil
-import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -250,29 +249,6 @@ def _snapshot_from_modelscope(model_id: str, local_dir: str, revision=None) -> s
     from modelscope.hub.snapshot_download import snapshot_download as _ms_snapshot
     logger.info(f"Downloading repo from ModelScope: {ms_model_id}")
 
-    # Check if files exist in a subdirectory from a previous download
-    existing_subdir = os.path.join(local_dir, ms_model_id)
-    if os.path.isdir(existing_subdir) and os.listdir(existing_subdir):
-        for item in os.listdir(existing_subdir):
-            src = os.path.join(existing_subdir, item)
-            dst = os.path.join(local_dir, item)
-            if not os.path.exists(dst):
-                shutil.move(src, dst)
-        shutil.rmtree(existing_subdir, ignore_errors=True)
-        return local_dir
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        _ms_snapshot(model_id=ms_model_id, cache_dir=tmpdir, revision=revision)
-        downloaded = os.path.join(tmpdir, ms_model_id)
-        if not os.path.isdir(downloaded):
-            for root, dirs, files in os.walk(tmpdir):
-                if files and root != tmpdir:
-                    downloaded = root
-                    break
-        os.makedirs(local_dir, exist_ok=True)
-        for item in os.listdir(downloaded):
-            src = os.path.join(downloaded, item)
-            dst = os.path.join(local_dir, item)
-            if not os.path.exists(dst):
-                shutil.move(src, dst)
+    os.makedirs(local_dir, exist_ok=True)
+    _ms_snapshot(model_id=ms_model_id, local_dir=local_dir, revision=revision)
     return local_dir
