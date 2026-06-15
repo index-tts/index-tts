@@ -8,6 +8,8 @@ CI only (no GPU):
     uv run --extra test pytest tests/test_v2.py -v -m "not gpu"
 """
 import importlib
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -119,6 +121,42 @@ def test_legacy_cache_compatibility(tmp_path, monkeypatch):
 
     # No download triggered
     assert len(download_calls) == 0, f"Unexpected downloads: {download_calls}"
+
+
+def test_modelscope_single_file_download_matches_local_path(tmp_path, monkeypatch):
+    """ModelScope single-file download must produce the exact requested local_path."""
+    from indextts.utils import model_download
+
+    local_path = tmp_path / "hf_cache" / "semantic_codec_model.safetensors"
+    expected_bytes = b"fake_semantic"
+
+    def fake_model_file_download(model_id, file_path, local_dir):
+        downloaded = Path(local_dir) / file_path
+        downloaded.parent.mkdir(parents=True, exist_ok=True)
+        downloaded.write_bytes(expected_bytes)
+        return str(downloaded)
+
+    fake_modelscope = types.ModuleType("modelscope")
+    fake_hub = types.ModuleType("modelscope.hub")
+    fake_file_download = types.ModuleType("modelscope.hub.file_download")
+    fake_file_download.model_file_download = fake_model_file_download
+    fake_hub.file_download = fake_file_download
+    fake_modelscope.hub = fake_hub
+
+    monkeypatch.setitem(sys.modules, "modelscope", fake_modelscope)
+    monkeypatch.setitem(sys.modules, "modelscope.hub", fake_hub)
+    monkeypatch.setitem(sys.modules, "modelscope.hub.file_download", fake_file_download)
+    monkeypatch.setattr(model_download, "_get_using_modelscope", lambda: True)
+
+    got = model_download._download_single_file(
+        repo_id="amphion/MaskGCT",
+        filename="semantic_codec/model.safetensors",
+        local_path=str(local_path),
+    )
+
+    assert got == str(local_path)
+    assert local_path.exists()
+    assert local_path.read_bytes() == expected_bytes
 
 
 # -- Inference (GPU required) --------------------------------------------------

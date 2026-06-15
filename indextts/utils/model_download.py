@@ -46,12 +46,10 @@ def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
             downloaded_path = model_file_download(
                 model_id=ms_model_id, file_path=filename, local_dir=local_dir,
             )
-            if downloaded_path and os.path.abspath(downloaded_path) != os.path.abspath(local_path):
+            if not downloaded_path or not os.path.isfile(downloaded_path):
+                downloaded_path = os.path.join(local_dir, filename)
+            if os.path.abspath(downloaded_path) != os.path.abspath(local_path):
                 shutil.copy2(downloaded_path, local_path)
-            elif not os.path.isfile(local_path):
-                fallback_path = os.path.join(local_dir, filename)
-                if os.path.isfile(fallback_path):
-                    shutil.copy2(fallback_path, local_path)
             if not os.path.isfile(local_path):
                 raise RuntimeError(f"Downloaded file not found at expected path: {local_path}")
             return local_path
