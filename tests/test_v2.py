@@ -41,51 +41,32 @@ def prompt_wav():
 
 # -- Download URL checks (no GPU) ---------------------------------------------
 
-# Each auxiliary model: (id, [urls to try]). Pass if any one URL works.
-_MODEL_URLS = [
-    ("bigvgan", [
-        "https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json",
-        "https://modelscope.cn/models/nvidia/bigvgan_v2_22khz_80band_256x/resolve/master/config.json",
-        "https://hf-mirror.com/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json",
-    ]),
-    ("w2v-bert-2.0", [
-        "https://huggingface.co/facebook/w2v-bert-2.0/resolve/main/config.json",
-        "https://modelscope.cn/models/AI-ModelScope/w2v-bert-2.0/resolve/master/config.json",
-        "https://hf-mirror.com/facebook/w2v-bert-2.0/resolve/main/config.json",
-    ]),
-    ("campplus", [
-        "https://huggingface.co/funasr/campplus/resolve/main/campplus_cn_common.bin",
-        "https://modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common/resolve/master/campplus_cn_common.bin",
-        "https://hf-mirror.com/funasr/campplus/resolve/main/campplus_cn_common.bin",
-    ]),
-    ("MaskGCT-semantic-codec", [
-        "https://huggingface.co/amphion/MaskGCT/resolve/main/README.md",
-        "https://modelscope.cn/models/amphion/MaskGCT/resolve/master/README.md",
-        "https://hf-mirror.com/amphion/MaskGCT/resolve/main/README.md",
-    ]),
-    ("examples-voice", [
-        "https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo/resolve/main/examples/voice_01.wav",
-        "https://modelscope.cn/studio/IndexTeam/IndexTTS-2-Demo/resolve/master/examples/voice_01.wav",
-    ]),
+# Each auxiliary model: (test_id, repo_id, probe_file)
+# probe_file: a small file in the repo to verify download works end-to-end.
+_MODEL_PROBES = [
+    ("bigvgan", "nvidia/bigvgan_v2_22khz_80band_256x", "config.json"),
+    ("w2v-bert-2.0", "facebook/w2v-bert-2.0", "config.json"),
+    ("campplus", "funasr/campplus", "campplus_cn_common.bin"),
+    ("MaskGCT", "amphion/MaskGCT", "README.md"),
 ]
 
 
-@pytest.mark.parametrize("name,urls", _MODEL_URLS, ids=[m[0] for m in _MODEL_URLS])
-def test_model_url_reachable(name, urls, tmp_path):
-    """Each auxiliary model must be downloadable from at least one source."""
-    from indextts.utils.examples_downloader import _download_file
+@pytest.mark.parametrize("name,repo_id,filename", _MODEL_PROBES, ids=[m[0] for m in _MODEL_PROBES])
+def test_model_download_reachable(name, repo_id, filename, tmp_path):
+    """Each auxiliary model must be downloadable via the real download path."""
+    from indextts.utils.model_download import _download_single_file
 
-    errors = []
-    for url in urls:
-        dest = tmp_path / "out"
-        dest.unlink(missing_ok=True)
-        try:
-            _download_file(url, str(dest), timeout=30, max_bytes=8192)
-            if dest.exists() and dest.stat().st_size > 0:
-                return
-        except Exception as e:
-            errors.append(f"{url}: {e}")
-    pytest.fail("All sources failed:\n" + "\n".join(errors))
+    dest = tmp_path / filename
+    _download_single_file(repo_id, filename, str(dest))
+    assert dest.exists() and dest.stat().st_size > 0
+
+
+def test_example_download_reachable(tmp_path):
+    """Example audio must be downloadable via the real download path."""
+    from indextts.utils.examples_downloader import download_test_sample
+
+    path = download_test_sample(force=True)
+    assert Path(path).exists() and Path(path).stat().st_size > 0
 
 
 # -- Model download logic (no GPU) --------------------------------------------

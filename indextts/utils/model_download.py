@@ -36,30 +36,34 @@ _BIGVGAN_REPO = "nvidia/bigvgan_v2_22khz_80band_256x"
 
 def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
     """Download a single file from a HF/ModelScope repo to a specific local path."""
-    from indextts.utils.examples_downloader import _download_file
-
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    local_dir = os.path.dirname(local_path)
+    os.makedirs(local_dir, exist_ok=True)
 
     if _get_using_modelscope():
         ms_model_id = HF_TO_MODELSCOPE_REPO_MAP.get(repo_id, repo_id)
-        # Try ModelScope file_download first
+        # Try ModelScope SDK first
         try:
             from modelscope.hub.file_download import model_file_download
-            tmp = model_file_download(model_id=ms_model_id, file_path=filename)
-            shutil.copy2(tmp, local_path)
+            model_file_download(
+                model_id=ms_model_id, file_path=filename, local_dir=local_dir,
+            )
             return local_path
         except Exception as e:
             logger.warning(
                 f"ModelScope download failed for {ms_model_id}/{filename}: {e}. Falling back to hf-mirror.",
                 exc_info=True,
             )
-        # Fallback to hf-mirror.com
+        # Fallback to hf-mirror.com (only path that needs manual download)
+        from indextts.utils.examples_downloader import _download_file
         url = f"https://hf-mirror.com/{repo_id}/resolve/main/{filename}"
+        logger.info(f"Downloading {repo_id}/{filename} from hf-mirror -> {local_path}")
+        _download_file(url, local_path, timeout=300)
     else:
-        url = f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+        # Use HuggingFace Hub SDK
+        from huggingface_hub import hf_hub_download
+        logger.info(f"Downloading {repo_id}/{filename} -> {local_path}")
+        hf_hub_download(repo_id=repo_id, filename=filename, local_dir=local_dir)
 
-    logger.info(f"Downloading {repo_id}/{filename} -> {local_path}")
-    _download_file(url, local_path, timeout=300)
     return local_path
 
 
