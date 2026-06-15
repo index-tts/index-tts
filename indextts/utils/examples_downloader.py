@@ -13,7 +13,8 @@ import json
 import logging
 import os
 from typing import List, Set
-from urllib.request import urlopen, Request
+
+import requests
 
 from indextts.utils.network_detection import need_proxy
 
@@ -32,6 +33,9 @@ _EXTRA_FILES = [
     "voice_01.wav",  # used in infer.py and infer_v2.py __main__ blocks
 ]
 
+_SESSION = requests.Session()
+_SESSION.headers.update({"User-Agent": "IndexTTS/2.0"})
+
 
 def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int = 0) -> None:
     """
@@ -39,36 +43,33 @@ def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int =
 
     Raises RuntimeError if the server returns an error or non-binary content.
     """
-    req = Request(url, headers={"User-Agent": "IndexTTS/2.0"})
-    with urlopen(req, timeout=timeout) as response:
-        status = response.status
-        if status < 200 or status >= 300:
-            raise RuntimeError(f"Server returned HTTP {status} for {url}")
-        content_type = response.headers.get("Content-Type", "")
-        if "text/html" in content_type:
-            raise RuntimeError(
-                f"Server returned HTML instead of binary file for {url} "
-                f"(Content-Type: {content_type}). The URL may be invalid."
-            )
+    resp = _SESSION.get(url, timeout=timeout, stream=True)
+    if resp.status_code < 200 or resp.status_code >= 300:
+        raise RuntimeError(f"Server returned HTTP {resp.status_code} for {url}")
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/html" in content_type:
+        resp.close()
+        raise RuntimeError(
+            f"Server returned HTML instead of binary file for {url} "
+            f"(Content-Type: {content_type}). The URL may be invalid."
+        )
 
-        # Write to a temp file first, then rename atomically
-        tmp_path = local_path + ".tmp"
-        try:
-            with open(tmp_path, "wb") as f:
-                while True:
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-            if min_size and os.path.getsize(tmp_path) < min_size:
-                raise RuntimeError(
-                    f"Downloaded file is suspiciously small "
-                    f"({os.path.getsize(tmp_path)} bytes) for {url}"
-                )
-            os.replace(tmp_path, local_path)
-        finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+    # Write to a temp file first, then rename atomically
+    tmp_path = local_path + ".tmp"
+    try:
+        with open(tmp_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+        if min_size and os.path.getsize(tmp_path) < min_size:
+            raise RuntimeError(
+                f"Downloaded file is suspiciously small "
+                f"({os.path.getsize(tmp_path)} bytes) for {url}"
+            )
+        os.replace(tmp_path, local_path)
+    finally:
+        resp.close()
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def get_required_files() -> List[str]:
