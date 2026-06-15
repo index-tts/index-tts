@@ -132,7 +132,7 @@ def ensure_examples_available(force: bool = False) -> None:
             continue
         url = f"{base_url}/examples/{filename}"
         try:
-            _download_file(url, local_path, min_size=100)
+            _download_file(url, local_path, min_size=100, timeout=120)
         except Exception as e:
             logger.warning(f"Failed to download {filename}: {e}")
 
@@ -153,7 +153,7 @@ def download_test_sample(force: bool = False) -> str:
     base_url = _MS_RAW_URL if need_proxy() else _HF_RAW_URL
     url = f"{base_url}/examples/voice_01.wav"
 
-    _download_file(url, local_path, min_size=100)
+    _download_file(url, local_path, min_size=100, timeout=120)
     return local_path
 
 # Alias for backward compatibility (used by tests)

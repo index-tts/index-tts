@@ -324,6 +324,8 @@ def _download_model_resources(source, model_dir):
 
 
 def _download_support_package(source):
+    if source == "auto":
+        return "huggingface_hub modelscope"
     if source == "huggingface":
         return "huggingface_hub"
     return "modelscope"
