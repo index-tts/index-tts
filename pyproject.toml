@@ -54,6 +54,7 @@ dependencies = [
   "tokenizers==0.21.0",
   "torch==2.8.*",
   "torchaudio==2.8.*",
+  "requests>=2.28",
   "tqdm>=4.67.1",
   "transformers==4.52.1",
 
@@ -73,7 +74,6 @@ deepspeed = [
 ]
 test = [
   "pytest>=7.0",
-  "requests>=2.28",
 ]
 
 [tool.pytest.ini_options]

@@ -13,7 +13,8 @@ import json
 import logging
 import os
 from typing import List, Set
-from urllib.request import urlopen, Request
+
+import requests
 
 from indextts.utils.network_detection import need_proxy
 
@@ -32,19 +33,29 @@ _EXTRA_FILES = [
     "voice_01.wav",  # used in infer.py and infer_v2.py __main__ blocks
 ]
 
+_SESSION = requests.Session()
+_SESSION.headers.update({"User-Agent": "IndexTTS/2.0"})
 
-def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int = 0) -> None:
+
+def _download_file(
+    url: str,
+    local_path: str,
+    timeout: int = 60,
+    min_size: int = 0,
+    max_bytes: int = 0,
+) -> None:
     """
     Download a file from a URL to a local path with validation.
 
     Raises RuntimeError if the server returns an error or non-binary content.
+    When *max_bytes* > 0 the download stops after that many bytes (useful for
+    reachability checks that don't need the full file).
     """
-    req = Request(url, headers={"User-Agent": "IndexTTS/2.0"})
-    with urlopen(req, timeout=timeout) as response:
-        status = response.status
-        if status < 200 or status >= 300:
-            raise RuntimeError(f"Server returned HTTP {status} for {url}")
-        content_type = response.headers.get("Content-Type", "")
+    resp = _SESSION.get(url, timeout=timeout, stream=True)
+    try:
+        if resp.status_code < 200 or resp.status_code >= 300:
+            raise RuntimeError(f"Server returned HTTP {resp.status_code} for {url}")
+        content_type = resp.headers.get("Content-Type", "")
         if "text/html" in content_type:
             raise RuntimeError(
                 f"Server returned HTML instead of binary file for {url} "
@@ -55,11 +66,12 @@ def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int =
         tmp_path = local_path + ".tmp"
         try:
             with open(tmp_path, "wb") as f:
-                while True:
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
+                received = 0
+                for chunk in resp.iter_content(chunk_size=8192):
                     f.write(chunk)
+                    received += len(chunk)
+                    if max_bytes and received >= max_bytes:
+                        break
             if min_size and os.path.getsize(tmp_path) < min_size:
                 raise RuntimeError(
                     f"Downloaded file is suspiciously small "
@@ -69,6 +81,8 @@ def _download_file(url: str, local_path: str, timeout: int = 60, min_size: int =
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+    finally:
+        resp.close()
 
 
 def get_required_files() -> List[str]:
@@ -118,7 +132,7 @@ def ensure_examples_available(force: bool = False) -> None:
             continue
         url = f"{base_url}/examples/{filename}"
         try:
-            _download_file(url, local_path, min_size=100)
+            _download_file(url, local_path, min_size=100, timeout=120)
         except Exception as e:
             logger.warning(f"Failed to download {filename}: {e}")
 
@@ -139,7 +153,7 @@ def download_test_sample(force: bool = False) -> str:
     base_url = _MS_RAW_URL if need_proxy() else _HF_RAW_URL
     url = f"{base_url}/examples/voice_01.wav"
 
-    _download_file(url, local_path, min_size=100)
+    _download_file(url, local_path, min_size=100, timeout=120)
     return local_path
 
 # Alias for backward compatibility (used by tests)

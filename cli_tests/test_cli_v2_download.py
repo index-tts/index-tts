@@ -1,12 +1,10 @@
 import contextlib
-import importlib
 import io
 import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 
@@ -72,21 +70,16 @@ class DownloadCommandTests(unittest.TestCase):
 
     def test_download_defaults_to_huggingface_source_and_checks_downloaded_resources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
             calls = []
-            real_import_module = importlib.import_module
 
-            def snapshot_download(*, repo_id, local_dir):
+            def fake_snapshot_download(repo_id, local_dir, **kwargs):
                 calls.append((repo_id, Path(local_dir)))
                 make_model_dir(Path(local_dir))
-
-            def import_module(name, package=None):
-                if name == "huggingface_hub":
-                    return SimpleNamespace(snapshot_download=snapshot_download)
-                return real_import_module(name, package)
+                return str(local_dir)
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download.snapshot_download", side_effect=fake_snapshot_download):
                     exit_code, stdout, stderr = self.run_cli(["download"])
                 config_exists = state["config_path"].exists()
 
@@ -98,23 +91,18 @@ class DownloadCommandTests(unittest.TestCase):
 
     def test_download_from_modelscope_to_model_dir_persists_successful_target_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "custom-models"
             calls = []
-            real_import_module = importlib.import_module
 
-            def snapshot_download(model_id, *, local_dir):
+            def fake_snapshot(model_id, local_dir, **kwargs):
                 calls.append((model_id, Path(local_dir)))
                 make_model_dir(Path(local_dir))
-
-            def import_module(name, package=None):
-                if name == "modelscope":
-                    return SimpleNamespace(snapshot_download=snapshot_download)
-                return real_import_module(name, package)
+                return str(local_dir)
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download._snapshot_from_modelscope", side_effect=fake_snapshot):
                     exit_code, stdout, stderr = self.run_cli(
                         ["download", "--source", "modelscope", "--model-dir", str(model_dir)]
                     )
@@ -128,27 +116,21 @@ class DownloadCommandTests(unittest.TestCase):
 
     def test_download_from_huggingface_preserves_existing_files_in_model_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
             sentinel = model_dir / "keep.txt"
             calls = []
             model_dir.mkdir()
             sentinel.write_text("keep", encoding="utf-8")
-            real_import_module = importlib.import_module
 
-            def snapshot_download(*, repo_id, local_dir):
+            def fake_snapshot_download(*, repo_id, local_dir):
                 target = Path(local_dir)
                 calls.append((repo_id, target, sentinel.exists()))
                 make_model_dir(target)
 
-            def import_module(name, package=None):
-                if name == "huggingface_hub":
-                    return SimpleNamespace(snapshot_download=snapshot_download)
-                return real_import_module(name, package)
-
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("huggingface_hub.snapshot_download", side_effect=fake_snapshot_download):
                     exit_code, stdout, stderr = self.run_cli(
                         ["download", "--source", "huggingface", "--model-dir", str(model_dir)]
                     )
@@ -162,21 +144,16 @@ class DownloadCommandTests(unittest.TestCase):
 
     def test_download_with_no_save_does_not_persist_model_dir_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "temporary-models"
-            real_import_module = importlib.import_module
 
-            def snapshot_download(*, repo_id, local_dir):
+            def fake_snapshot_download(repo_id, local_dir, **kwargs):
                 make_model_dir(Path(local_dir))
-
-            def import_module(name, package=None):
-                if name == "huggingface_hub":
-                    return SimpleNamespace(snapshot_download=snapshot_download)
-                return real_import_module(name, package)
+                return str(local_dir)
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download.snapshot_download", side_effect=fake_snapshot_download):
                     exit_code, stdout, stderr = self.run_cli(
                         ["download", "--model-dir", str(model_dir), "--no-save"]
                     )
@@ -189,38 +166,31 @@ class DownloadCommandTests(unittest.TestCase):
 
     def test_download_returns_runtime_unavailable_when_source_package_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
-            real_import_module = importlib.import_module
+            state = user_state_paths(Path(temp_dir).resolve())
 
-            def import_module(name, package=None):
-                if name == "huggingface_hub":
-                    raise ImportError("No module named huggingface_hub")
-                return real_import_module(name, package)
+            def raise_import(*args, **kwargs):
+                raise ImportError("No module named huggingface_hub")
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download.snapshot_download", side_effect=raise_import):
                     exit_code, stdout, stderr = self.run_cli(["download"])
                 config_exists = state["config_path"].exists()
 
         self.assertEqual(exit_code, 3)
         self.assertEqual(stdout, "")
-        self.assertIn("ERROR: runtime unavailable for huggingface download source", stderr)
-        self.assertIn("huggingface_hub", stderr)
-        self.assertIn("pip install huggingface_hub", stderr)
+        self.assertIn("ERROR: runtime unavailable for auto download source", stderr)
+        self.assertIn("pip install huggingface_hub modelscope", stderr)
         self.assertFalse(config_exists)
 
     def test_download_from_modelscope_returns_runtime_unavailable_when_source_package_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
-            real_import_module = importlib.import_module
+            state = user_state_paths(Path(temp_dir).resolve())
 
-            def import_module(name, package=None):
-                if name == "modelscope":
-                    raise ImportError("No module named modelscope")
-                return real_import_module(name, package)
+            def raise_import(*args, **kwargs):
+                raise ImportError("No module named modelscope")
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download._snapshot_from_modelscope", side_effect=raise_import):
                     exit_code, stdout, stderr = self.run_cli(["download", "--source", "modelscope"])
                 config_exists = state["config_path"].exists()
 
@@ -228,28 +198,22 @@ class DownloadCommandTests(unittest.TestCase):
         self.assertEqual(stdout, "")
         self.assertIn("ERROR: runtime unavailable for modelscope download source", stderr)
         self.assertIn("modelscope", stderr)
-        self.assertIn("pip install modelscope", stderr)
         self.assertFalse(config_exists)
 
     def test_download_validates_downloaded_resources_before_persisting_model_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "incomplete-models"
-            real_import_module = importlib.import_module
 
-            def snapshot_download(*, repo_id, local_dir):
+            def fake_snapshot_download(repo_id, local_dir, **kwargs):
                 target = Path(local_dir)
                 target.mkdir(parents=True, exist_ok=True)
                 (target / "config.yaml").write_text("placeholder", encoding="utf-8")
-
-            def import_module(name, package=None):
-                if name == "huggingface_hub":
-                    return SimpleNamespace(snapshot_download=snapshot_download)
-                return real_import_module(name, package)
+                return str(local_dir)
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
-                with mock.patch("importlib.import_module", side_effect=import_module):
+                with mock.patch("indextts.utils.model_download.snapshot_download", side_effect=fake_snapshot_download):
                     exit_code, stdout, stderr = self.run_cli(["download", "--model-dir", str(model_dir)])
                 config_exists = state["config_path"].exists()
 

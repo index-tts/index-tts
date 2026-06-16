@@ -8,6 +8,8 @@ CI only (no GPU):
     uv run --extra test pytest tests/test_v2.py -v -m "not gpu"
 """
 import importlib
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -41,33 +43,37 @@ def prompt_wav():
 
 # -- Download URL checks (no GPU) ---------------------------------------------
 
-def _get_download_urls():
-    """Return URLs that match the actual network environment (CN vs intl)."""
-    from indextts.utils.network_detection import need_proxy
-    if need_proxy():
-        # China: test ModelScope endpoints
-        return [
-            "https://modelscope.cn/studio/IndexTeam/IndexTTS-2-Demo/resolve/master/examples/voice_01.wav",
-            "https://modelscope.cn/models/AI-ModelScope/w2v-bert-2.0/resolve/master/config.json",
-        ]
-    else:
-        # International: test HuggingFace endpoints
-        return [
-            "https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo/resolve/main/examples/voice_01.wav",
-            "https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/resolve/main/config.json",
-        ]
+# Each auxiliary model: (test_id, repo_id, probe_file)
+# probe_file: a small file in the repo to verify download works end-to-end.
+_MODEL_PROBES = [
+    ("bigvgan", "nvidia/bigvgan_v2_22khz_80band_256x", "config.json"),
+    ("w2v-bert-2.0", "facebook/w2v-bert-2.0", "config.json"),
+    ("campplus", "funasr/campplus", "campplus_cn_common.bin"),
+    ("MaskGCT", "amphion/MaskGCT", "README.md"),
+]
 
 
-@pytest.mark.parametrize("url", _get_download_urls())
-def test_download_url_reachable(url, tmp_path):
-    """Use the actual _download_file function to verify URLs are reachable."""
+@pytest.mark.parametrize("name,repo_id,filename", _MODEL_PROBES, ids=[m[0] for m in _MODEL_PROBES])
+def test_model_download_reachable(name, repo_id, filename, tmp_path):
+    """Each auxiliary model must be downloadable via the real download path."""
     from indextts.utils.examples_downloader import _download_file
+    from indextts.utils.network_detection import need_proxy
 
-    dest = tmp_path / "downloaded"
-    # Real download, same code path as production. No min_size so we don't
-    # need to pull a full large file — just verify it doesn't raise.
-    _download_file(url, str(dest), timeout=30)
+    base_url = "https://hf-mirror.com" if need_proxy() else "https://huggingface.co"
+    url = f"{base_url}/{repo_id}/resolve/main/{filename}"
+    dest = tmp_path / filename
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _download_file(url, str(dest), max_bytes=8192)
     assert dest.exists() and dest.stat().st_size > 0
+
+
+def test_example_download_reachable(tmp_path, monkeypatch):
+    """Example audio must be downloadable via the real download path."""
+    from indextts.utils import examples_downloader
+
+    monkeypatch.setattr(examples_downloader, "_TESTS_DIR", str(tmp_path))
+    path = examples_downloader.download_test_sample(force=True)
+    assert Path(path).exists() and Path(path).stat().st_size > 0
 
 
 # -- Model download logic (no GPU) --------------------------------------------
@@ -115,6 +121,42 @@ def test_legacy_cache_compatibility(tmp_path, monkeypatch):
 
     # No download triggered
     assert len(download_calls) == 0, f"Unexpected downloads: {download_calls}"
+
+
+def test_modelscope_single_file_download_matches_local_path(tmp_path, monkeypatch):
+    """ModelScope single-file download must produce the exact requested local_path."""
+    from indextts.utils import model_download
+
+    local_path = tmp_path / "hf_cache" / "semantic_codec_model.safetensors"
+    expected_bytes = b"fake_semantic"
+
+    def fake_model_file_download(model_id, file_path, local_dir):
+        downloaded = Path(local_dir) / file_path
+        downloaded.parent.mkdir(parents=True, exist_ok=True)
+        downloaded.write_bytes(expected_bytes)
+        return str(downloaded)
+
+    fake_modelscope = types.ModuleType("modelscope")
+    fake_hub = types.ModuleType("modelscope.hub")
+    fake_file_download = types.ModuleType("modelscope.hub.file_download")
+    fake_file_download.model_file_download = fake_model_file_download
+    fake_hub.file_download = fake_file_download
+    fake_modelscope.hub = fake_hub
+
+    monkeypatch.setitem(sys.modules, "modelscope", fake_modelscope)
+    monkeypatch.setitem(sys.modules, "modelscope.hub", fake_hub)
+    monkeypatch.setitem(sys.modules, "modelscope.hub.file_download", fake_file_download)
+    monkeypatch.setattr(model_download, "_get_using_modelscope", lambda: True)
+
+    got = model_download._download_single_file(
+        repo_id="amphion/MaskGCT",
+        filename="semantic_codec/model.safetensors",
+        local_path=str(local_path),
+    )
+
+    assert got == str(local_path)
+    assert local_path.exists()
+    assert local_path.read_bytes() == expected_bytes
 
 
 # -- Inference (GPU required) --------------------------------------------------

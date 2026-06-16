@@ -1183,6 +1183,7 @@ dependencies = [
     { name = "omegaconf" },
     { name = "opencv-python" },
     { name = "pandas" },
+    { name = "requests" },
     { name = "safetensors" },
     { name = "sentencepiece" },
     { name = "tensorboard" },
@@ -1204,7 +1205,6 @@ deepspeed = [
 ]
 test = [
     { name = "pytest" },
-    { name = "requests" },
 ]
 webui = [
     { name = "gradio" },
@@ -1234,7 +1234,7 @@ requires-dist = [
     { name = "opencv-python", specifier = "==4.9.0.80" },
     { name = "pandas", specifier = "==2.3.2" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
-    { name = "requests", marker = "extra == 'test'", specifier = ">=2.28" },
+    { name = "requests", specifier = ">=2.28" },
     { name = "safetensors", specifier = "==0.5.2" },
     { name = "sentencepiece", specifier = ">=0.2.1" },
     { name = "tensorboard", specifier = "==2.9.1" },
