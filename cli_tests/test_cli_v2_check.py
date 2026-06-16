@@ -16,7 +16,6 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 ]
@@ -189,7 +188,6 @@ class CheckCommandTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 2)
             self.assertEqual(stdout.getvalue(), "")
-            self.assertIn("pinyin.vocab", stderr.getvalue())
             self.assertIn("feat1.pt", stderr.getvalue())
             self.assertIn("feat2.pt", stderr.getvalue())
             self.assertIn("qwen0.6bemo4-merge", stderr.getvalue())

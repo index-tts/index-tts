@@ -15,7 +15,6 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 ]
