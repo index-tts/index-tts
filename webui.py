@@ -257,8 +257,8 @@ def on_preset_load(name):
         is_experimental = emo_method == 3
 
         # Resolve audio paths; warn if files are missing.
-        prompt_path = data.get("prompt_audio", "") or ""
-        emo_path = data.get("emo_audio", "") or ""
+        prompt_path = data.get("prompt_audio", "") or None
+        emo_path = data.get("emo_audio", "") or None
         missing = []
         if prompt_path and not os.path.exists(prompt_path):
             missing.append("prompt")
@@ -286,7 +286,7 @@ def on_preset_load(name):
 
         return {
             experimental_checkbox: gr.update(value=is_experimental),
-            emo_control_method: gr.update(choices=emo_choices, value=emo_method),
+            emo_control_method: gr.update(choices=emo_choices, value=emo_choices[emo_method]),
             prompt_audio: gr.update(value=prompt_path),
             emo_upload: gr.update(value=emo_path),
             emo_weight: gr.update(value=emo_weight_value),
@@ -655,11 +655,7 @@ with gr.Blocks(
     ''')
 
     with gr.Tab(i18n("音频生成")):
-        os.makedirs("prompts",exist_ok=True)
-        prompt_list = os.listdir("prompts")
-        default = ''
-        if prompt_list:
-            default = prompt_list[0]
+        os.makedirs("prompts", exist_ok=True)
 
         # Voice reference section: upload audio OR load from preset
         gr.Markdown(f"### {i18n('音色参考音频')}")
@@ -1077,13 +1073,14 @@ with gr.Blocks(
     )
 
     def on_demo_load():
-        """页面加载时重新加载glossary数据"""
+        """页面加载时重新加载glossary数据并刷新预设列表"""
         try:
             tts.normalizer.load_glossary_from_yaml(tts.glossary_path)
         except Exception as e:
             gr.Error(i18n("加载词汇表时出错"))
             print(f"Failed to reload glossary on page load: {e}")
-        return gr.update(value=format_glossary_markdown())
+        return (gr.update(value=format_glossary_markdown()),
+                *refresh_preset_choices())
 
     # 术语词汇表事件绑定
     btn_add_term.click(
@@ -1092,11 +1089,11 @@ with gr.Blocks(
         outputs=[glossary_table]
     )
 
-    # 页面加载时重新加载glossary
+    # 页面加载时重新加载glossary并刷新预设列表
     demo.load(
         on_demo_load,
         inputs=[],
-        outputs=[glossary_table]
+        outputs=[glossary_table, load_preset_dropdown, manage_preset_dropdown]
     )
 
     # Preset event bindings
