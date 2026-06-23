@@ -65,6 +65,7 @@ except Exception as e:
 import gradio as gr
 from indextts.infer_v2 import IndexTTS2
 from indextts.utils.examples_downloader import ensure_examples_available
+from indextts.utils.presets import list_presets, save_preset, load_preset, delete_preset
 from tools.i18n.i18n import I18nAuto
 
 i18n = I18nAuto(language="Auto")
@@ -144,6 +145,396 @@ def format_glossary_markdown():
 
     return "\n".join(lines)
 
+
+# ---------------------------------------------------------------------------
+# Preset management
+# ---------------------------------------------------------------------------
+
+def _build_preset_data(
+    emo_control_method,
+    emo_weight,
+    vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+    emo_text,
+    emo_random,
+    do_sample,
+    top_p,
+    top_k,
+    temperature,
+    length_penalty,
+    num_beams,
+    repetition_penalty,
+    max_mel_tokens,
+    max_text_tokens_per_segment,
+):
+    """Collect all non-audio UI values into a dictionary for preset storage."""
+    return {
+        "emo_control_method": int(emo_control_method) if emo_control_method is not None else 0,
+        "emo_weight": float(emo_weight) if emo_weight is not None else 0.65,
+        "emo_vector": [
+            float(v) if v is not None else 0.0
+            for v in [vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
+        ],
+        "emo_text": emo_text or "",
+        "emo_random": bool(emo_random),
+        "advanced_params": {
+            "do_sample": bool(do_sample),
+            "top_p": float(top_p) if top_p is not None else 0.8,
+            "top_k": int(top_k) if top_k is not None else 30,
+            "temperature": float(temperature) if temperature is not None else 0.8,
+            "length_penalty": float(length_penalty) if length_penalty is not None else 0.0,
+            "num_beams": int(num_beams) if num_beams is not None else 3,
+            "repetition_penalty": float(repetition_penalty) if repetition_penalty is not None else 10.0,
+            "max_mel_tokens": int(max_mel_tokens) if max_mel_tokens is not None else 1500,
+            "max_text_tokens_per_segment": int(max_text_tokens_per_segment)
+            if max_text_tokens_per_segment is not None else 120,
+        },
+    }
+
+
+def on_preset_save(
+    name,
+    prompt_audio,
+    emo_control_method,
+    emo_ref_path,
+    emo_weight,
+    vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+    emo_text,
+    emo_random,
+    do_sample,
+    top_p,
+    top_k,
+    temperature,
+    length_penalty,
+    num_beams,
+    repetition_penalty,
+    max_mel_tokens,
+    max_text_tokens_per_segment,
+):
+    """Save the current UI state as a named preset."""
+    name = name.strip() if name else ""
+    if not name:
+        gr.Warning(i18n("预设名称不能为空"))
+        return gr.update()
+
+    data = _build_preset_data(
+        emo_control_method, emo_weight,
+        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+        emo_text, emo_random,
+        do_sample, top_p, top_k, temperature,
+        length_penalty, num_beams, repetition_penalty,
+        max_mel_tokens, max_text_tokens_per_segment,
+    )
+
+    existed = name in list_presets()
+    try:
+        save_preset(name, data, prompt_audio=prompt_audio, emo_audio=emo_ref_path)
+        msg = i18n("预设名称已存在，已覆盖") if existed else i18n("预设已保存")
+        gr.Info(msg, duration=2)
+    except Exception as e:
+        gr.Error(f"{i18n('加载预设失败')}: {e}")
+        return gr.update(), gr.update()
+
+    choices = [""] + list_presets()
+    has_presets = len(choices) > 1
+    return (
+        gr.update(choices=choices, value=name, interactive=has_presets),
+        gr.update(choices=choices, value=name, interactive=has_presets),
+    )
+
+
+def on_preset_load(name):
+    """Load a preset and return updates for all relevant UI components."""
+    if not name:
+        return {}
+
+    data = load_preset(name)
+    if data is None:
+        gr.Warning(i18n("预设不存在"))
+        return {}
+
+    try:
+        emo_method = int(data.get("emo_control_method", 0))
+        is_experimental = emo_method == 3
+
+        # Resolve audio paths; warn if files are missing.
+        prompt_path = data.get("prompt_audio", "") or None
+        emo_path = data.get("emo_audio", "") or None
+        missing = []
+        if prompt_path and not os.path.exists(prompt_path):
+            missing.append("prompt")
+            prompt_path = None
+        if emo_path and not os.path.exists(emo_path):
+            missing.append("emotion")
+            emo_path = None
+        if missing:
+            gr.Warning(i18n("参考音频文件缺失，已跳过"))
+
+        emo_weight_value = data.get("emo_weight", 0.65)
+        emo_vec = data.get("emo_vector", [0.0] * 8)
+        emo_text_value = data.get("emo_text", "")
+        emo_random_value = data.get("emo_random", False)
+        advanced = data.get("advanced_params", {})
+
+        # Ensure the emotion vector has 8 elements.
+        if len(emo_vec) < 8:
+            emo_vec = emo_vec + [0.0] * (8 - len(emo_vec))
+        elif len(emo_vec) > 8:
+            emo_vec = emo_vec[:8]
+
+        # Update the radio choices when loading an experimental preset.
+        emo_choices = EMO_CHOICES_ALL if is_experimental else EMO_CHOICES_OFFICIAL
+
+        return {
+            experimental_checkbox: gr.update(value=is_experimental),
+            emo_control_method: gr.update(choices=emo_choices, value=emo_choices[emo_method]),
+            prompt_audio: gr.update(value=prompt_path),
+            emo_upload: gr.update(value=emo_path),
+            emo_weight: gr.update(value=emo_weight_value),
+            vec1: gr.update(value=emo_vec[0]),
+            vec2: gr.update(value=emo_vec[1]),
+            vec3: gr.update(value=emo_vec[2]),
+            vec4: gr.update(value=emo_vec[3]),
+            vec5: gr.update(value=emo_vec[4]),
+            vec6: gr.update(value=emo_vec[5]),
+            vec7: gr.update(value=emo_vec[6]),
+            vec8: gr.update(value=emo_vec[7]),
+            emo_text: gr.update(value=emo_text_value),
+            emo_random: gr.update(value=emo_random_value),
+            do_sample: gr.update(value=advanced.get("do_sample", True)),
+            top_p: gr.update(value=advanced.get("top_p", 0.8)),
+            top_k: gr.update(value=advanced.get("top_k", 30)),
+            temperature: gr.update(value=advanced.get("temperature", 0.8)),
+            length_penalty: gr.update(value=advanced.get("length_penalty", 0.0)),
+            num_beams: gr.update(value=advanced.get("num_beams", 3)),
+            repetition_penalty: gr.update(value=advanced.get("repetition_penalty", 10.0)),
+            max_mel_tokens: gr.update(value=advanced.get("max_mel_tokens", 1500)),
+            max_text_tokens_per_segment: gr.update(
+                value=advanced.get("max_text_tokens_per_segment", 120)
+            ),
+        }
+    except Exception as e:
+        gr.Error(f"{i18n('加载预设失败')}: {e}")
+        return {}
+
+
+def on_preset_delete(name):
+    """Delete the selected preset and refresh the dropdown."""
+    if not name:
+        gr.Warning(i18n("请选择预设"))
+        return gr.update()
+
+    if delete_preset(name):
+        gr.Info(i18n("预设已删除"), duration=2)
+    else:
+        gr.Warning(i18n("预设不存在"))
+
+    choices = [""] + list_presets()
+    has_presets = len(choices) > 1
+    return (
+        gr.update(value="", choices=choices, interactive=has_presets),
+        gr.update(value="", choices=choices, interactive=has_presets),
+    )
+
+
+def update_save_preset_button(prompt_audio):
+    """Enable the save button only when a voice reference audio is uploaded."""
+    return gr.update(interactive=bool(prompt_audio))
+
+
+def update_delete_preset_button(preset_name):
+    """Enable the delete button only when a preset is selected."""
+    return gr.update(interactive=bool(preset_name))
+
+
+def format_preset_details(name):
+    """Render a preset's parameters as a Markdown table for the management tab."""
+    if not name:
+        return i18n("请选择要管理的预设")
+
+    data = load_preset(name)
+    if data is None:
+        return i18n("预设不存在")
+
+    try:
+        emo_method = int(data.get("emo_control_method", 0))
+        emo_label = EMO_CHOICES_ALL[emo_method] if 0 <= emo_method < len(EMO_CHOICES_ALL) else i18n("未知")
+        emo_weight = data.get("emo_weight", 0.0)
+        emo_vec = data.get("emo_vector", [0.0] * 8)
+        emo_text = data.get("emo_text", "") or i18n("无")
+        emo_random = data.get("emo_random", False)
+        advanced = data.get("advanced_params", {})
+        prompt_path = data.get("prompt_audio", "") or i18n("无")
+        emo_path = data.get("emo_audio", "") or i18n("无")
+
+        lines = [
+            f"### {i18n('预设详情')}: {name}",
+            "",
+            f"| {i18n('属性')} | {i18n('值')} |",
+            "|---|---|",
+            f"| {i18n('名称')} | {name} |",
+            f"| {i18n('情感控制方式')} | {emo_label} |",
+            f"| {i18n('情感权重')} | {emo_weight} |",
+            f"| {i18n('情感随机采样')} | {'On' if emo_random else 'Off'} |",
+            f"| {i18n('音色音频')} | `{prompt_path}` |",
+            f"| {i18n('情感音频')} | `{emo_path}` |",
+            "",
+            f"**{i18n('情感向量')}**: `[{', '.join(str(round(v, 2)) for v in emo_vec)}]`",
+            "",
+            f"**{i18n('情感描述文本')}**: {emo_text}",
+            "",
+            f"**{i18n('高级生成参数设置')}**:",
+            "",
+        ]
+        for key, value in advanced.items():
+            lines.append(f"- `{key}`: {value}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"{i18n('加载预设失败')}: {e}"
+
+
+def refresh_preset_choices():
+    """Return fresh choices and interactive state for all preset dropdowns."""
+    choices = [""] + list_presets()
+    has_presets = len(choices) > 1
+    return (
+        gr.update(choices=choices, value="", interactive=has_presets),
+        gr.update(choices=choices, value="", interactive=has_presets),
+    )
+
+
+def _format_preset_preview(
+    prompt_audio,
+    emo_control_method,
+    emo_ref_path,
+    emo_weight,
+    vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+    emo_text,
+    emo_random,
+    do_sample,
+    top_p,
+    top_k,
+    temperature,
+    length_penalty,
+    num_beams,
+    repetition_penalty,
+    max_mel_tokens,
+    max_text_tokens_per_segment,
+):
+    """Format the current UI state as a Markdown preview for the save modal."""
+    emo_label = EMO_CHOICES_ALL[emo_control_method] if 0 <= emo_control_method < len(EMO_CHOICES_ALL) else i18n("未知")
+    vec = [float(v) for v in [vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]]
+    prompt_label = os.path.basename(prompt_audio) if prompt_audio else i18n("无")
+    emo_label_audio = os.path.basename(emo_ref_path) if emo_ref_path else i18n("无")
+
+    lines = [
+        f"**{i18n('情感控制方式')}**: {emo_label}",
+        f"**{i18n('情感权重')}**: {emo_weight}",
+        f"**{i18n('情感随机采样')}**: {'On' if emo_random else 'Off'}",
+        f"**{i18n('音色音频')}**: `{prompt_label}`",
+        f"**{i18n('情感音频')}**: `{emo_label_audio}`",
+        "",
+        f"**{i18n('情感向量')}**: `[{', '.join(str(round(v, 2)) for v in vec)}]`",
+        f"**{i18n('情感描述文本')}**: {emo_text or i18n('无')}",
+        "",
+        f"**{i18n('高级生成参数设置')}**:",
+        f"- do_sample: {do_sample}",
+        f"- top_p: {top_p}",
+        f"- top_k: {top_k}",
+        f"- temperature: {temperature}",
+        f"- length_penalty: {length_penalty}",
+        f"- num_beams: {num_beams}",
+        f"- repetition_penalty: {repetition_penalty}",
+        f"- max_mel_tokens: {max_mel_tokens}",
+        f"- max_text_tokens_per_segment: {max_text_tokens_per_segment}",
+    ]
+    return "\n".join(lines)
+
+
+def open_save_preset_modal(
+    prompt_audio,
+    emo_control_method,
+    emo_ref_path,
+    emo_weight,
+    vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+    emo_text,
+    emo_random,
+    do_sample,
+    top_p,
+    top_k,
+    temperature,
+    length_penalty,
+    num_beams,
+    repetition_penalty,
+    max_mel_tokens,
+    max_text_tokens_per_segment,
+):
+    """Open the save-preset modal and populate the preview."""
+    preview = _format_preset_preview(
+        prompt_audio, emo_control_method, emo_ref_path, emo_weight,
+        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+        emo_text, emo_random,
+        do_sample, top_p, top_k, temperature,
+        length_penalty, num_beams, repetition_penalty,
+        max_mel_tokens, max_text_tokens_per_segment,
+    )
+    return (
+        gr.update(visible=True),
+        gr.update(value=preview),
+        gr.update(value=""),
+    )
+
+
+def confirm_save_preset_from_modal(
+    name,
+    prompt_audio,
+    emo_control_method,
+    emo_ref_path,
+    emo_weight,
+    vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+    emo_text,
+    emo_random,
+    do_sample,
+    top_p,
+    top_k,
+    temperature,
+    length_penalty,
+    num_beams,
+    repetition_penalty,
+    max_mel_tokens,
+    max_text_tokens_per_segment,
+):
+    """Save the preset and close the modal."""
+    result = on_preset_save(
+        name,
+        prompt_audio,
+        emo_control_method,
+        emo_ref_path,
+        emo_weight,
+        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+        emo_text,
+        emo_random,
+        do_sample,
+        top_p,
+        top_k,
+        temperature,
+        length_penalty,
+        num_beams,
+        repetition_penalty,
+        max_mel_tokens,
+        max_text_tokens_per_segment,
+    )
+    return (
+        gr.update(visible=False),  # modal
+        result[0],  # load_preset_dropdown
+        result[1],  # manage_preset_dropdown
+    )
+
+
+def close_save_preset_modal():
+    """Close the save-preset modal without saving."""
+    return gr.update(visible=False)
+
+
 def gen_single(emo_control_method,prompt, text,
                emo_ref_path, emo_weight,
                vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
@@ -207,7 +598,54 @@ def create_warning_message(warning_text):
 def create_experimental_warning_message():
     return create_warning_message(i18n('提示：此功能为实验版，结果尚不稳定，我们正在持续优化中。'))
 
-with gr.Blocks(title="IndexTTS Demo") as demo:
+with gr.Blocks(
+    title="IndexTTS Demo",
+    css="""
+        /* Make the voice reference audio upload area more compact. */
+        #prompt_audio_compact .audio-container,
+        #prompt_audio_compact .upload-container {
+            min-height: 110px !important;
+        }
+        #prompt_audio_compact .empty {
+            min-height: 80px !important;
+        }
+
+        /* Modal overlay for saving presets. */
+        .preset-modal-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: rgba(0, 0, 0, 0.5) !important;
+            z-index: 1000 !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .preset-modal-overlay > .column-wrap,
+        .preset-modal-overlay > div {
+            width: auto !important;
+            height: auto !important;
+        }
+        .preset-modal-content {
+            background: var(--body-background-fill) !important;
+            padding: 24px !important;
+            border-radius: 12px !important;
+            width: 90vw !important;
+            max-width: 560px !important;
+            max-height: 80vh !important;
+            overflow-y: auto !important;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
+        }
+        .preset-modal-content > .column-wrap,
+        .preset-modal-content > div {
+            gap: 16px !important;
+        }
+    """,
+) as demo:
     mutex = threading.Lock()
     gr.HTML('''
     <h2><center>IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech</h2>
@@ -217,18 +655,53 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
     ''')
 
     with gr.Tab(i18n("音频生成")):
-        with gr.Row():
-            os.makedirs("prompts",exist_ok=True)
-            prompt_audio = gr.Audio(label=i18n("音色参考音频"),key="prompt_audio",
-                                    sources=["upload","microphone"],type="filepath")
-            prompt_list = os.listdir("prompts")
-            default = ''
-            if prompt_list:
-                default = prompt_list[0]
-            with gr.Column():
-                input_text_single = gr.TextArea(label=i18n("文本"),key="input_text_single", placeholder=i18n("请输入目标文本"), info=f"{i18n('当前模型版本')}{tts.model_version or '1.0'}")
-                gen_button = gr.Button(i18n("生成语音"), key="gen_button",interactive=True)
-            output_audio = gr.Audio(label=i18n("生成结果"), visible=True,key="output_audio")
+        os.makedirs("prompts", exist_ok=True)
+
+        # Voice reference section: upload audio OR load from preset
+        gr.Markdown(f"### {i18n('音色参考音频')}")
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=1):
+                prompt_audio = gr.Audio(
+                    label="",
+                    key="prompt_audio",
+                    sources=["upload", "microphone"],
+                    type="filepath",
+                    elem_classes=["compact-audio"],
+                    elem_id="prompt_audio_compact",
+                )
+                save_preset_btn = gr.Button(
+                    i18n("保存为预设"), interactive=False
+                )
+
+            with gr.Column(scale=1):
+                _has_presets = bool(list_presets())
+                load_preset_dropdown = gr.Dropdown(
+                    choices=[""] + list_presets(),
+                    value="",
+                    label=i18n("从预设加载"),
+                    info=i18n("从预设加载音色和参数"),
+                    allow_custom_value=False,
+                    interactive=_has_presets,
+                )
+
+        # Text input and generation section
+        gr.Markdown(f"### {i18n('文本')}")
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=2):
+                input_text_single = gr.TextArea(
+                    label="",
+                    key="input_text_single",
+                    placeholder=i18n("请输入目标文本"),
+                    info=f"{i18n('当前模型版本')}{tts.model_version or '1.0'}",
+                    lines=5,
+                )
+            with gr.Column(scale=1):
+                gen_button = gr.Button(
+                    i18n("生成语音"), key="gen_button", interactive=True
+                )
+                output_audio = gr.Audio(
+                    label=i18n("生成结果"), visible=True, key="output_audio"
+                )
 
         with gr.Row():
             experimental_checkbox = gr.Checkbox(label=i18n("显示实验功能"), value=False)
@@ -361,6 +834,61 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                         emo_text,
                         vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
         )
+
+    with gr.Tab(i18n("预设管理")):
+        gr.Markdown(f"## {i18n('预设管理')}")
+
+        with gr.Row():
+            _has_presets = bool(list_presets())
+            manage_preset_dropdown = gr.Dropdown(
+                choices=[""] + list_presets(),
+                value="",
+                label=i18n("预设列表"),
+                allow_custom_value=False,
+                scale=2,
+                interactive=_has_presets,
+            )
+            apply_preset_btn = gr.Button(i18n("应用"), scale=1)
+            delete_preset_btn = gr.Button(i18n("删除"), scale=1, interactive=False)
+            refresh_preset_btn = gr.Button(i18n("刷新"), scale=1)
+
+        preset_details_markdown = gr.Markdown(
+            value=i18n("请选择要管理的预设"),
+        )
+
+        with gr.Accordion(i18n("从当前状态创建"), open=False):
+            with gr.Row():
+                create_preset_name = gr.Textbox(
+                    label=i18n("预设名称"),
+                    placeholder=i18n("请输入预设名称"),
+                    value="",
+                    scale=2,
+                )
+                create_preset_btn = gr.Button(i18n("创建"), scale=1)
+
+    # ---------------------------------------------------------------------------
+    # Save Preset Modal (global overlay, placed after all tabs)
+    # ---------------------------------------------------------------------------
+    with gr.Column(
+        visible=False,
+        elem_classes=["preset-modal-overlay"],
+    ) as save_preset_modal:
+        with gr.Column(elem_classes=["preset-modal-content"]):
+            gr.Markdown(f"### {i18n('保存预设')}")
+            modal_preset_preview = gr.Markdown(
+                label=i18n("预设预览"),
+                value=i18n("预设预览"),
+            )
+            modal_preset_name = gr.Textbox(
+                label=i18n("预设名称"),
+                placeholder=i18n("请输入预设名称"),
+                value="",
+            )
+            with gr.Row():
+                modal_cancel_btn = gr.Button(i18n("取消"), scale=1)
+                modal_confirm_btn = gr.Button(
+                    i18n("确认"), scale=1, variant="primary"
+                )
 
     def on_example_click(example):
         print(f"Example clicked: ({len(example)} values) = {example!r}")
@@ -538,14 +1066,21 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
                          inputs=[],
                          outputs=[gen_button])
 
+    prompt_audio.change(
+        update_save_preset_button,
+        inputs=[prompt_audio],
+        outputs=[save_preset_btn]
+    )
+
     def on_demo_load():
-        """页面加载时重新加载glossary数据"""
+        """页面加载时重新加载glossary数据并刷新预设列表"""
         try:
             tts.normalizer.load_glossary_from_yaml(tts.glossary_path)
         except Exception as e:
             gr.Error(i18n("加载词汇表时出错"))
             print(f"Failed to reload glossary on page load: {e}")
-        return gr.update(value=format_glossary_markdown())
+        return (gr.update(value=format_glossary_markdown()),
+                *refresh_preset_choices())
 
     # 术语词汇表事件绑定
     btn_add_term.click(
@@ -554,11 +1089,120 @@ with gr.Blocks(title="IndexTTS Demo") as demo:
         outputs=[glossary_table]
     )
 
-    # 页面加载时重新加载glossary
+    # 页面加载时重新加载glossary并刷新预设列表
     demo.load(
         on_demo_load,
         inputs=[],
-        outputs=[glossary_table]
+        outputs=[glossary_table, load_preset_dropdown, manage_preset_dropdown]
+    )
+
+    # Preset event bindings
+    _preset_load_outputs = [
+        experimental_checkbox,
+        emo_control_method,
+        prompt_audio,
+        emo_upload,
+        emo_weight,
+        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+        emo_text,
+        emo_random,
+        do_sample,
+        top_p,
+        top_k,
+        temperature,
+        length_penalty,
+        num_beams,
+        repetition_penalty,
+        max_mel_tokens,
+        max_text_tokens_per_segment,
+    ]
+    _preset_save_inputs = [
+        prompt_audio,
+        emo_control_method,
+        emo_upload,
+        emo_weight,
+        vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
+        emo_text,
+        emo_random,
+        do_sample,
+        top_p,
+        top_k,
+        temperature,
+        length_penalty,
+        num_beams,
+        repetition_penalty,
+        max_mel_tokens,
+        max_text_tokens_per_segment,
+    ]
+
+    # Audio generation tab: load from preset on dropdown change
+    load_preset_dropdown.change(
+        on_preset_load,
+        inputs=[load_preset_dropdown],
+        outputs=_preset_load_outputs,
+    )
+
+    # Audio generation tab: save current state as preset (opens modal)
+    save_preset_btn.click(
+        open_save_preset_modal,
+        inputs=_preset_save_inputs,
+        outputs=[save_preset_modal, modal_preset_preview, modal_preset_name],
+    )
+
+    # Save preset modal: confirm
+    modal_confirm_btn.click(
+        confirm_save_preset_from_modal,
+        inputs=[modal_preset_name] + _preset_save_inputs,
+        outputs=[save_preset_modal, load_preset_dropdown, manage_preset_dropdown],
+    )
+
+    # Save preset modal: cancel
+    modal_cancel_btn.click(
+        close_save_preset_modal,
+        inputs=[],
+        outputs=[save_preset_modal],
+    )
+
+    # Preset management tab: view details
+    manage_preset_dropdown.change(
+        format_preset_details,
+        inputs=[manage_preset_dropdown],
+        outputs=[preset_details_markdown],
+    )
+
+    # Preset management tab: enable/disable delete button
+    manage_preset_dropdown.change(
+        update_delete_preset_button,
+        inputs=[manage_preset_dropdown],
+        outputs=[delete_preset_btn],
+    )
+
+    # Preset management tab: apply preset to audio generation tab
+    apply_preset_btn.click(
+        on_preset_load,
+        inputs=[manage_preset_dropdown],
+        outputs=_preset_load_outputs,
+    )
+
+    # Preset management tab: delete preset
+    delete_preset_btn.click(
+        on_preset_delete,
+        inputs=[manage_preset_dropdown],
+        outputs=[load_preset_dropdown, manage_preset_dropdown],
+    )
+
+    # Preset management tab: refresh list
+    refresh_preset_btn.click(
+        refresh_preset_choices,
+        inputs=[],
+        outputs=[load_preset_dropdown, manage_preset_dropdown],
+    )
+
+    # Preset management tab: create from current state
+    create_preset_btn.click(
+        on_preset_save,
+        inputs=[create_preset_name] + _preset_save_inputs,
+        outputs=[load_preset_dropdown, manage_preset_dropdown],
     )
 
     gen_button.click(gen_single,
