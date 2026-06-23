@@ -14,21 +14,42 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 ]
 REQUIRED_MODEL_DIRS = [
     "qwen0.6bemo4-merge",
 ]
+AUX_MODEL_FILES = [
+    "hf_cache/semantic_codec_model.safetensors",
+    "hf_cache/campplus_cn_common.bin",
+    "hf_cache/bigvgan/config.json",
+    "hf_cache/bigvgan/bigvgan_generator.pt",
+]
+AUX_MODEL_DIRS = [
+    "hf_cache/w2v-bert-2.0",
+]
 
 
-def make_model_dir(path):
+def make_model_dir(path, include_aux=True):
     path.mkdir(parents=True, exist_ok=True)
     for filename in REQUIRED_MODEL_FILES:
         (path / filename).write_text("placeholder", encoding="utf-8")
     for dirname in REQUIRED_MODEL_DIRS:
         (path / dirname).mkdir(exist_ok=True)
+    if include_aux:
+        make_aux_model_cache(path)
+
+
+def make_aux_model_cache(path):
+    for filename in AUX_MODEL_FILES:
+        target = path / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("placeholder", encoding="utf-8")
+    for dirname in AUX_MODEL_DIRS:
+        target = path / dirname
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "config.json").write_text("placeholder", encoding="utf-8")
 
 
 def user_state_paths(temp_path):
@@ -72,19 +93,29 @@ class DownloadCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             state = user_state_paths(Path(temp_dir).resolve())
             calls = []
+            aux_calls = []
 
             def fake_snapshot_download(repo_id, local_dir, **kwargs):
                 calls.append((repo_id, Path(local_dir)))
-                make_model_dir(Path(local_dir))
+                make_model_dir(Path(local_dir), include_aux=False)
                 return str(local_dir)
+
+            def fake_ensure_models_available(model_dir):
+                aux_calls.append(Path(model_dir))
+                make_aux_model_cache(Path(model_dir))
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 with mock.patch("indextts.utils.model_download.snapshot_download", side_effect=fake_snapshot_download):
-                    exit_code, stdout, stderr = self.run_cli(["download"])
+                    with mock.patch(
+                        "indextts.utils.model_download.ensure_models_available",
+                        side_effect=fake_ensure_models_available,
+                    ):
+                        exit_code, stdout, stderr = self.run_cli(["download"])
                 config_exists = state["config_path"].exists()
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(calls, [("IndexTeam/IndexTTS-2", state["model_dir"])])
+        self.assertEqual(aux_calls, [state["model_dir"]])
         self.assertIn(f"Downloaded model resources to: {state['model_dir']}", stdout)
         self.assertEqual(stderr, "")
         self.assertFalse(config_exists)

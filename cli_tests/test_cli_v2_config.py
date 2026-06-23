@@ -16,12 +16,20 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 ]
 REQUIRED_MODEL_DIRS = [
     "qwen0.6bemo4-merge",
+]
+AUX_MODEL_FILES = [
+    "hf_cache/semantic_codec_model.safetensors",
+    "hf_cache/campplus_cn_common.bin",
+    "hf_cache/bigvgan/config.json",
+    "hf_cache/bigvgan/bigvgan_generator.pt",
+]
+AUX_MODEL_DIRS = [
+    "hf_cache/w2v-bert-2.0",
 ]
 
 
@@ -31,6 +39,14 @@ def make_model_dir(path):
         (path / filename).write_text("placeholder", encoding="utf-8")
     for dirname in REQUIRED_MODEL_DIRS:
         (path / dirname).mkdir()
+    for filename in AUX_MODEL_FILES:
+        target = path / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("placeholder", encoding="utf-8")
+    for dirname in AUX_MODEL_DIRS:
+        target = path / dirname
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "config.json").write_text("placeholder", encoding="utf-8")
 
 
 def fake_torch():

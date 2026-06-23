@@ -25,12 +25,20 @@ REQUIRED_MODEL_FILES = (
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 )
 REQUIRED_MODEL_DIRS = (
     "qwen0.6bemo4-merge",
+)
+REQUIRED_AUX_MODEL_FILES = (
+    "hf_cache/semantic_codec_model.safetensors",
+    "hf_cache/campplus_cn_common.bin",
+    "hf_cache/bigvgan/config.json",
+    "hf_cache/bigvgan/bigvgan_generator.pt",
+)
+REQUIRED_AUX_MODEL_DIRS = (
+    "hf_cache/w2v-bert-2.0",
 )
 MODEL_REPO_ID = "IndexTeam/IndexTTS-2"
 REQUIRED_PACKAGES = ("torch", "torchaudio", "indextts")
@@ -321,6 +329,13 @@ def _download_model_resources(source, model_dir):
     else:
         from huggingface_hub import snapshot_download
         snapshot_download(repo_id=MODEL_REPO_ID, local_dir=str(model_dir))
+
+    if _missing_primary_model_resources(model_dir):
+        return
+
+    from indextts.utils.model_download import ensure_models_available
+
+    ensure_models_available(str(model_dir))
 
 
 def _download_support_package(source):
@@ -1517,9 +1532,24 @@ def _print_model_resource_help(model_dir, missing_summary):
 def _missing_model_files(model_dir):
     if not model_dir.is_dir():
         return None
+    missing_files = _missing_primary_model_resources(model_dir)
+    missing_aux_files = [
+        filename for filename in REQUIRED_AUX_MODEL_FILES if not _model_resource_path(model_dir, filename).is_file()
+    ]
+    missing_aux_dirs = [
+        dirname for dirname in REQUIRED_AUX_MODEL_DIRS if not _model_resource_path(model_dir, dirname).is_dir()
+    ]
+    return missing_files + missing_aux_files + missing_aux_dirs
+
+
+def _missing_primary_model_resources(model_dir):
     missing_files = [filename for filename in REQUIRED_MODEL_FILES if not (model_dir / filename).is_file()]
     missing_dirs = [dirname for dirname in REQUIRED_MODEL_DIRS if not (model_dir / dirname).is_dir()]
     return missing_files + missing_dirs
+
+
+def _model_resource_path(model_dir, relative_path):
+    return model_dir.joinpath(*relative_path.split("/"))
 
 
 def _import_required_packages():

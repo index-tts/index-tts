@@ -16,23 +16,44 @@ REQUIRED_MODEL_FILES = [
     "gpt.pth",
     "s2mel.pth",
     "wav2vec2bert_stats.pt",
-    "pinyin.vocab",
     "feat1.pt",
     "feat2.pt",
 ]
 REQUIRED_MODEL_DIRS = [
     "qwen0.6bemo4-merge",
 ]
+AUX_MODEL_FILES = [
+    "hf_cache/semantic_codec_model.safetensors",
+    "hf_cache/campplus_cn_common.bin",
+    "hf_cache/bigvgan/config.json",
+    "hf_cache/bigvgan/bigvgan_generator.pt",
+]
+AUX_MODEL_DIRS = [
+    "hf_cache/w2v-bert-2.0",
+]
 
 
-def make_model_dir(base_dir):
+def make_model_dir(base_dir, include_aux=True):
     model_dir = base_dir / "checkpoints"
     model_dir.mkdir()
     for filename in REQUIRED_MODEL_FILES:
         (model_dir / filename).write_text("placeholder", encoding="utf-8")
     for dirname in REQUIRED_MODEL_DIRS:
         (model_dir / dirname).mkdir()
+    if include_aux:
+        make_aux_model_cache(model_dir)
     return model_dir
+
+
+def make_aux_model_cache(model_dir):
+    for filename in AUX_MODEL_FILES:
+        target = model_dir / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("placeholder", encoding="utf-8")
+    for dirname in AUX_MODEL_DIRS:
+        target = model_dir / dirname
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "config.json").write_text("placeholder", encoding="utf-8")
 
 
 def assert_model_resource_help(test_case, stderr, model_dir):
@@ -189,10 +210,29 @@ class CheckCommandTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 2)
             self.assertEqual(stdout.getvalue(), "")
-            self.assertIn("pinyin.vocab", stderr.getvalue())
             self.assertIn("feat1.pt", stderr.getvalue())
             self.assertIn("feat2.pt", stderr.getvalue())
             self.assertIn("qwen0.6bemo4-merge", stderr.getvalue())
+
+    def test_check_requires_the_auxiliary_model_cache_resources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = make_model_dir(Path(temp_dir), include_aux=False)
+
+            from indextts.cli_v2 import main
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exit_code = main(["check", "--model-dir", str(model_dir)])
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("ERROR: missing required model files", stderr.getvalue())
+            self.assertIn("hf_cache/w2v-bert-2.0", stderr.getvalue())
+            self.assertIn("hf_cache/semantic_codec_model.safetensors", stderr.getvalue())
+            self.assertIn("hf_cache/campplus_cn_common.bin", stderr.getvalue())
+            self.assertIn("hf_cache/bigvgan/config.json", stderr.getvalue())
+            self.assertIn("hf_cache/bigvgan/bigvgan_generator.pt", stderr.getvalue())
 
     def test_check_requires_file_resources_and_directory_resources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1114,14 +1154,9 @@ class SynthCommandTests(unittest.TestCase):
     def test_synth_maps_runtime_options_to_indextts2(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            model_dir = temp_path / "models"
+            model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             output_path = temp_path / "out.wav"
-            model_dir.mkdir()
-            for filename in REQUIRED_MODEL_FILES:
-                (model_dir / filename).write_text("placeholder", encoding="utf-8")
-            for dirname in REQUIRED_MODEL_DIRS:
-                (model_dir / dirname).mkdir()
             voice_path.write_bytes(b"voice")
 
             exit_code, stdout, stderr, calls = self.run_synth(
