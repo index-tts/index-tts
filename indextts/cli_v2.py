@@ -40,6 +40,8 @@ PERSISTED_CONFIG_KEYS = (
     "use_fp16",
     "use_deepspeed",
     "use_cuda_kernel",
+    "use_accel",
+    "use_torch_compile",
 )
 
 
@@ -182,6 +184,8 @@ def _build_parser():
     batch.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=None, help="Use FP16 inference")
     batch.add_argument("--deepspeed", action=argparse.BooleanOptionalAction, default=None, help="Use DeepSpeed")
     batch.add_argument("--cuda-kernel", action=argparse.BooleanOptionalAction, default=None, help="Use CUDA kernel")
+    batch.add_argument("--accel", action=argparse.BooleanOptionalAction, default=None, help="Use GPT2 acceleration engine")
+    batch.add_argument("--torch-compile", action=argparse.BooleanOptionalAction, default=None, help="Use torch.compile for s2mel optimization")
     batch.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     batch.add_argument("--voice", help="Default speaker reference audio for every batch task")
     batch.add_argument("--emotion-audio", help="Default emotion reference audio for every batch task")
@@ -235,6 +239,8 @@ def _build_parser():
     synth.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=None, help="Use FP16 inference")
     synth.add_argument("--deepspeed", action=argparse.BooleanOptionalAction, default=None, help="Use DeepSpeed")
     synth.add_argument("--cuda-kernel", action=argparse.BooleanOptionalAction, default=None, help="Use CUDA kernel")
+    synth.add_argument("--accel", action=argparse.BooleanOptionalAction, default=None, help="Use GPT2 acceleration engine")
+    synth.add_argument("--torch-compile", action=argparse.BooleanOptionalAction, default=None, help="Use torch.compile for s2mel optimization")
     synth.add_argument("--verbose", action="store_true", help="Show verbose inference output")
     return parser
 
@@ -273,7 +279,7 @@ def _run_config(args):
             _save_persisted_config(config)
             print(f"{args.key} = {args.value}")
             return EXIT_SUCCESS
-        if args.key in {"use_fp16", "use_deepspeed", "use_cuda_kernel"}:
+        if args.key in {"use_fp16", "use_deepspeed", "use_cuda_kernel", "use_accel", "use_torch_compile"}:
             value = _parse_config_bool(args.value)
             if value is None:
                 print(f"ERROR: {args.key} must be true or false", file=sys.stderr)
@@ -362,6 +368,10 @@ def _resolve_runtime_options(args):
         cuda_kernel=args.cuda_kernel
         if args.cuda_kernel is not None
         else bool(config.get("use_cuda_kernel", False)),
+        accel=args.accel if args.accel is not None else bool(config.get("use_accel", False)),
+        torch_compile=args.torch_compile
+        if args.torch_compile is not None
+        else bool(config.get("use_torch_compile", False)),
     )
 
 
@@ -520,6 +530,8 @@ def _run_synth(args, tts_factory=None, stdin=None):
                 device=runtime.device,
                 use_cuda_kernel=runtime.cuda_kernel,
                 use_deepspeed=runtime.deepspeed,
+                use_accel=runtime.accel,
+                use_torch_compile=runtime.torch_compile,
             )
             infer_kwargs = {
                 "spk_audio_prompt": str(voice_path),
@@ -589,6 +601,8 @@ def _run_batch(args, tts_factory=None):
                 device=runtime.device,
                 use_cuda_kernel=runtime.cuda_kernel,
                 use_deepspeed=runtime.deepspeed,
+                use_accel=runtime.accel,
+                use_torch_compile=runtime.torch_compile,
             )
     except Exception as exc:
         print(f"ERROR: inference failed: {exc}", file=sys.stderr)

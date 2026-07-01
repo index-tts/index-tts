@@ -1542,6 +1542,8 @@ class BatchCommandExecutionTests(unittest.TestCase):
                     "--fp16",
                     "--deepspeed",
                     "--cuda-kernel",
+                    "--accel",
+                    "--torch-compile",
                     "--verbose",
                 ],
                 tts_factory=FakeIndexTTS2,
@@ -1559,6 +1561,8 @@ class BatchCommandExecutionTests(unittest.TestCase):
                 "device": "cuda:0",
                 "use_cuda_kernel": True,
                 "use_deepspeed": True,
+                "use_accel": True,
+                "use_torch_compile": True,
             },
         )
         self.assertTrue(calls[1][1]["verbose"])
