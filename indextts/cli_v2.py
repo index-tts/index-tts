@@ -375,6 +375,31 @@ def _resolve_runtime_options(args):
     )
 
 
+def _validate_optional_dependencies(runtime):
+    """Fail fast when acceleration flags are set but optional dependencies are missing."""
+    if runtime.accel:
+        try:
+            importlib.import_module("flash_attn")
+        except ImportError:
+            print(
+                "ERROR: --accel requires flash-attn, which is not installed. "
+                "Install it with: uv sync --extra accel",
+                file=sys.stderr,
+            )
+            return EXIT_RUNTIME_UNAVAILABLE
+    if runtime.torch_compile:
+        try:
+            importlib.import_module("triton")
+        except ImportError:
+            print(
+                "ERROR: --torch-compile requires triton, which is not installed. "
+                "Install it with: uv sync --extra torch_compile",
+                file=sys.stderr,
+            )
+            return EXIT_RUNTIME_UNAVAILABLE
+    return None
+
+
 def _load_persisted_config():
     path = _config_path()
     if not path.is_file():
@@ -515,6 +540,9 @@ def _run_synth(args, tts_factory=None, stdin=None):
     if missing_exit_code is not None:
         return EXIT_MISSING_RESOURCE
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    missing_dep_exit = _validate_optional_dependencies(runtime)
+    if missing_dep_exit is not None:
+        return missing_dep_exit
     if tts_factory is None:
         try:
             tts_factory = _load_indextts2(model_dir)
@@ -585,6 +613,9 @@ def _run_batch(args, tts_factory=None):
         else:
             print(f"Batch file OK: {len(tasks)} tasks")
         return EXIT_SUCCESS
+    missing_dep_exit = _validate_optional_dependencies(runtime)
+    if missing_dep_exit is not None:
+        return missing_dep_exit
     if tts_factory is None:
         try:
             tts_factory = _load_indextts2(model_dir)
