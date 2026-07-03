@@ -218,15 +218,6 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 > please ensure that you have installed NVIDIA's [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
 > version **12.8** (or newer) on your system.
 
-> [!IMPORTANT]
-> **Windows Acceleration Note:**
-> The `--accel` flag requires `flash-attn`, which does not currently provide an
-> official Windows wheel for PyTorch 2.8 + CUDA 12.8. Windows users need to obtain
-> or compile a compatible `flash-attn` wheel themselves and install it before
-> using `--accel`. The `--torch_compile` flag requires `triton`; on Windows this
-> is provided by the community `triton-windows` package and is installed
-> automatically via `uv sync --extra torch_compile`.
-
 5. Download the required models via [uv tool](https://docs.astral.sh/uv/guides/tools/#installing-tools):
 
 Download via `huggingface-cli`:
