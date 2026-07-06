@@ -1,4 +1,5 @@
 import contextlib
+import importlib
 import io
 import os
 import sys
@@ -7,6 +8,18 @@ import unittest
 import wave
 from pathlib import Path
 from unittest import mock
+
+
+def _mock_optional_dependency_imports():
+    """Make flash_attn/triton appear installed so acceleration CLI tests can run."""
+    original = importlib.import_module
+
+    def _fake_import(name, package=None):
+        if name in ("flash_attn", "triton"):
+            return mock.MagicMock()
+        return original(name, package)
+
+    return mock.patch("indextts.cli_v2.importlib.import_module", side_effect=_fake_import)
 
 
 REQUIRED_MODEL_FILES = [
@@ -1021,8 +1034,11 @@ class BatchCommandExecutionTests(unittest.TestCase):
         self.user_state = tempfile.TemporaryDirectory()
         self.env_patch = mock.patch.dict(os.environ, user_state_env(Path(self.user_state.name)), clear=False)
         self.env_patch.start()
+        self._import_patch = _mock_optional_dependency_imports()
+        self._import_patch.start()
 
     def tearDown(self):
+        self._import_patch.stop()
         self.env_patch.stop()
         self.user_state.cleanup()
 

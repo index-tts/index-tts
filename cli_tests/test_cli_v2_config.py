@@ -10,6 +10,18 @@ from types import SimpleNamespace
 from unittest import mock
 
 
+def _mock_optional_dependency_imports():
+    """Make flash_attn/triton appear installed so acceleration CLI tests can run."""
+    original = importlib.import_module
+
+    def _fake_import(name, package=None):
+        if name in ("flash_attn", "triton"):
+            return mock.MagicMock()
+        return original(name, package)
+
+    return mock.patch("indextts.cli_v2.importlib.import_module", side_effect=_fake_import)
+
+
 REQUIRED_MODEL_FILES = [
     "config.yaml",
     "bpe.model",
@@ -82,6 +94,13 @@ def user_state_paths(temp_path):
 
 
 class ConfigCommandTests(unittest.TestCase):
+    def setUp(self):
+        self._import_patch = _mock_optional_dependency_imports()
+        self._import_patch.start()
+
+    def tearDown(self):
+        self._import_patch.stop()
+
     def run_cli(self, args, **kwargs):
         from indextts.cli_v2 import main
 
