@@ -72,6 +72,19 @@ webui = [
 deepspeed = [
   "deepspeed==0.17.1",
 ]
+# To install the GPT2 acceleration engine, use `uv sync --extra accel` (or `--all-extras`).
+# NOTE: flash-attn 2.8.3.post1 also requires triton at import time on Windows.
+accel = [
+  "flash-attn==2.8.3.post1",
+  "nvidia-cuda-runtime-cu12",
+  "nvidia-cudnn-cu12",
+  "triton-windows==3.1.0.post17",
+]
+# To install torch.compile support for s2mel, use `uv sync --extra torch_compile` (or `--all-extras`).
+# On Windows this is satisfied by the triton-windows package above.
+torch_compile = [
+  "triton-windows==3.1.0.post17",
+]
 test = [
   "pytest>=7.0",
 ]
