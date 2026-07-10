@@ -49,7 +49,7 @@ dependencies = [
   "pandas==2.3.2",
   "safetensors==0.5.2",
   "sentencepiece>=0.2.1",
-  "tensorboard==2.9.1",
+  "tensorboard==2.20.0",
   "textstat>=0.7.10",
   "tokenizers==0.21.0",
   "torch==2.8.*",
