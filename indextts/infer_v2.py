@@ -702,7 +702,16 @@ class IndexTTS2:
                 print(">> remove old wav file:", output_path)
             if os.path.dirname(output_path) != "":
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
+            # torchaudio.save() with an int16 tensor treats the values as if
+            # they were already normalised to [-1, 1] and scales by 32768 a
+            # second time, so every sample past ~1/32768 of full scale clips.
+            # `wav` is in [-32767, 32767] here (see the clamp above), so it is
+            # normalised back before saving.
+            wav_normalized = wav.float() / 32768.0
+            # torchaudio wants (channels, samples).
+            if wav_normalized.dim() == 1:
+                wav_normalized = wav_normalized.unsqueeze(0)
+            torchaudio.save(output_path, wav_normalized, sampling_rate)
             print(">> wav file saved to:", output_path)
             if stream_return:
                 return None
