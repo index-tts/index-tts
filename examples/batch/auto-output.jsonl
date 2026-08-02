@@ -1,0 +1,3 @@
+{"text": "自动命名输出的第一句。"}
+{"text_file": "texts/second.txt", "emotion_text": "warm and calm"}
+{"text": "自动命名输出的第三句使用平静情感。", "emotion_vector": [0, 0, 0, 0, 0, 0, 0, 0.4]}

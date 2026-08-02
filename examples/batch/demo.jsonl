@@ -1,0 +1,4 @@
+{"text": "第一句直接写在批量清单里。", "output": "out/001.wav"}
+{"text_file": "texts/second.txt", "emotion_audio": "../emo_sad.wav", "emotion_weight": 0.75, "output": "out/002.wav"}
+{"text": "第三句使用 JSON array 格式的情感向量。", "emotion_vector": [0, 0, 0.6, 0, 0, 0, 0, 0], "output": "out/003.wav"}
+{"text": "第四句使用 CLI 字符串格式的情感向量。", "emotion_vector": "0,0,0,0,0,0,0,0.5", "emotion_weight": "0.4", "output": "out/004.wav"}

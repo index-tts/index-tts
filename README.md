@@ -201,6 +201,12 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 > - `--extra webui`: Adds WebUI support (recommended).
 > - `--extra deepspeed`: Adds DeepSpeed support (may speed up inference on some
 >   systems).
+> - `--extra accel`: Adds the GPT2 flash-attention acceleration engine. On Windows
+>   you must provide a compatible prebuilt `flash-attn` wheel yourself (see the
+>   **Windows Acceleration** note below).
+> - `--extra torch_compile`: Adds `triton` support so the s2mel flow model can be
+>   compiled with `torch.compile`. Windows support requires the community
+>   `triton-windows` package.
 
 > [!IMPORTANT]
 > **Important (Windows):** The DeepSpeed library may be difficult to install for
@@ -271,6 +277,21 @@ available options can be seen via the following command:
 
 ```bash
 uv run webui.py -h
+```
+
+The following startup flags control optional acceleration features. They are
+chosen when the server starts and cannot be toggled from the WebUI:
+
+- `--accel`: Enable the GPT2 flash-attention acceleration engine. Requires the
+  `accel` extra (i.e. `flash-attn`) to be installed.
+- `--torch_compile`: Compile the s2mel flow model with `torch.compile`. Requires
+  the `torch_compile` extra (i.e. `triton`) to be installed.
+- `--fp16`: Use half-precision inference (faster and lower VRAM usage).
+
+Example with all accelerations enabled:
+
+```bash
+uv run webui.py --fp16 --accel --torch_compile
 ```
 
 Have fun!

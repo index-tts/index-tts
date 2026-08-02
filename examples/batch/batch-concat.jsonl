@@ -1,0 +1,3 @@
+{"text": "拼接批量合成的第一段。", "silence_after_ms": 300}
+{"text_file": "texts/second.txt", "silence_after_ms": 500}
+{"text": "拼接批量合成的第三段。", "emotion_vector": "0,0,0,0,0,0,0,0.4"}

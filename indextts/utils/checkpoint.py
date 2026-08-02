@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import datetime
-import logging
 import os
-import re
-from collections import OrderedDict
+from pathlib import Path
 
 import torch
 import yaml
@@ -26,7 +23,7 @@ def load_checkpoint(model: torch.nn.Module, model_pth: str) -> dict:
     checkpoint = torch.load(model_pth, map_location='cpu')
     checkpoint = checkpoint['model'] if 'model' in checkpoint else checkpoint
     model.load_state_dict(checkpoint, strict=True)
-    info_path = re.sub('.pth$', '.yaml', model_pth)
+    info_path = str(Path(model_pth).with_suffix('.yaml'))
     configs = {}
     if os.path.exists(info_path):
         with open(info_path, 'r') as fin:
