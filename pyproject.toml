@@ -52,8 +52,6 @@ dependencies = [
   "tensorboard==2.20.0",
   "textstat>=0.7.10",
   "tokenizers==0.21.0",
-  "torch==2.8.*",
-  "torchaudio==2.8.*",
   "requests>=2.28",
   "tqdm>=4.67.1",
   "transformers==4.52.1",
@@ -88,7 +86,17 @@ torch_compile = [
 test = [
   "pytest>=7.0",
 ]
-
+xpu = [
+  "torch==2.8.*",
+  "torchaudio==2.8.*",
+  "torchvision==0.23.*",
+  "pytorch-triton-xpu",
+]
+cu128 = [
+  "torch==2.8.*",
+  "torchaudio==2.8.*",
+  "torchvision==0.23.*",
+]
 [tool.pytest.ini_options]
 markers = [
     "gpu: tests that require GPU and model checkpoints (deselect with '-m not gpu')",
@@ -116,19 +124,31 @@ build-backend = "hatchling.build"
 # its compilation to determine what GPU support to compile for itself. It also
 # saves time, since it won't waste time downloading a generic PyTorch version.
 no-build-isolation-package = ["deepspeed"]
+conflicts = [
+  [
+    { extra = "xpu" },
+    { extra = "cu128" },
+  ],
+]
 
 [tool.uv.sources]
 # Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
 # NOTE: We must explicitly request them as `dependencies` above. These improved
 # versions will not be selected if they're only third-party dependencies.
 torch = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
+  { index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "xpu" },
 ]
 torchaudio = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
+  { index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "xpu" },
 ]
 torchvision = [
-  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "cu128" },
+  { index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'", extra = "xpu" },
+]
+pytorch-triton-xpu = [
+  { index = "pytorch-xpu", extra = "xpu" },
 ]
 
 [[tool.uv.index]]
@@ -137,4 +157,9 @@ name = "pytorch-cuda"
 # Available versions: https://pytorch.org/get-started/locally/
 url = "https://download.pytorch.org/whl/cu128"
 # Only use this index when explicitly requested by `tool.uv.sources`.
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
 explicit = true
