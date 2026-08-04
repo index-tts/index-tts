@@ -42,61 +42,44 @@ Please follow the README of [index-tts](https://github.com/index-tts/index-tts) 
 
 ## Quick Start
 
+`run.sh` is the only entry point you need. It activates the venv, sets
+`PYTHONPATH`/`LD_LIBRARY_PATH`, locates OpenMPI and checks the environment before
+doing anything, so these work from a bare shell with nothing sourced:
+
 ```bash
 # Install dependencies
 uv sync --directory backends/trt
 
-# Check the host can actually run this (python version, OpenMPI, CUDA, artifacts).
-# Prints a fix hint for anything missing.
-bash backends/trt/scripts/run.sh check
+# Check the host can run this; prints a fix hint for anything missing
+bash backends/trt/run.sh check
 
-source backends/trt/.venv/bin/activate
-source backends/trt/scripts/setup_env.sh
+# Export ONNX -> convert GPT checkpoint -> build engines (slow, one time)
+bash backends/trt/run.sh build
 
-# Export ONNX models
-bash backends/trt/scripts/export_models.sh
-
-# Convert TRT-LLM checkpoint
-PRECISION=fp16 bash backends/trt/scripts/convert_checkpoint.sh
-
-# Build engines (default MAX_BATCH_SIZE=4)
-PRECISION=fp16 bash backends/trt/scripts/build_engines.sh
-
-# Or with custom batch size
-# PRECISION=fp16 MAX_BATCH_SIZE=2 bash backends/trt/scripts/build_engines.sh
-
-# Run inference
-python backends/trt/infer.py \
+# Synthesize
+bash backends/trt/run.sh infer \
     --text "Translate for me, what is a surprise!" \
     --speaker examples/voice_01.wav \
     --output output.wav
 ```
 
----
-
-## One-shot entry point
-
-`scripts/run.sh` activates the venv, sets `PYTHONPATH`/`LD_LIBRARY_PATH`, locates
-OpenMPI, runs the preflight check, then dispatches — so a call works from a bare
-shell with nothing sourced:
-
-```bash
-bash backends/trt/scripts/run.sh check
-bash backends/trt/scripts/run.sh infer  --text "hi" --speaker examples/voice_01.wav --output out.wav
-bash backends/trt/scripts/run.sh serve  --mode streaming --max_batch_size 1
-bash backends/trt/scripts/run.sh client --mode streaming --text "hi" \
-    --speaker_audio examples/voice_01.wav --output out.wav
-```
+`bash backends/trt/run.sh --help` lists the commands; `infer --help` and
+`serve --help` forward to the underlying scripts.
 
 | Variable | Purpose |
 |---|---|
 | `PRECISION` | `fp32`/`fp16`/`int8`/`int4`, default `fp16` |
+| `MAX_BATCH_SIZE` | Engine build batch size, default `1` |
 | `OPENMPI_PREFIX` | OpenMPI prefix, if it isn't on the default library path |
-| `SKIP_PREFLIGHT=1` | Skip the environment check |
+| `SKIP_CHECK=1` | Skip the environment check |
 
-It searches for OpenMPI under `$OPENMPI_PREFIX`, `~/local-mpi/root/usr`,
+OpenMPI is searched for under `$OPENMPI_PREFIX`, `~/local-mpi/root/usr`,
 `/usr/lib/x86_64-linux-gnu/openmpi`, `/usr`, `/usr/local` and `/opt/hpcx/ompi`.
 That last one means it works unchanged inside the NVIDIA Triton images.
+
+The individual steps under `scripts/` (`export_models.sh`,
+`convert_checkpoint.sh`, `build_engines.sh`) can still be run directly if you
+need to redo just one of them.
 
 ---
 
