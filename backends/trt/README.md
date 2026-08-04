@@ -2,6 +2,15 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-2607.21042-b31b1b.svg)](https://arxiv.org/abs/2607.21042)
 
+> **Attribution.** This backend is taken from
+> [MuyangDu/index-tts](https://github.com/MuyangDu/index-tts/tree/main/deploy) —
+> *Faster IndexTTS-2*, by Muyang Du, Shuang Yu and Junjie Lai
+> ([arXiv:2607.21042](https://arxiv.org/abs/2607.21042)). The code below is
+> theirs; it was copied here with only path and module renames (`deploy/` →
+> `backends/trt/`), and with the untested Docker and native-Triton serving paths
+> removed. "We"/"our" in this document refers to those authors, not the
+> IndexTTS team.
+
 This folder contains the GPU-accelerated inference and serving solution for IndexTTS-2, built with the NVIDIA
 TensorRT, TensorRT-LLM, and Triton Inference Server. For more technical details, please refer to our paper
 [Faster IndexTTS-2](https://arxiv.org/abs/2607.21042).
