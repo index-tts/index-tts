@@ -20,11 +20,13 @@ def _build_model_config(config):
     quantization = pretrained_config.get('quantization', {})
 
     dtype = pretrained_config['dtype']
-    world_size = mapping_cfg['tp_size']
+    tp_size = mapping_cfg['tp_size']
+    pp_size = mapping_cfg.get('pp_size', 1)
+    world_size = tp_size * pp_size
 
-    num_heads = pretrained_config['num_attention_heads'] // world_size
-    num_kv_heads = pretrained_config['num_key_value_heads'] // world_size
-    hidden_size = pretrained_config['hidden_size'] // world_size
+    num_heads = pretrained_config['num_attention_heads'] // tp_size
+    num_kv_heads = pretrained_config['num_key_value_heads'] // tp_size
+    hidden_size = pretrained_config['hidden_size'] // tp_size
     vocab_size = pretrained_config['vocab_size']
     output_vocab_size = pretrained_config['output_vocab_size']
     num_layers = pretrained_config['num_hidden_layers']
@@ -393,6 +395,11 @@ class GPTTRTEngine:
             chunk_code_lens: (B,) tensor of valid code lengths per sample
         """
         stride = chunk_size - overlap_size
+        if stride <= 0:
+            raise ValueError(
+                f"overlap_size ({overlap_size}) must be less than chunk_size ({chunk_size}); "
+                f"got stride={stride} which would cause an infinite loop."
+            )
 
         sampling_config = tensorrt_llm.runtime.SamplingConfig(
             end_id=stop_token_id,

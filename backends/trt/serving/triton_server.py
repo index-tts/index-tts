@@ -34,6 +34,9 @@ from pytriton.triton import Triton, TritonConfig, TritonSecurityConfig
 
 logger = logging.getLogger("triton_server")
 
+# Maximum allowed size for a speaker audio payload (50 MB).
+MAX_SPEAKER_AUDIO_BYTES = 50 * 1024 * 1024
+
 # ---------------------------------------------------------------------------
 # Speaker cache (LRU)
 # ---------------------------------------------------------------------------
@@ -62,6 +65,12 @@ class SpeakerCache:
         cached = self.get(audio_bytes)
         if cached is not None:
             return cached
+
+        if len(audio_bytes) > MAX_SPEAKER_AUDIO_BYTES:
+            raise ValueError(
+                f"speaker_audio payload ({len(audio_bytes)} bytes) exceeds the "
+                f"{MAX_SPEAKER_AUDIO_BYTES // (1024 * 1024)} MB limit."
+            )
 
         import torch, tempfile, os
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
