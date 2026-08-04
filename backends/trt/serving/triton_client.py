@@ -113,8 +113,6 @@ def run_streaming(args):
         nonzero = np.nonzero(audio_chunk)[0]
         if len(nonzero) > 0:
             audio_chunk = audio_chunk[:nonzero[-1] + 1]
-
-        if len(audio_chunk) > 0:
             all_chunks.append(audio_chunk)
 
         print(f"  Chunk {chunk_count}: {len(audio_chunk)} samples, is_last={is_last}")
