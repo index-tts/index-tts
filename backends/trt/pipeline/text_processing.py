@@ -279,6 +279,7 @@ class TextTokenizer:
                     if i < len(tokenized_str) - 1:
                         if tokenized_str[i + 1] in ["'", "▁'"]:
                             current_segment.append(tokenized_str[i + 1])
+                            current_segment_tokens_len += 1
                             i += 1
                     segments.append(current_segment)
                     current_segment = []
