@@ -1,0 +1,91 @@
+[project]
+name = "faster-indextts-2"
+version = "1.0.0"
+description = "Faster IndexTTS-2"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  # --- IndexTTS-2 base deps (tested versions) ---
+  # Pin notes:
+  #   - descript-audiotools + tensorboard: required by indextts/s2mel/dac/ imports.
+  #     They pin protobuf<3.20, which conflicts with TRT-LLM's protobuf>=4.
+  #     Resolved via [tool.uv] override-dependencies below; at runtime, set
+  #     PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python for backward-compat.
+  #   - torch/torchaudio: TRT-LLM 0.21.0 requires torch>=2.7.1,<2.8.
+  #   - transformers: TRT-LLM 0.21.0 requires ~=4.51.1.
+  #   - numba: bumped from upstream's 0.58.1 (no Python 3.12 wheel).
+  "accelerate==1.8.1",
+  "cn2an==0.5.22",
+  "cython==3.0.7",
+  "descript-audiotools==0.7.2",
+  "tensorboard==2.9.1",
+  "einops>=0.8.1",
+  "ffmpeg-python==0.2.0",
+  "g2p-en==2.1.0",
+  "jieba==0.42.1",
+  "json5==0.10.0",
+  "librosa==0.10.2.post1",
+  "matplotlib==3.8.2",
+  "modelscope==1.27.0",
+  "munch==4.0.0",
+  "numba>=0.59,<0.63",
+  "numpy==1.26.2",
+  "omegaconf>=2.3.0",
+  "opencv-python==4.9.0.80",
+  "pandas==2.3.2",
+  "safetensors==0.5.2",
+  "sentencepiece>=0.2.1",
+  "textstat>=0.7.10",
+  "tokenizers==0.21.0",
+  "torch>=2.7.1,<2.8",
+  "torchaudio>=2.7.1,<2.8",
+  "tqdm>=4.67.1",
+  "transformers~=4.51.1",
+  "requests>=2.28",
+  "wetext>=0.0.9; sys_platform != 'linux'",
+  "WeTextProcessing; sys_platform == 'linux'",
+
+  # --- TRT acceleration deps ---
+  "tensorrt-llm==0.21.0",
+  "nvidia-pytriton==0.7.0",
+  "tritonclient[grpc]>=2.68",
+  "onnx>=1.17,<1.21",
+  "onnxruntime-gpu>=1.18,<1.25",
+  "onnxscript>=0.1",
+  "polygraphy>=0.49",
+  "cuda-python>=12,<13",
+  "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+deepspeed = ["deepspeed==0.17.1"]
+
+[build-system]
+requires = ["hatchling >= 1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# This project is a dependency manifest, not an installable package.
+# All Python modules are made importable via PYTHONPATH (set by setup_env.sh).
+package = false
+
+# Force protobuf>=4 despite descript-audiotools/tensorboard declaring <3.20.
+override-dependencies = ["protobuf>=4.25,<6"]
+
+# Disable build isolation for DeepSpeed so it finds our CUDA-enabled PyTorch.
+no-build-isolation-package = ["deepspeed"]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchaudio = [
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
