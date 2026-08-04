@@ -45,6 +45,11 @@ Please follow the README of [index-tts](https://github.com/index-tts/index-tts) 
 ```bash
 # Install dependencies
 uv sync --directory backends/trt
+
+# Check the host can actually run this (python version, OpenMPI, CUDA, artifacts).
+# Prints a fix hint for anything missing.
+bash backends/trt/scripts/run.sh check
+
 source backends/trt/.venv/bin/activate
 source backends/trt/scripts/setup_env.sh
 
@@ -66,6 +71,32 @@ python backends/trt/infer.py \
     --speaker examples/voice_01.wav \
     --output output.wav
 ```
+
+---
+
+## One-shot entry point
+
+`scripts/run.sh` activates the venv, sets `PYTHONPATH`/`LD_LIBRARY_PATH`, locates
+OpenMPI, runs the preflight check, then dispatches — so a call works from a bare
+shell with nothing sourced:
+
+```bash
+bash backends/trt/scripts/run.sh check
+bash backends/trt/scripts/run.sh infer  --text "hi" --speaker examples/voice_01.wav --output out.wav
+bash backends/trt/scripts/run.sh serve  --mode streaming --max_batch_size 1
+bash backends/trt/scripts/run.sh client --mode streaming --text "hi" \
+    --speaker_audio examples/voice_01.wav --output out.wav
+```
+
+| Variable | Purpose |
+|---|---|
+| `PRECISION` | `fp32`/`fp16`/`int8`/`int4`, default `fp16` |
+| `OPENMPI_PREFIX` | OpenMPI prefix, if it isn't on the default library path |
+| `SKIP_PREFLIGHT=1` | Skip the environment check |
+
+It searches for OpenMPI under `$OPENMPI_PREFIX`, `~/local-mpi/root/usr`,
+`/usr/lib/x86_64-linux-gnu/openmpi`, `/usr`, `/usr/local` and `/opt/hpcx/ompi`.
+That last one means it works unchanged inside the NVIDIA Triton images.
 
 ---
 
