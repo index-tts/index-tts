@@ -16,8 +16,7 @@ TensorRT, TensorRT-LLM, and Triton Inference Server. For more technical details,
 
 ## Prerequisites
 
-- NVIDIA GPUs (tested on NVIDIA A100 80GB and RTX A6000 48GB)
-- Docker with NVIDIA Container Toolkit
+- NVIDIA GPUs (tested on NVIDIA A100 80GB, RTX A6000 48GB and RTX 4090 24GB)
 - IndexTTS-2 checkpoints in the `checkpoints` folder.
 - Example audio files in the `examples` folder.
 
@@ -25,60 +24,7 @@ Please follow the README of [index-tts](https://github.com/index-tts/index-tts) 
 
 ---
 
-## Quick Start (Docker)
-
-```bash
-# Build from a pre-built image with all dependencies and pre-exported ONNX models (--fast flag).
-# Pulls the image -> builds TRT engines
-bash backends/trt/scripts/build_image.sh --triton --fast fp16
-
-# Custom max batch size (default: 4, increase or decrease based on your GPU)
-# MAX_BATCH_SIZE=2 bash backends/trt/scripts/build_image.sh --triton --fast fp16
-
-# Or build from scratch
-# Pull the plain Triton image -> install required packages -> export ONNX models -> build engines
-# bash backends/trt/scripts/build_image.sh --triton fp16
-
-# Or build in two steps (export once, then rebuild engines as needed):
-# bash backends/trt/scripts/build_image.sh --triton --export-only
-# bash backends/trt/scripts/build_image.sh --triton --engines-only fp16
-
-# Or if you want to use PyTriton instead of native Triton Inference Server
-# bash backends/trt/scripts/build_image.sh --pytriton --fast fp16
-
-# Run the server (streaming mode)
-# If you build using PyTriton, replace the image name with faster-indextts-2-pytriton:fp16
-docker run --rm --gpus all --network=host faster-indextts-2-triton:fp16 \
-    tritonserver \
-      --model-repository=/workspace/indextts/backends/trt/serving/model_repository \
-      --model-control-mode=explicit \
-      --load-model=indextts2_stream \
-      --log-verbose=1
-
-# Send a streaming request (pip install tritonclient[grpc] soundfile numpy)
-python backends/trt/serving/triton_client.py --mode streaming \
-    --text "Translate for me, what is a surprise!" \
-    --speaker_audio examples/voice_01.wav \
-    --output output_s.wav
-
-# Run the server (non-streaming mode)
-docker run --rm --gpus all --network=host faster-indextts-2-triton:fp16 \
-    tritonserver \
-      --model-repository=/workspace/indextts/backends/trt/serving/model_repository \
-      --model-control-mode=explicit \
-      --load-model=indextts2 \
-      --log-verbose=1
-
-# Send a non-streaming request (pip install tritonclient[grpc] soundfile numpy)
-python backends/trt/serving/triton_client.py --mode non-streaming \
-    --text "Translate for me, what is a surprise!" \
-    --speaker_audio examples/voice_01.wav \
-    --output output_ns.wav
-```
-
----
-
-## Quick Start (Manual)
+## Quick Start
 
 ```bash
 # Install dependencies
@@ -104,6 +50,35 @@ python backends/trt/infer.py \
     --speaker examples/voice_01.wav \
     --output output.wav
 ```
+
+---
+
+## Serving (PyTriton)
+
+`triton_server.py` starts an in-process Triton server via PyTriton — no container
+required, since `nvidia-pytriton` bundles the server binary.
+
+```bash
+# Start the server. --max_batch_size must not exceed the MAX_BATCH_SIZE the
+# engines were built with.
+python backends/trt/serving/triton_server.py \
+    --mode non-streaming --precision fp16 --max_batch_size 1
+
+# Or streaming mode (decoupled, chunked audio)
+# python backends/trt/serving/triton_server.py \
+#     --mode streaming --precision fp16 --max_batch_size 1
+
+# Send a request from another shell
+python backends/trt/serving/triton_client.py --mode non-streaming \
+    --url localhost:8001 \
+    --text "Translate for me, what is a surprise!" \
+    --speaker_audio examples/voice_01.wav \
+    --output output_ns.wav
+```
+
+> **Warning:** the server binds `0.0.0.0` on ports 8000/8001/8002 with
+> `restricted_endpoints=[]`, i.e. no authentication. Do not expose it on an
+> untrusted network without putting access control in front of it.
 
 ---
 
@@ -142,25 +117,19 @@ for chunk in pipeline.generate(text="Hello world", speaker=spk, stream=True):
 
 ---
 
-## Scaling with multiple Triton instances
+## Throughput tuning
 
-If you have sufficient GPU memory or multiple GPUs, consider adding more instances per GPU or spreading across multiple GPUs by editing the `config.pbtxt`.
+`triton_server.py` batches concurrent requests dynamically. The relevant flags:
 
-```
-# 1 instance per GPU on a 2-GPU system
-instance_group [
-  { count: 1, kind: KIND_GPU, gpus: [0] },
-  { count: 1, kind: KIND_GPU, gpus: [1] }
-]
+| Flag | Default | Notes |
+|---|---|---|
+| `--max_batch_size` | 4 | Must not exceed the engines' build-time `MAX_BATCH_SIZE` |
+| `--max_queue_delay_ms` | 100 | How long to wait while filling a batch |
+| `--num_beams` | 3 | Must not exceed the engine's `max_beam_width` |
+| `--speaker_cache_size` | 64 | Cached speaker conditionings |
 
-# 2 instances per GPU on a 2-GPU system
-instance_group [
-  { count: 2, kind: KIND_GPU, gpus: [0] },
-  { count: 2, kind: KIND_GPU, gpus: [1] }
-]
-```
-
-> **Important:** `max_batch_size` in `config.pbtxt` must match the engine build-time `MAX_BATCH_SIZE` (default: 4). Do not increase it beyond what the engines were built with. You may safely change `instance_group` (count, gpus) and `dynamic_batching` settings.
+To serve on a specific GPU, set `CUDA_VISIBLE_DEVICES` before starting the
+server; run one server process per GPU to use several.
 
 ---
 
