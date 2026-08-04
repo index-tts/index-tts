@@ -77,7 +77,7 @@ def convert_and_save_hf(args):
                           tp_size=args.tp_size,
                           pp_size=args.pp_size)
         model = IndexTTS2GPTForCausalLM.from_hugging_face(
-            "checkpoints/config.yaml",
+            os.path.join(args.model_dir, "config.yaml"),
             args.model_dir,
             None,
             args.dtype,

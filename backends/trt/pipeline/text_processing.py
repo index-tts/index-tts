@@ -254,7 +254,8 @@ class TextTokenizer:
         segments: List[List[str]] = []
         current_segment = []
         current_segment_tokens_len = 0
-        for i in range(len(tokenized_str)):
+        i = 0
+        while i < len(tokenized_str):
             token = tokenized_str[i]
             current_segment.append(token)
             current_segment_tokens_len += 1
@@ -278,10 +279,12 @@ class TextTokenizer:
                     if i < len(tokenized_str) - 1:
                         if tokenized_str[i + 1] in ["'", "▁'"]:
                             current_segment.append(tokenized_str[i + 1])
+                            current_segment_tokens_len += 1
                             i += 1
                     segments.append(current_segment)
                     current_segment = []
                     current_segment_tokens_len = 0
+                i += 1
                 continue
             else:
                 sub_segments = []
@@ -298,6 +301,7 @@ class TextTokenizer:
             segments.extend(sub_segments)
             current_segment = []
             current_segment_tokens_len = 0
+            i += 1
         if current_segment_tokens_len > 0:
             assert current_segment_tokens_len <= max_text_tokens_per_segment
             segments.append(current_segment)
