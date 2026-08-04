@@ -6,6 +6,7 @@ __pycache__/
 .vscode/
 
 # Environments.
+.env
 .venv*/
 venv*/
 conda_env*/
@@ -27,7 +28,6 @@ desktop.ini
 # IndexTTS.
 /cache/
 /checkpoints/*
-!/checkpoints/*.yaml
 /outputs/
 
 # Example audio files (downloaded on demand, not stored in git)
