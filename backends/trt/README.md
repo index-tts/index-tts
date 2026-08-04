@@ -28,6 +28,13 @@ TensorRT, TensorRT-LLM, and Triton Inference Server. For more technical details,
 - NVIDIA GPUs (tested on NVIDIA A100 80GB, RTX A6000 48GB and RTX 4090 24GB)
 - IndexTTS-2 checkpoints in the `checkpoints` folder.
 - Example audio files in the `examples` folder.
+- **OpenMPI 4.x on the host.** `tensorrt_llm` links `libmpi.so.40` and needs the
+  `orted` binary for singleton init, so `import tensorrt_llm` fails with
+  `RuntimeError: cannot load MPI library` without it. On Debian/Ubuntu:
+  `apt-get install libopenmpi3 openmpi-bin`. Intel MPI (`impi-rt` from PyPI) is
+  not a substitute — it lacks `OMPI_COMM_TYPE_HOST` and aborts in `MPI_Init_thread`.
+  Upstream ran this inside `nvcr.io/nvidia/tritonserver`, which bundles HPC-X
+  OpenMPI, so the dependency is invisible there.
 
 Please follow the README of [index-tts](https://github.com/index-tts/index-tts) to download the checkpoints and example audios.
 
