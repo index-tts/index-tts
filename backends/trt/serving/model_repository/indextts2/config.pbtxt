@@ -1,0 +1,25 @@
+name: "indextts2"
+backend: "python"
+max_batch_size: 4
+
+input [
+  { name: "text", data_type: TYPE_STRING, dims: [1] },
+  { name: "speaker_audio", data_type: TYPE_STRING, dims: [1] },
+  { name: "emo_speaker_audio", data_type: TYPE_STRING, dims: [1], optional: true },
+  { name: "emo_alpha", data_type: TYPE_FP32, dims: [1], optional: true },
+  { name: "emo_vector", data_type: TYPE_FP32, dims: [8], optional: true }
+]
+
+output [
+  { name: "audio", data_type: TYPE_INT16, dims: [-1] },
+  { name: "sample_rate", data_type: TYPE_INT32, dims: [1] },
+  { name: "audio_length", data_type: TYPE_INT32, dims: [1] }
+]
+
+instance_group [
+  { count: 1, kind: KIND_GPU }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 100000
+}

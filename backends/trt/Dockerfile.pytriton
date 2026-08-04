@@ -1,0 +1,47 @@
+# faster-indextts-2 base image.
+# Installs all Python dependencies (TRT-LLM, PyTriton, ONNX, etc.) and copies
+# the project code. Does NOT export models or build engines (no GPU available
+# during `docker build`). Use scripts/build_image.sh for the full workflow.
+#
+# Base image provides: Ubuntu 24.04, CUDA 12.8.1, TensorRT 10.9,
+# Triton Inference Server 2.56.0, Python 3.12.
+FROM nvcr.io/nvidia/tritonserver:25.03-py3
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/workspace/indextts/backends/trt/.venv \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN pip install --no-cache-dir uv==0.9.7 \
+ && rm -rf /root/.cache/pip
+
+WORKDIR /workspace/indextts
+
+# Layer caching: copy backend config first so the heavy `uv sync` step is
+# cached unless dependencies change.
+COPY backends/trt/pyproject.toml backends/trt/
+
+# Install all dependencies (TRT deps are in base, no extras needed).
+RUN cd backends/trt && uv sync
+
+# Copy the IndexTTS-2 source package (unmodified).
+COPY indextts ./indextts
+COPY checkpoints ./checkpoints
+
+# copy the backends/trt folder (scripts, future acceleration code).
+COPY backends/trt ./backends/trt
+
+RUN chmod +x /workspace/indextts/backends/trt/scripts/*.sh
+
+# Set PYTHONPATH so `import indextts` works without pip-installing it.
+# Bake the venv's Python LIBDIR into LD_LIBRARY_PATH for PyTriton.
+ENV PATH=/workspace/indextts/backends/trt/.venv/bin:${PATH} \
+    PYTHONPATH=/workspace/indextts \
+    LD_LIBRARY_PATH=/workspace/indextts/backends/trt/.venv/lib/python3.12:${LD_LIBRARY_PATH}
+
+ENTRYPOINT ["/workspace/indextts/backends/trt/scripts/entrypoint.sh"]
+
+EXPOSE 8000 8001 8002
+
+CMD ["python", "-c", "import indextts, tensorrt_llm, pytriton; print('faster-indextts-2 image ready')"]

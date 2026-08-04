@@ -1,0 +1,45 @@
+# faster-indextts-2 native Triton Inference Server image.
+# Uses uv to install Python dependencies, then launches tritonserver
+# with the Python backend model repository.
+#
+# Multi-GPU: edit model_repository config.pbtxt instance_group to add GPUs.
+# No code changes needed — Triton spawns one process per instance.
+FROM nvcr.io/nvidia/tritonserver:25.03-py3
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/workspace/indextts/backends/trt/.venv \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN pip install --no-cache-dir uv==0.9.7 \
+ && rm -rf /root/.cache/pip
+
+WORKDIR /workspace/indextts
+
+# Layer caching: copy backend config first so uv sync is cached unless deps change.
+COPY backends/trt/pyproject.toml backends/trt/
+
+# Install all dependencies.
+RUN cd backends/trt && uv sync
+
+# Copy the IndexTTS-2 source package (unmodified).
+COPY indextts ./indextts
+COPY checkpoints ./checkpoints
+
+# copy the backends/trt folder (scripts, pipeline, runtime, serving, etc.).
+COPY backends/trt ./backends/trt
+
+RUN chmod +x /workspace/indextts/backends/trt/scripts/*.sh
+
+# Set PYTHONPATH so tritonserver's Python backend can find:
+# 1. The venv packages (torch, tensorrt_llm, etc.)
+# 2. The project root (for `import indextts` and `import backends.trt`)
+ENV PATH=/workspace/indextts/backends/trt/.venv/bin:${PATH} \
+    PYTHONPATH=/workspace/indextts/backends/trt/.venv/lib/python3.12/site-packages:/workspace/indextts \
+    LD_LIBRARY_PATH=/workspace/indextts/backends/trt/.venv/lib/python3.12:${LD_LIBRARY_PATH}
+
+EXPOSE 8000 8001 8002
+
+ENTRYPOINT ["/workspace/indextts/backends/trt/scripts/entrypoint.sh"]
+CMD ["tritonserver", "--model-repository=/workspace/indextts/backends/trt/serving/model_repository", "--model-control-mode=explicit", "--load-model=indextts2_stream", "--log-verbose=1"]
