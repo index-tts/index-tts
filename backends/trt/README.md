@@ -40,6 +40,50 @@ Please follow the README of [index-tts](https://github.com/index-tts/index-tts) 
 
 ---
 
+## Verified environment
+
+This backend runs in its own venv (`uv sync --directory backends/trt`), separate
+from the project's, because TensorRT-LLM's pins conflict with the root lockfile.
+What has actually been run:
+
+| | Verified |
+|---|---|
+| GPU | 1x RTX 4090 24GB, driver CUDA 12.4 |
+| Python | 3.12.11 (backend venv) |
+| tensorrt / tensorrt-llm | 10.11.0.33 / 0.21.0 |
+| torch | 2.7.1+cu128 |
+| OpenMPI | 4.1.2 |
+| Settings | `PRECISION=fp16`, `MAX_BATCH_SIZE=1` |
+| Pipeline | 9 ONNX exports, 10 engines, RTF 0.19–0.21 |
+| Serving | PyTriton non-streaming and streaming |
+
+Not verified: `MAX_BATCH_SIZE > 1`, `int8`/`int4` precision, and multi-GPU
+serving. Upstream additionally reports A100 80GB and RTX A6000 48GB.
+
+### Single-venv installation
+
+Installing this backend into the project's main venv instead of an isolated one
+resolves cleanly (228 packages, Python 3.10.14) but downgrades the main
+environment, so it is **not** how this backend is set up:
+
+| | Main project | Merged |
+|---|---|---|
+| Python | 3.11.13 | 3.10.14 |
+| torch | 2.8.* | 2.7.1 |
+| numpy | 2.2.6 | 1.26.4 |
+| transformers | 4.52.1 | 4.51.3 |
+| protobuf | 3.19.6 | 5.29.6 |
+
+Python can only be 3.10: TensorRT-LLM 0.21.0 publishes wheels for cp310 and
+cp312 only, and the project caps Python at `<3.12` for llvmlite. Note that this
+would revert the numpy 2.2.6 and Python 3.11.13 upgrades from #720 and #721.
+
+Only dependency resolution was tested here — the merged environment was never
+installed or run, and `flash-attn==2.8.3.post1` (the `accel` extra, built for
+torch 2.8) was not part of that test.
+
+---
+
 ## Quick Start
 
 `run.sh` is the only entry point you need. It activates the venv, sets
