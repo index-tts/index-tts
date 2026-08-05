@@ -54,6 +54,7 @@ class TextNormalizer:
             "$": ".",
             **self.char_rep_map,
         }
+        self.clean_pattern = re.compile("|".join(re.escape(p) for p in self.char_rep_map.keys()))
         self.enable_glossary = enable_glossary
         # 术语词汇表：用户可自定义专业术语的读法
         # 格式: {"原始术语": {"en": "英文读法", "zh": "中文读法"}}

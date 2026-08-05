@@ -22,7 +22,11 @@ import yaml
 def load_checkpoint(model: torch.nn.Module, model_pth: str) -> dict:
     checkpoint = torch.load(model_pth, map_location='cpu')
     checkpoint = checkpoint['model'] if 'model' in checkpoint else checkpoint
-    model.load_state_dict(checkpoint, strict=True)
+    missing, unexpected = model.load_state_dict(checkpoint, strict=False)
+    if missing:
+        print(f">> load_checkpoint: missing keys ({len(missing)}): {missing[:5]}{'...' if len(missing) > 5 else ''}")
+    if unexpected:
+        print(f">> load_checkpoint: skipping unexpected keys ({len(unexpected)}): {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
     info_path = str(Path(model_pth).with_suffix('.yaml'))
     configs = {}
     if os.path.exists(info_path):

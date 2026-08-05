@@ -591,6 +591,26 @@ wheels = [
 ]
 
 [[package]]
+name = "fugashi"
+version = "1.5.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/ec/b2e5aeba9438551ee4ae5275e95da506a279f53432e618daa1d4bd14c7d5/fugashi-1.5.2.tar.gz", hash = "sha256:a7959eab95bb37a6a934fc2314d3ff888664d11b88d0e1c596260a5785d5880e", size = 339768, upload-time = "2025-10-24T07:24:27.581Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/49/3e8e1cbdd83f9977fa92fe3186fc779fdcfba856d523f82ea913e270dc5f/fugashi-1.5.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:952533caa1704720989ee7f4262902219f938eac87a003d72b8a98b2a24b0299", size = 512603, upload-time = "2025-10-24T07:27:01.166Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/32/6c758cd13fb581228f17d79535c74a2470c750ede99b999a6180e236744a/fugashi-1.5.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:5b65bdf535d6a58cbea2938dd2de7daf001c38f8821f28006b695d3ac892f521", size = 456837, upload-time = "2025-10-24T07:27:02.616Z" },
+    { url = "https://files.pythonhosted.org/packages/df/b7/027bf15c5132644487f178c39a5b5a6f26209e4315a4f12bb356ffe3efb7/fugashi-1.5.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:380e5ebe058e4243e5662b252b008782f20818c5d2d30d0e482a8911e2e68674", size = 453989, upload-time = "2025-10-24T07:27:03.64Z" },
+    { url = "https://files.pythonhosted.org/packages/76/ed/c7dd73e6db1cd6c966a8598f1136290534f6cfcbe907b64614285a21d96c/fugashi-1.5.2-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:809db19725a623b5f3f47c7c11909143bb14781569caa3211e6c813608a9a213", size = 664923, upload-time = "2025-10-24T07:48:50.521Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/7e/c872bc8277d5ccd66d0770f5e43c70e800ae6735dd22c8099dbeb74135ec/fugashi-1.5.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6464f747c38a1043c9a2da81975db8f2c9724ef59389754d8dae7328ed60a698", size = 677082, upload-time = "2025-10-24T07:25:36.427Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/1e/209e5ca79a393a5e5aff0161b56f3a0398457bf756ba6e1f67ea96b5e942/fugashi-1.5.2-cp310-cp310-win_amd64.whl", hash = "sha256:894b69898b83c6d96f73134466df68682cba10d867c1ca55a93585a7d2213133", size = 508994, upload-time = "2025-10-24T07:24:28.029Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/22/bb911d65dd2144af0ec37f972e59026d3034b44774f135f856dc9777bf41/fugashi-1.5.2-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:072f0ba00ea38705ff43916c8438ce9560bf7ae5e67d415b80f4996f0b82b04e", size = 514016, upload-time = "2025-10-24T07:27:04.795Z" },
+    { url = "https://files.pythonhosted.org/packages/44/30/2bca56c92422949dc9029d41e0824b9cf5a58768e41aca664f119d7e791d/fugashi-1.5.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:e16ada7b953bf5a18fc9c81b2537c58f1c9929b993c6629bf972f96762b221a2", size = 457496, upload-time = "2025-10-24T07:27:05.906Z" },
+    { url = "https://files.pythonhosted.org/packages/62/32/f16d5e5a3d1f81c73bb2d28c67afa7a21ac50d6e297f11d23112859348af/fugashi-1.5.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:f855953ac6c98cf239d407d341e3298a54119c8de88217037f012096e41ebe7b", size = 454607, upload-time = "2025-10-24T07:27:06.91Z" },
+    { url = "https://files.pythonhosted.org/packages/53/a6/2ed278096a907a2bf7b569492c8f43ede4002a70448d1f98bf94a329498b/fugashi-1.5.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:516d61660c7b2262047e531b0a99275ce63fd2256f30282fc5066160435478a6", size = 682106, upload-time = "2025-10-24T07:48:52.794Z" },
+    { url = "https://files.pythonhosted.org/packages/36/e3/9e2ff9da54441692e3275c358751fc0894a449aa0b71eaea6a11734848ec/fugashi-1.5.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ff899e1767024ba8bc53d8a2cf90bca19a6a54b14ddf05a75d04169f7acb262c", size = 695295, upload-time = "2025-10-24T07:25:37.688Z" },
+    { url = "https://files.pythonhosted.org/packages/09/e4/67eeb715b602e7024e8291554cb60bae2f3d87e9987db1f8a1b4c0a0e567/fugashi-1.5.2-cp311-cp311-win_amd64.whl", hash = "sha256:5c5e04cb808f5cd46fc682469702f1e34f6199a264514e5c21b1e17ea4f8313f", size = 508985, upload-time = "2025-10-24T07:24:03.042Z" },
+]
+
+[[package]]
 name = "future"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -820,6 +840,7 @@ dependencies = [
     { name = "descript-audiotools" },
     { name = "einops" },
     { name = "ffmpeg-python" },
+    { name = "fugashi" },
     { name = "g2p-en" },
     { name = "jieba" },
     { name = "json5" },
@@ -831,6 +852,7 @@ dependencies = [
     { name = "numba" },
     { name = "numpy" },
     { name = "omegaconf" },
+    { name = "openai-whisper" },
     { name = "opencv-python" },
     { name = "pandas" },
     { name = "requests" },
@@ -845,6 +867,7 @@ dependencies = [
     { name = "torchaudio", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm" },
     { name = "transformers" },
+    { name = "unidic-lite" },
     { name = "wetext", marker = "sys_platform != 'linux'" },
     { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
@@ -879,6 +902,7 @@ requires-dist = [
     { name = "einops", specifier = ">=0.8.1" },
     { name = "ffmpeg-python", specifier = "==0.2.0" },
     { name = "flash-attn", marker = "extra == 'accel'", specifier = "==2.8.3.post1" },
+    { name = "fugashi", specifier = ">=1.2.0" },
     { name = "g2p-en", specifier = "==2.1.0" },
     { name = "gradio", marker = "extra == 'webui'", specifier = "==5.45.0" },
     { name = "jieba", specifier = "==0.42.1" },
@@ -893,6 +917,7 @@ requires-dist = [
     { name = "nvidia-cuda-runtime-cu12", marker = "extra == 'accel'" },
     { name = "nvidia-cudnn-cu12", marker = "extra == 'accel'" },
     { name = "omegaconf", specifier = ">=2.3.0" },
+    { name = "openai-whisper", specifier = ">=20231117" },
     { name = "opencv-python", specifier = "==4.9.0.80" },
     { name = "pandas", specifier = "==2.3.2" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
@@ -910,6 +935,7 @@ requires-dist = [
     { name = "transformers", specifier = "==4.52.1" },
     { name = "triton-windows", marker = "extra == 'accel'", specifier = "==3.1.0.post17" },
     { name = "triton-windows", marker = "extra == 'torch-compile'", specifier = "==3.1.0.post17" },
+    { name = "unidic-lite", specifier = ">=1.0.0" },
     { name = "wetext", marker = "sys_platform != 'linux'", specifier = ">=0.0.9" },
     { name = "wetextprocessing", marker = "sys_platform == 'linux'" },
 ]
@@ -1637,6 +1663,22 @@ sdist = { url = "https://files.pythonhosted.org/packages/09/48/6388f1bb9da707110
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/94/1843518e420fa3ed6919835845df698c7e27e183cb997394e4a670973a65/omegaconf-2.3.0-py3-none-any.whl", hash = "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b", size = 79500, upload-time = "2022-12-08T20:59:19.686Z" },
 ]
+
+[[package]]
+name = "openai-whisper"
+version = "20250625"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "tiktoken" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.8.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "tqdm" },
+    { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'linux2'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/35/8e/d36f8880bcf18ec026a55807d02fe4c7357da9f25aebd92f85178000c0dc/openai_whisper-20250625.tar.gz", hash = "sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96", size = 803191, upload-time = "2025-06-26T01:06:13.34Z" }
 
 [[package]]
 name = "opencv-python"
@@ -2568,6 +2610,32 @@ wheels = [
 ]
 
 [[package]]
+name = "tiktoken"
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "regex" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/e5/5f3cb2159769d0f4324c0e9e87f9de3c4b1cd45848a96b2eb3566ad5ca77/tiktoken-0.13.0.tar.gz", hash = "sha256:c9435714c3a84c2319499de9a300c0e604449dd0799ff246458b3bb6a7f433c1", size = 38986, upload-time = "2026-05-15T04:51:27.153Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/e3/03c90dadcf5b3f82b83cee9adee60ef666b329c654f58c066af44eae0287/tiktoken-0.13.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:47b1df8d73390a24f94980c75158cdd5c56d256f16d55f30cb49c230caba9ba4", size = 1036627, upload-time = "2026-05-15T04:50:11.229Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/30/760463e5b2e8ad2bc229ae0a17ecb06727b6cbc094f08d8f65844315632e/tiktoken-0.13.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:7d40c6c5aab171dcd6eb8455bc567bde404bb9def60cdb8c1299cc782b242bb9", size = 984699, upload-time = "2026-05-15T04:50:12.874Z" },
+    { url = "https://files.pythonhosted.org/packages/de/8a/8895f342a6b6aabd1a358e672f6f077b3ae51d0c63ca605d142db3bcd8ab/tiktoken-0.13.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:9b842981fa91accdffd48ff6408a977b7a91c3fbda55d353c3c68114d5c9d69e", size = 1118690, upload-time = "2026-05-15T04:50:14.234Z" },
+    { url = "https://files.pythonhosted.org/packages/51/e0/92557768fb0801f0d9dd9243cb9b6d342900b05e4b1006d4771f49ce233e/tiktoken-0.13.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:ed5a30027cb4d8c7ca8b273d4766f3db3cf58fad9e9f3b1a68a351ffb54873d5", size = 1138423, upload-time = "2026-05-15T04:50:15.668Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/b9/a3d99feeedb032ffd09cd6652077f86bdee9a70dd0b990b2b272b445d4c3/tiktoken-0.13.0-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:7ab10f4a21c2999846940113f6dbd72e0fa06a24119feddd74cc47e85818e06d", size = 1185077, upload-time = "2026-05-15T04:50:17.19Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/93/bab868277d475dc6d2aaacd34cdd239c282f4908dcc8702e0a3311a8e032/tiktoken-0.13.0-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:a2937ad042d49d50eac6e1ba07c5661d4bd3942a5b1e0c0d08475c4df83676e1", size = 1241702, upload-time = "2026-05-15T04:50:18.772Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/16/27e9f7e0ed76e501cfefc9fb2112df4c7bf70ca96945b15ecb7615aac860/tiktoken-0.13.0-cp310-cp310-win_amd64.whl", hash = "sha256:44733b99bfd72b590cd0936b1c01b3b4dd73122db2d544bc1ceeb18a7678c910", size = 876565, upload-time = "2026-05-15T04:50:20.268Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/4c/1bc81f4cd53e827c4ee67ca951b5935724716049452d8dfa09b8b82372bb/tiktoken-0.13.0-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:7bfe1849caa65d1e1d9871817170ec497bbb7984e182012e1bdce72f66608cdb", size = 1036353, upload-time = "2026-05-15T04:50:21.757Z" },
+    { url = "https://files.pythonhosted.org/packages/75/91/10b9c7076bc02c246c853201fdbbe300a4b8c5ed7b84c25f7403f4e32655/tiktoken-0.13.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:91c180fe255bd5a86d8316210d2833a1d4d33d026cd86a67812f4773743c8d26", size = 984644, upload-time = "2026-05-15T04:50:23.256Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/e4/fceae98015fab47fcd49b8bd7f46145bcd187a47e0add1e5378ed67ef980/tiktoken-0.13.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:059c8ecf554eb5b41e6e054ba467b871b03277d267dee7244380aca4359747d4", size = 1119261, upload-time = "2026-05-15T04:50:24.348Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/39/fe42ad00de01a8c4a49ad8649a2c8a316835a9cad5961b11d21eac0020a5/tiktoken-0.13.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:36217497eaffc158607a3b26f065300db2aefd43b115263f3b9688ce38146173", size = 1138253, upload-time = "2026-05-15T04:50:25.505Z" },
+    { url = "https://files.pythonhosted.org/packages/03/c4/ccee1ecccca107e9a16efcecdeeb964c325305038554d466ece65b42338f/tiktoken-0.13.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:303f7d91b4fce3baddbcde05c139091d4caa5026ac7214c1dc7ff7a71ee429ff", size = 1185747, upload-time = "2026-05-15T04:50:27.02Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/03/cd0cba295522b91eb55c6b2704f1df895f8226cfe60ab10d4d51d0cc9e69/tiktoken-0.13.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:5d48843bee149630eb735a99e1f4a85b47308d21868ea63163f6e87768d3cfed", size = 1241265, upload-time = "2026-05-15T04:50:28.815Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/25/a10efd564402d82c2ff50d12057353ace447aa8007deceaa48641f63d35c/tiktoken-0.13.0-cp311-cp311-win_amd64.whl", hash = "sha256:fc1c44cd37b43fc46bae593129164f4f281e82ea116b57a85aa81bda57eafc94", size = 876509, upload-time = "2026-05-15T04:50:30.026Z" },
+]
+
+[[package]]
 name = "tokenizers"
 version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2786,7 +2854,7 @@ name = "triton"
 version = "3.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "setuptools", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or sys_platform == 'win32'" },
+    { name = "setuptools", marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/ee/0ee5f64a87eeda19bbad9bc54ae5ca5b98186ed00055281fd40fb4beb10e/triton-3.4.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7ff2785de9bc02f500e085420273bb5cc9c9bb767584a4aa28d6e360cec70128", size = 155430069, upload-time = "2025-07-30T19:58:21.715Z" },
@@ -2861,6 +2929,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be76
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839, upload-time = "2025-03-23T13:54:41.845Z" },
 ]
+
+[[package]]
+name = "unidic-lite"
+version = "1.0.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/2b/8cf7514cb57d028abcef625afa847d60ff1ffbf0049c36b78faa7c35046f/unidic-lite-1.0.8.tar.gz", hash = "sha256:db9d4572d9fdd4d00a97949d4b0741ec480ee05a7e7e2e32f547500dae27b245", size = 47356746, upload-time = "2021-01-25T06:07:54.719Z" }
 
 [[package]]
 name = "urllib3"

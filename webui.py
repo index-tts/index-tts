@@ -25,6 +25,7 @@ parser.add_argument("--verbose", action="store_true", default=False, help="Enabl
 parser.add_argument("--port", type=int, default=7860, help="Port to run the web UI on")
 parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="./checkpoints", help="Model checkpoints directory")
+parser.add_argument("--version", type=str, default="2", choices=["2", "2.5"], help="Model version to use")
 parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
 parser.add_argument("--deepspeed", action="store_true", default=False, help="Use DeepSpeed to accelerate if available")
 parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use CUDA kernel for inference if available")
@@ -58,6 +59,12 @@ required_files = [
 ]
 missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
 if missing:
+    if cmd_args.version != "2":
+        print(
+            f"Model directory {cmd_args.model_dir} is incomplete for v{cmd_args.version} "
+            f"(missing: {', '.join(missing)}). Please prepare checkpoints manually."
+        )
+        sys.exit(1)
     print(
         f"Model directory {cmd_args.model_dir} is incomplete (missing: {', '.join(missing)}). "
         "Downloading IndexTTS-2 model..."
@@ -81,11 +88,17 @@ except Exception as e:
     print(f"Failed to download config.yaml: {e}")
     sys.exit(1)
 
+IS_V25 = cmd_args.version == "2.5"
+
 import gradio as gr
-from indextts.infer_v2 import IndexTTS2
 from indextts.utils.examples_downloader import ensure_examples_available
 from indextts.utils.presets import list_presets, save_preset, load_preset, delete_preset
 from tools.i18n.i18n import I18nAuto
+
+if IS_V25:
+    from indextts.infer_v2_5 import IndexTTS2
+else:
+    from indextts.infer_v2 import IndexTTS2
 
 i18n = I18nAuto(language="Auto")
 MODE = 'local'
@@ -95,15 +108,20 @@ ensure_examples_available()
 
 def build_tts(use_accel=False, use_torch_compile=False):
     """Build an IndexTTS2 instance with the requested acceleration options."""
-    return IndexTTS2(
+    kwargs = dict(
         model_dir=cmd_args.model_dir,
         cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
-        use_fp16=cmd_args.fp16,
         use_deepspeed=cmd_args.deepspeed,
         use_cuda_kernel=cmd_args.cuda_kernel,
         use_accel=use_accel,
         use_torch_compile=use_torch_compile,
     )
+    if IS_V25:
+        kwargs["use_bf16"] = cmd_args.fp16
+        kwargs["use_qwen_emo"] = True
+    else:
+        kwargs["use_fp16"] = cmd_args.fp16
+    return IndexTTS2(**kwargs)
 
 
 tts = build_tts(use_accel=cmd_args.accel, use_torch_compile=cmd_args.torch_compile)
@@ -134,7 +152,7 @@ with open("examples/cases.jsonl", "r", encoding="utf-8") as f:
         else:
             emo_audio_path = None
 
-        example_cases.append([os.path.join("examples", example.get("prompt_audio", "sample_prompt.wav")),
+        case = [os.path.join("examples", example.get("prompt_audio", "sample_prompt.wav")),
                               EMO_CHOICES_ALL[example.get("emo_mode",0)],
                               example.get("text"),
                              emo_audio_path,
@@ -148,7 +166,11 @@ with open("examples/cases.jsonl", "r", encoding="utf-8") as f:
                              example.get("emo_vec_6",0),
                              example.get("emo_vec_7",0),
                              example.get("emo_vec_8",0),
-                             ])
+                             ]
+        # v2.5 needs the language per-example so ja/es/ar demos auto-select it
+        if IS_V25:
+            case.append(example.get("lang", "ZH"))
+        example_cases.append(case)
 
 def get_example_cases(include_experimental = False):
     if include_experimental:
@@ -159,7 +181,7 @@ def get_example_cases(include_experimental = False):
 
 def format_glossary_markdown():
     """将词汇表转换为Markdown表格格式"""
-    if not tts.normalizer.term_glossary:
+    if IS_V25 or not hasattr(tts, 'normalizer') or not tts.normalizer.term_glossary:
         return i18n("暂无术语")
 
     lines = [f"| {i18n('术语')} | {i18n('中文读法')} | {i18n('英文读法')} |"]
@@ -563,10 +585,12 @@ def close_save_preset_modal():
 
 
 def gen_single(emo_control_method,prompt, text,
+               lang_choice,
                emo_ref_path, emo_weight,
                vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                emo_text,emo_random,
                max_text_tokens_per_segment=120,
+               duration_factor=1.0,
                 *args, progress=gr.Progress()):
     output_path = None
     if not output_path:
@@ -606,14 +630,20 @@ def gen_single(emo_control_method,prompt, text,
         emo_text = None
 
     print(f"Emo control mode:{emo_control_method},weight:{emo_weight},vec:{vec}")
-    output = tts.infer(spk_audio_prompt=prompt, text=text,
-                       output_path=output_path,
-                       emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
-                       emo_vector=vec,
-                       use_emo_text=(emo_control_method==3), emo_text=emo_text,use_random=emo_random,
-                       verbose=cmd_args.verbose,
-                       max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-                       **kwargs)
+    infer_kwargs = dict(
+        spk_audio_prompt=prompt, text=text,
+        output_path=output_path,
+        emo_audio_prompt=emo_ref_path, emo_alpha=emo_weight,
+        emo_vector=vec,
+        use_emo_text=(emo_control_method==3), emo_text=emo_text, use_random=emo_random,
+        verbose=cmd_args.verbose,
+        max_text_tokens_per_segment=int(max_text_tokens_per_segment),
+        duration_factor=float(duration_factor),
+        **kwargs,
+    )
+    if IS_V25:
+        infer_kwargs["lang"] = lang_choice or "ZH"
+    output = tts.infer(**infer_kwargs)
     return gr.update(value=output,visible=True)
 
 def update_prompt_audio():
@@ -723,6 +753,19 @@ with gr.Blocks(
                     info=f"{i18n('当前模型版本')}{tts.model_version or '1.0'}",
                     lines=5,
                 )
+                if IS_V25:
+                    lang_dropdown = gr.Dropdown(
+                        choices=["ZH", "EN", "JA", "AR", "ES"],
+                        value="ZH",
+                        label=i18n("语言"),
+                    )
+                else:
+                    lang_dropdown = gr.State(value=None)
+                duration_factor = gr.Slider(
+                    label=i18n("时长系数"), minimum=0.5, maximum=2.0, value=1.0, step=0.01,
+                    info=f'{i18n("快")} ← — {i18n("不变")} — → {i18n("慢")}',
+                    key="duration_factor",
+                )
             with gr.Column(scale=1):
                 gen_button = gr.Button(
                     i18n("生成语音"), key="gen_button", interactive=True
@@ -733,7 +776,8 @@ with gr.Blocks(
 
         with gr.Row():
             experimental_checkbox = gr.Checkbox(label=i18n("显示实验功能"), value=False)
-            glossary_checkbox = gr.Checkbox(label=i18n("开启术语词汇读音"), value=tts.normalizer.enable_glossary)
+            _has_glossary = not IS_V25 and hasattr(tts, 'normalizer')
+            glossary_checkbox = gr.Checkbox(label=i18n("开启术语词汇读音"), value=tts.normalizer.enable_glossary if _has_glossary else False, visible=_has_glossary)
         with gr.Accordion(i18n("功能设置")):
             # 情感控制选项部分
             with gr.Row():
@@ -784,7 +828,7 @@ with gr.Blocks(
             emo_weight = gr.Slider(label=i18n("情感权重"), minimum=0.0, maximum=1.0, value=0.65, step=0.01)
 
         # 术语词汇表管理
-        with gr.Accordion(i18n("自定义术语词汇读音"), open=False, visible=tts.normalizer.enable_glossary) as glossary_accordion:
+        with gr.Accordion(i18n("自定义术语词汇读音"), open=False, visible=_has_glossary and tts.normalizer.enable_glossary) as glossary_accordion:
             gr.Markdown(i18n("自定义个别专业术语的读音"))
             with gr.Row():
                 with gr.Column(scale=1):
@@ -847,20 +891,24 @@ with gr.Blocks(
         # we must use `gr.Dataset` to support dynamic UI rewrites, since `gr.Examples`
         # binds tightly to UI and always restores the initial state of all components,
         # such as the list of available choices in emo_control_method.
-        example_table = gr.Dataset(label="Examples",
-            samples_per_page=20,
-            samples=get_example_cases(include_experimental=False),
-            type="values",
-            # these components are NOT "connected". it just reads the column labels/available
-            # states from them, so we MUST link to the "all options" versions of all components,
-            # such as `emo_control_method_all` (to be able to see EXPERIMENTAL text labels)!
-            components=[prompt_audio,
+        # these components are NOT "connected". it just reads the column labels/available
+        # states from them, so we MUST link to the "all options" versions of all components,
+        # such as `emo_control_method_all` (to be able to see EXPERIMENTAL text labels)!
+        example_components = [prompt_audio,
                         emo_control_method_all,  # important: support all mode labels!
                         input_text_single,
                         emo_upload,
                         emo_weight,
                         emo_text,
                         vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
+        # v2.5: append the language column so ja/es/ar examples auto-select it
+        if IS_V25:
+            example_components.append(lang_dropdown)
+        example_table = gr.Dataset(label="Examples",
+            samples_per_page=20,
+            samples=get_example_cases(include_experimental=False),
+            type="values",
+            components=example_components
         )
 
     with gr.Tab(i18n("预设管理")):
@@ -920,7 +968,7 @@ with gr.Blocks(
 
     def on_example_click(example):
         print(f"Example clicked: ({len(example)} values) = {example!r}")
-        return (
+        updates = [
             gr.update(value=example[0]),
             gr.update(value=example[1]),
             gr.update(value=example[2]),
@@ -935,30 +983,41 @@ with gr.Blocks(
             gr.update(value=example[11]),
             gr.update(value=example[12]),
             gr.update(value=example[13]),
-        )
+        ]
+        # v2.5: also restore the per-example language
+        if IS_V25:
+            updates.append(gr.update(value=example[14]))
+        return updates
 
     # click() event works on both desktop and mobile UI
-    example_table.click(on_example_click,
-                        inputs=[example_table],
-                        outputs=[prompt_audio,
+    example_outputs = [prompt_audio,
                                  emo_control_method,
                                  input_text_single,
                                  emo_upload,
                                  emo_weight,
                                  emo_text,
                                  vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8]
+    if IS_V25:
+        example_outputs.append(lang_dropdown)
+    example_table.click(on_example_click,
+                        inputs=[example_table],
+                        outputs=example_outputs
     )
 
     def on_input_text_change(text, max_text_tokens_per_segment):
         if text and len(text) > 0:
-            text_tokens_list = tts.tokenizer.tokenize(text)
-
-            segments = tts.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment=int(max_text_tokens_per_segment))
-            data = []
-            for i, s in enumerate(segments):
-                segment_str = ''.join(s)
-                tokens_count = len(s)
-                data.append([i, segment_str, tokens_count])
+            if IS_V25:
+                # v2.5 uses tiktoken encoder, no split_segments; show token count only
+                tokens = tts.tokenizer.encode(text, allowed_special='all')
+                data = [[0, text, len(tokens)]]
+            else:
+                text_tokens_list = tts.tokenizer.tokenize(text)
+                segments = tts.tokenizer.split_segments(text_tokens_list, max_text_tokens_per_segment=int(max_text_tokens_per_segment))
+                data = []
+                for i, s in enumerate(segments):
+                    segment_str = ''.join(s)
+                    tokens_count = len(s)
+                    data.append([i, segment_str, tokens_count])
             return {
                 segments_preview: gr.update(value=data, visible=True, type="array"),
             }
@@ -971,6 +1030,8 @@ with gr.Blocks(
     # 术语词汇表事件处理函数
     def on_add_glossary_term(term, reading_zh, reading_en):
         """添加术语到词汇表并自动保存"""
+        if IS_V25 or not hasattr(tts, 'normalizer'):
+            return gr.update()
         term = term.rstrip()
         reading_zh = reading_zh.rstrip()
         reading_en = reading_en.rstrip()
@@ -1069,6 +1130,8 @@ with gr.Blocks(
 
     def on_glossary_checkbox_change(is_enabled):
         """控制术语词汇表的可见性"""
+        if IS_V25 or not hasattr(tts, 'normalizer'):
+            return gr.update(visible=False)
         tts.normalizer.enable_glossary = is_enabled
         return gr.update(visible=is_enabled)
 
@@ -1102,6 +1165,8 @@ with gr.Blocks(
 
     def on_demo_load():
         """页面加载时重新加载glossary数据并刷新预设列表"""
+        if IS_V25 or not hasattr(tts, 'normalizer'):
+            return (gr.update(), *refresh_preset_choices())
         try:
             tts.normalizer.load_glossary_from_yaml(tts.glossary_path)
         except Exception as e:
@@ -1234,10 +1299,13 @@ with gr.Blocks(
     )
 
     gen_button.click(gen_single,
-                     inputs=[emo_control_method,prompt_audio, input_text_single, emo_upload, emo_weight,
+                     inputs=[emo_control_method,prompt_audio, input_text_single,
+                            lang_dropdown,
+                            emo_upload, emo_weight,
                             vec1, vec2, vec3, vec4, vec5, vec6, vec7, vec8,
                              emo_text,emo_random,
                              max_text_tokens_per_segment,
+                             duration_factor,
                              *advanced_params,
                      ],
                      outputs=[output_audio])
