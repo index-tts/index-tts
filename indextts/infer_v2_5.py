@@ -408,6 +408,44 @@ class IndexTTS2:
             audio = audio[:, :max_audio_samples]
         return audio, sr
 
+    def _token_len(self, text):
+        return len(self.tokenizer.encode(text, allowed_special='all'))
+
+    def split_text_by_tokens(self, text, max_tokens, lang_prefix=""):
+        capacity = self.gpt.text_pos_embedding.emb.num_embeddings
+        budget = min(max_tokens, capacity - 2) - self._token_len(lang_prefix)
+        budget = max(1, budget)
+        if self._token_len(text) <= budget:
+            return [text]
+
+        chunks = []
+        for part in re.split(r'(?<=[，。！？、；：,\.!\?;:\n])', text):
+            if not part:
+                continue
+            if self._token_len(part) <= budget:
+                chunks.append(part)
+                continue
+            current = ""
+            for ch in part:
+                if current and self._token_len(current + ch) > budget:
+                    chunks.append(current)
+                    current = ch
+                else:
+                    current += ch
+            if current:
+                chunks.append(current)
+
+        segments, current = [], ""
+        for chunk in chunks:
+            if current and self._token_len(current + chunk) > budget:
+                segments.append(current)
+                current = chunk
+            else:
+                current += chunk
+        if current:
+            segments.append(current)
+        return segments or [text]
+
     @staticmethod
     def split_text_by_punctuation(text, max_chars=40):
         """Split text into segments of at most `max_chars` characters,
@@ -661,14 +699,18 @@ class IndexTTS2:
         if lang.lower() == 'ja':
             text = self.ja_text_process.process_ja_text(text)
         text = re.sub(r'<\|([^|]+)\|>', lambda m: f'<|{m.group(1).upper()}|>', text)
-        text = lang_prefix + text
-        text_tokens = self.tokenizer.encode(text, allowed_special='all')
-        text_tokens = torch.IntTensor(text_tokens).unsqueeze(0).to(self.device)
-        text_tokens = F.pad(text_tokens, (0, 1), value=1)
+        segments = self.split_text_by_tokens(text, max_text_tokens_per_segment, lang_prefix)
+        segments_count = len(segments)
+        segment_tokens = []
+        for seg_text in segments:
+            toks = self.tokenizer.encode(lang_prefix + seg_text, allowed_special='all')
+            toks = torch.IntTensor(toks).unsqueeze(0).to(self.device)
+            segment_tokens.append(F.pad(toks, (0, 1), value=1))
         lang = torch.LongTensor([lang_to_token(lang)]).to(self.device)
         if verbose:
-            print("text_tokens_list:", text_tokens)
+            print("segments count:", segments_count)
             print("max_text_tokens_per_segment:", max_text_tokens_per_segment)
+            print(*segments, sep="\n")
         do_sample = generation_kwargs.pop("do_sample", True)
         top_p = generation_kwargs.pop("top_p", 0.8)
         top_k = generation_kwargs.pop("top_k", 30)
@@ -687,9 +729,9 @@ class IndexTTS2:
         bigvgan_time = 0
         has_warned = False
         silence = None # for stream_return
-        for seg_idx, sent in enumerate(text_tokens):
-            # text_tokens = self.tokenizer.convert_tokens_to_ids(sent)
-            # text_tokens = torch.tensor(text_tokens, dtype=torch.int32, device=self.device).unsqueeze(0)
+        for seg_idx, text_tokens in enumerate(segment_tokens):
+            self._set_gr_progress(0.2 + 0.7 * seg_idx / segments_count,
+                                  f"speech synthesis {seg_idx + 1}/{segments_count}...")
             if verbose:
                 print(text_tokens)
                 print(f"text_tokens shape: {text_tokens.shape}, text_tokens type: {text_tokens.dtype}")
