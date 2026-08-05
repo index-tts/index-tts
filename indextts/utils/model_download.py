@@ -12,9 +12,16 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
-# Network detection runs once at import time (before Gradio threads start).
 from indextts.utils.network_detection import need_proxy
-_USING_MODELSCOPE = need_proxy()
+
+_USING_MODELSCOPE: bool | None = None  # lazily computed on first use
+
+
+def _get_using_modelscope() -> bool:
+    global _USING_MODELSCOPE
+    if _USING_MODELSCOPE is None:
+        _USING_MODELSCOPE = need_proxy()
+    return _USING_MODELSCOPE
 
 # Mapping from HuggingFace repo_id to ModelScope model_id.
 HF_TO_MODELSCOPE_REPO_MAP = {
@@ -31,7 +38,7 @@ def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
     local_dir = os.path.dirname(local_path)
     os.makedirs(local_dir, exist_ok=True)
 
-    if _USING_MODELSCOPE:
+    if _get_using_modelscope():
         ms_model_id = HF_TO_MODELSCOPE_REPO_MAP.get(repo_id, repo_id)
         # Try ModelScope SDK first
         try:
@@ -220,7 +227,7 @@ def ensure_models_available(model_dir: str, bigvgan_repo: str = _BIGVGAN_REPO) -
 
 def snapshot_download(repo_id: str, local_dir: str, revision=None, force_download=False, **kwargs) -> str:
     """Download an entire model repository (HuggingFace or ModelScope)."""
-    if _USING_MODELSCOPE:
+    if _get_using_modelscope():
         return _snapshot_from_modelscope(repo_id, local_dir, revision)
     else:
         from huggingface_hub import snapshot_download as _hf_snapshot

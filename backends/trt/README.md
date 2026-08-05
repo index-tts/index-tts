@@ -54,11 +54,37 @@ What has actually been run:
 | torch | 2.7.1+cu128 |
 | OpenMPI | 4.1.2 |
 | Settings | `PRECISION=fp16`, `MAX_BATCH_SIZE=1` |
-| Pipeline | 9 ONNX exports, 10 engines, RTF 0.19–0.21 |
+| Pipeline | 9 ONNX exports, 10 engines |
 | Serving | PyTriton non-streaming and streaming |
 
 Not verified: `MAX_BATCH_SIZE > 1`, `int8`/`int4` precision, and multi-GPU
 serving. Upstream additionally reports A100 80GB and RTX A6000 48GB.
+
+### Measured RTF
+
+Median of 3 reps per text on the box above, first iteration discarded (it runs
+~55% slow), all three pinned to GPU 0. RTF is wall time over generated audio
+duration, so lower is faster.
+
+| Text | 2.0 PyTorch fp16 | 2.5 PyTorch bf16 | 2.0 + TensorRT fp16 |
+|---|---|---|---|
+| 7 chars | 0.3817 | 0.2593 | **0.1515** |
+| 16 chars | 0.3301 | 0.2091 | **0.1397** |
+| 28 chars | 0.3184 | 0.1990 | **0.1327** |
+| 80 chars | 0.3212 | 0.1909 | **0.1333** |
+| overall | 0.3263 | 0.2035 | **0.1365** |
+
+TensorRT is 2.39x the 2.0 PyTorch path on the same weights. The 2.5 column is a
+different model (half the token rate, 50.1 → 25.1 tokens per audio second) and
+has no TensorRT engines yet, so it is context rather than a like-for-like
+comparison.
+
+Caveats worth knowing before quoting these: each path generates a different
+audio length for the same text (80 chars: 18.25s / 14.01s / 15.26s), since
+sampling differs; RTF normalizes for that but absolute latency does not. The
+half-precision dtypes differ because each version exposes only one flag (2.0
+`use_fp16`, 2.5 `use_bf16`). Both PyTorch columns need `kv_cache=True`, which is
+2.0's default and became 2.5's in this commit.
 
 ### Single-venv installation
 
