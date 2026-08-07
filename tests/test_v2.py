@@ -159,6 +159,86 @@ def test_modelscope_single_file_download_matches_local_path(tmp_path, monkeypatc
     assert local_path.read_bytes() == expected_bytes
 
 
+# -- Text segmentation (no GPU) -----------------------------------------------
+
+def _splitter_stub():
+    """A 2.5 instance with only what split_text_by_tokens touches.
+
+    Bypasses __init__ so the test needs no checkpoints; the tokenizer stub counts
+    one token per character, which is enough to drive segmentation.
+    """
+    import types
+
+    from indextts.infer_v2_5 import IndexTTS2
+
+    obj = IndexTTS2.__new__(IndexTTS2)
+    obj.tokenizer = types.SimpleNamespace(encode=lambda text, **kwargs: list(text))
+    obj.gpt = types.SimpleNamespace(
+        text_pos_embedding=types.SimpleNamespace(
+            emb=types.SimpleNamespace(num_embeddings=602)
+        )
+    )
+    return obj
+
+
+def _annotated_long_text():
+    """Long enough to segment, with annotations spread across the boundaries."""
+    filler = "各种应用层出不穷，而语音合成作为人机交互的重要一环，其自然度和实时性同样关键。"
+    unit = filler + "他要<going|G OW1 . IH0 NG>去，银<行|XING2>也开着。"
+    return unit * 5
+
+
+def test_split_keeps_pronunciation_annotations_paired():
+    """Segment boundaries must not land inside a <|SPECIAL_TOKEN_n|> pair.
+
+    apply_pronunciation_annotations runs before segmentation and emits payloads
+    that can contain a period -- one of the splitter's break characters -- so an
+    unguarded splitter leaves halves with an unpaired marker.
+    """
+    from indextts.infer_v2_5 import apply_pronunciation_annotations
+
+    splitter = _splitter_stub()
+    text = apply_pronunciation_annotations(_annotated_long_text().lower())
+    expected_pairs = text.count("<|SPECIAL_TOKEN_1|>") // 2 + text.count("<|SPECIAL_TOKEN_2|>") // 2
+    assert expected_pairs == 10, f"fixture should carry 10 annotations, got {expected_pairs}"
+
+    segments = splitter.split_text_by_tokens(text, 120, "<|zh|> ")
+    assert len(segments) > 1, "fixture must be long enough to segment"
+
+    unpaired = [
+        s for s in segments
+        if s.count("<|SPECIAL_TOKEN_1|>") % 2 or s.count("<|SPECIAL_TOKEN_2|>") % 2
+    ]
+    assert not unpaired, f"annotation split across segments: {unpaired}"
+
+    kept = sum(
+        s.count("<|SPECIAL_TOKEN_1|>") // 2 + s.count("<|SPECIAL_TOKEN_2|>") // 2
+        for s in segments
+    )
+    assert kept == expected_pairs, f"lost annotations: {expected_pairs} -> {kept}"
+
+
+def test_split_stays_within_position_embedding_capacity():
+    """Every segment must fit text_pos_embedding, whose overrun is a CUDA assert."""
+    splitter = _splitter_stub()
+    capacity = splitter.gpt.text_pos_embedding.emb.num_embeddings
+    prefix = "<|zh|> "
+
+    text = "各种应用层出不穷，而语音合成作为人机交互的重要一环。" * 40
+    segments = splitter.split_text_by_tokens(text, 120, prefix)
+    assert len(segments) > 1
+
+    for s in segments:
+        used = splitter._token_len(prefix + s) + 1  # +1 for the trailing pad token
+        assert used <= capacity, f"segment needs {used} positions, capacity is {capacity}"
+
+
+def test_split_leaves_short_text_alone():
+    splitter = _splitter_stub()
+    text = "今天天气不错。"
+    assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
+
+
 # -- Inference (GPU required) --------------------------------------------------
 
 INFER_TEXTS = [
