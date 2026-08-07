@@ -408,8 +408,21 @@ class IndexTTS2:
             audio = audio[:, :max_audio_samples]
         return audio, sr
 
+    SPLIT_PROTECTED_PATTERN = re.compile(r'<\|SPECIAL_TOKEN_\d+\|>.*?<\|SPECIAL_TOKEN_\d+\|>')
+
     def _token_len(self, text):
         return len(self.tokenizer.encode(text, allowed_special='all'))
+
+    def _split_atomic_pieces(self, text):
+        pieces, pos = [], 0
+        for m in self.SPLIT_PROTECTED_PATTERN.finditer(text):
+            if m.start() > pos:
+                pieces.append((text[pos:m.start()], False))
+            pieces.append((m.group(0), True))
+            pos = m.end()
+        if pos < len(text):
+            pieces.append((text[pos:], False))
+        return pieces
 
     def split_text_by_tokens(self, text, max_tokens, lang_prefix=""):
         capacity = self.gpt.text_pos_embedding.emb.num_embeddings
@@ -419,21 +432,25 @@ class IndexTTS2:
             return [text]
 
         chunks = []
-        for part in re.split(r'(?<=[，。！？、；：,\.!\?;:\n])', text):
-            if not part:
+        for piece, atomic in self._split_atomic_pieces(text):
+            if atomic:
+                chunks.append(piece)
                 continue
-            if self._token_len(part) <= budget:
-                chunks.append(part)
-                continue
-            current = ""
-            for ch in part:
-                if current and self._token_len(current + ch) > budget:
+            for part in re.split(r'(?<=[，。！？、；：,\.!\?;:\n])', piece):
+                if not part:
+                    continue
+                if self._token_len(part) <= budget:
+                    chunks.append(part)
+                    continue
+                current = ""
+                for ch in part:
+                    if current and self._token_len(current + ch) > budget:
+                        chunks.append(current)
+                        current = ch
+                    else:
+                        current += ch
+                if current:
                     chunks.append(current)
-                    current = ch
-                else:
-                    current += ch
-            if current:
-                chunks.append(current)
 
         segments, current = [], ""
         for chunk in chunks:
@@ -681,6 +698,7 @@ class IndexTTS2:
 
         self._set_gr_progress(0.1, "text processing...")
         lang_prefix = f'<|{lang.lower()}|> '
+
         text = self.text_process.clean_pattern.sub(lambda x: self.text_process.char_rep_map[x.group()], text)
 
         if text_normalization:
@@ -1034,7 +1052,7 @@ if __name__ == "__main__":
     parser.add_argument("--text", type=str, default="欢迎大家来体验indextts2，并给予我们意见与反馈，谢谢大家。")
     parser.add_argument("--lang", type=str, default="ZH")
     parser.add_argument("--output", type=str, default="gen.wav")
-    parser.add_argument("--text_normalization", type=bool, default=True)
+    parser.add_argument("--text_normalization", action="store_true", default=True)
     args = parser.parse_args()
 
     tts = IndexTTS2(
