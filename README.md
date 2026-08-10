@@ -13,14 +13,14 @@
 
 <!-- |**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
-|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
+|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) |
 | [IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
 | [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) | -->
 
 | Model | Demos | Paper | Modelscope | HuggingFace |
 | :--- | :---: | :---: | :---: | :---: |
-| **IndexTTS-2.5** | [Demos](https://index-tts.github.io/index-tts2-5.github.io/) | [Paper](https://arxiv.org/abs/2601.03888) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2.5** | [Demos](https://index-tts.github.io/index-tts2-5.github.io/) | - | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
 | **IndexTTS-2** | [Demos](https://index-tts.github.io/index-tts2.github.io/) | [Paper](https://arxiv.org/abs/2506.21619) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2) |
 | **IndexTTS-1.5** | [Demos](https://index-tts.github.io/) | [Paper](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
 | **IndexTTS** | [Demos](https://index-tts.github.io/) | [Paper](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/Index-TTS) | [HuggingFace](https://huggingface.co/IndexTeam/Index-TTS) |
@@ -189,7 +189,11 @@ Download via `huggingface-cli`:
 ```bash
 uv tool install "huggingface-hub[cli,hf_xet]"
 
-hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
+# IndexTTS-2.5
+hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
+
+# IndexTTS-2
+hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints_2
 ```
 
 Or download via `modelscope`:
@@ -197,7 +201,11 @@ Or download via `modelscope`:
 ```bash
 uv tool install "modelscope"
 
-modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
+# IndexTTS-2.5
+modelscope download --model IndexTeam/IndexTTS-2.5 --local_dir checkpoints
+
+# IndexTTS-2
+modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints_2
 ```
 
 > [!IMPORTANT]
@@ -451,20 +459,6 @@ or visit the IndexTTS1 repository at <a href="https://github.com/index-tts/index
 ## 📚 Citation
 
 🌟 If you find our work helpful, please leave us a star and cite our paper.
-
-IndexTTS2.5:
-
-```
-@misc{li2026indextts25technicalreport,
-      title={IndexTTS 2.5 Technical Report}, 
-      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Jingchen Shu},
-      year={2026},
-      eprint={2601.03888},
-      archivePrefix={arXiv},
-      primaryClass={cs.SD},
-      url={https://arxiv.org/abs/2601.03888}, 
-}
-```
 
 IndexTTS2:
 
