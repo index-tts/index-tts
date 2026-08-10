@@ -238,6 +238,11 @@ uv run webui.py -h
 > 否则可能导致依赖冲突！
 
 
+#### 🚀 使用 vLLM 部署
+
+生产环境部署请参考 [vLLM IndexTTS Recipe](https://github.com/vllm-project/recipes/pull/772)。
+
+
 #### 📝 Python脚本调用
 
 运行脚本时请使用 `uv run <file.py>` 保证程序在uv创建的虚拟环境下运行。
