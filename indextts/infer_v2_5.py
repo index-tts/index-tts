@@ -40,7 +40,7 @@ PRONUNCIATION_ANNOTATION_PATTERN = re.compile(r'<([^|>\n]+)\|([^>\n]+)>')
 匹配发音标注格式：<文字|发音>
 例如：<going|G OW1 . IH0 NG>，<行|XING2>
 """
-def is_kana(s: str) -> tuple[bool, str]:
+def is_kana(s: str) -> bool:
     hira = re.compile(r'^[\u3040-\u309F]+$')
     kata = re.compile(r'^[\u30A0-\u30FF]+$')
     if hira.fullmatch(s):

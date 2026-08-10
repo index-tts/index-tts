@@ -28,8 +28,8 @@
 ## 📣 Updates
 
 - `2026/07/17` 🔥 We release **IndexTTS-2.5**
-    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maitaining the cross-lingual and timbre-emotion disentanglement capabilities.
-    - The model improves the controbility of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
+    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maintaining the cross-lingual and timbre-emotion disentanglement capabilities.
+    - The model improves the controllability of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
 - `2025/09/08` 🔥 We release **IndexTTS-2**
     - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
     - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled through multiple input modalities.
@@ -376,7 +376,7 @@ text = "快躲起来！是他要来了！他要来抓我们了！"
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 
 # IndexTTS2.5
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", utput_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
 6. It's also possible to directly provide a specific text emotion description
@@ -397,7 +397,7 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 
 > [!TIP]
 >
-> **IndexTTS2.5 Pinyin/English phonemes/Japan Kana Usage Notes:**
+> **IndexTTS2.5 Pinyin/English phonemes/Japanese Kana Usage Notes:**
 > 
 > IndexTTS2.5 now can support these character replacement, with better instruction-following capability.
 > For the full list of valid entries, please refer to `checkpoints/pinyin.vocab` for Pinyin, and 'https://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b' for CMU dictionary.
@@ -429,7 +429,7 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 >from indextts.infer import IndexTTS
 >tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
 >voice = "examples/voice_07.wav"
->text = "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比>如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可>以访问 bilibili studio，相信我，你们也会吃惊的。"
+>text = "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可以访问 bilibili studio，相信我，你们也会吃惊的。"
 >tts.infer(voice, text, 'gen.wav')
 >```
 >

@@ -610,7 +610,9 @@ class UnifiedVoice(nn.Module):
 
         if do_spk_cond:
             if self.spk_cond_mode == "campplus":
-                speech_conditioning_latent = self.sv_pipeline([])
+                speech_conditioning_latent = self.spk_emb_proj(speech_conditioning_latent)
+                if speech_conditioning_latent.ndim != 3:
+                    speech_conditioning_latent = speech_conditioning_latent.unsqueeze(1)
             else:
                 speech_conditioning_latent = self.get_conditioning(speech_conditioning_latent.transpose(1,2), cond_mel_lengths)
         else:
@@ -676,7 +678,7 @@ class UnifiedVoice(nn.Module):
             text_input_pos = torch.arange(0, text_input.size(-1), device=device)
             text_emb = self.text_embedding(text_input) + self.text_pos_embedding.emb(text_input_pos)
             if langs is not None and self.spk_cond_mode == "campplus":
-                text_emb += self.lang_embedding(langs)
+                text_emb += self.lang_embedding(langs[i])
             # concatenate [conditional latents][text embeddings]
             conds_text_emb = [
                 conditional_latents.squeeze(0) if single_cond else conditional_latents[i],

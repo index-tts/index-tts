@@ -62,12 +62,12 @@ class EnhancedCodec(nn.Module):
         )
         vocos_intermediate_dim = (
             cfg.vocos_intermediate_dim
-            if cfg is not None and hasattr(cfg, "vocos_dim")
+            if cfg is not None and hasattr(cfg, "vocos_intermediate_dim")
             else vocos_intermediate_dim
         )
         vocos_num_layers = (
             cfg.vocos_num_layers
-            if cfg is not None and hasattr(cfg, "vocos_dim")
+            if cfg is not None and hasattr(cfg, "vocos_num_layers")
             else vocos_num_layers
         )
         num_quantizers = (
@@ -162,6 +162,7 @@ class EnhancedCodec(nn.Module):
         #     pass
         # decoder
         x = self.decoder(quantized_out)
+        x_rec = x
 
         # up
         if self.downsample_scale != None and self.downsample_scale > 1:
