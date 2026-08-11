@@ -305,9 +305,8 @@ vectors. An `emo_alpha` around 0.6 (or lower) is recommended for more natural
 speech. Randomness can be introduced with `use_random` (default: `False`).
 
 > [!IMPORTANT]
-> This and the next example need the QwenEmotion model, which is only loaded
-> when you construct IndexTTS2.5 with `use_qwen_emo=True`. Without it,
-> `use_emo_text=True` raises a `RuntimeError`.
+> For IndexTTS-2.5, `use_emo_text=True` requires constructing `IndexTTS2` with `use_qwen_emo=True` (e.g. `tts = IndexTTS2(..., use_qwen_emo=True)`), otherwise it raises a `RuntimeError`.
+> (IndexTTS-2 does not require this flag.)
 
 ```python
 text = "快躲起来！是他要来了！他要来抓我们了！"
