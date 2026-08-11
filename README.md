@@ -28,8 +28,8 @@
 ## 📣 Updates
 
 - `2026/08/10` 🔥 We release **IndexTTS-2.5**
-    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maitaining the cross-lingual and timbre-emotion disentanglement capabilities.
-    - The model improves the controbility of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
+    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maintaining the cross-lingual and timbre-emotion disentanglement capabilities.
+    - The model improves the controllability of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
 - `2025/09/08` 🔥 We release **IndexTTS-2**
     - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
     - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled through multiple input modalities.
@@ -234,7 +234,7 @@ uv run tools/gpu_check.py
 uv run webui.py
 
 # IndexTTS2.5
-uv run webui.py --version 2.5 --model_dir ./checkpoints_25
+uv run webui.py --version 2.5 --model_dir ./checkpoints
 ```
 
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
@@ -278,7 +278,7 @@ PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2.py
 
 # IndexTTS2.5
 PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2_5.py \
-  --cfg_path checkpoints/config_v2_5.yaml \
+  --cfg_path checkpoints/config.yaml \
   --model_dir checkpoints \
   --text "Hello world" \
   --lang EN
@@ -294,7 +294,7 @@ tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use
 
 # IndexTTS2.5
 from indextts.infer_v2_5 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints_25/config_v2_5.yaml", model_dir="checkpoints_25", use_bf16=True)
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=True)
 ```
 1. Synthesize new speech with a single reference audio file (voice cloning):
 
@@ -371,7 +371,7 @@ text = "快躲起来！是他要来了！他要来抓我们了！"
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 
 # IndexTTS2.5
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", utput_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
 6. It's also possible to directly provide a specific text emotion description

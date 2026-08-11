@@ -214,7 +214,7 @@ uv run tools/gpu_check.py
 uv run webui.py
 
 # IndexTTS2.5
-uv run webui.py --version 2.5 --model_dir ./checkpoints_25
+uv run webui.py --version 2.5 --model_dir ./checkpoints
 ```
 
 浏览器访问 `http://127.0.0.1:7860` 查看演示。
@@ -251,7 +251,7 @@ PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2.py
 
 # IndexTTS2.5
 PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2_5.py \
-  --cfg_path checkpoints/config_v2_5.yaml \
+  --cfg_path checkpoints/config.yaml \
   --model_dir checkpoints \
   --text "Hello world" \
   --lang EN
@@ -267,7 +267,7 @@ tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use
 
 # IndexTTS2.5
 from indextts.infer_v2_5 import IndexTTS2
-tts = IndexTTS2(cfg_path="checkpoints_25/config_v2_5.yaml", model_dir="checkpoints_25", use_bf16=True)
+tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=True)
 ```
 1. 单一参考音频（音色克隆）：
 
