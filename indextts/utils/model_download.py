@@ -80,14 +80,15 @@ def _download_single_file(repo_id: str, filename: str, local_path: str) -> str:
     return local_path
 
 
-def ensure_config_available(model_dir: str) -> None:
+def ensure_config_available(model_dir: str, version: str = "2") -> None:
     """Download only ``config.yaml`` if it is missing from *model_dir*."""
     model_dir = model_dir or "."
     config_path = os.path.join(model_dir, "config.yaml")
     if os.path.isfile(config_path):
         return
     print(f">> config.yaml not found in {model_dir}, downloading...")
-    _download_single_file("IndexTeam/IndexTTS-2", "config.yaml", config_path)
+    repo_id = "IndexTeam/IndexTTS-2.5" if version == "2.5" else "IndexTeam/IndexTTS-2"
+    _download_single_file(repo_id, "config.yaml", config_path)
     print(">> config.yaml downloaded.")
 
 

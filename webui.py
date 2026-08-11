@@ -25,7 +25,7 @@ parser.add_argument("--verbose", action="store_true", default=False, help="Enabl
 parser.add_argument("--port", type=int, default=7860, help="Port to run the web UI on")
 parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="./checkpoints", help="Model checkpoints directory")
-parser.add_argument("--version", type=str, default="2", choices=["2", "2.5"], help="Model version to use")
+parser.add_argument("--version", type=str, default="2.5", choices=["2", "2.5"], help="Model version to use")
 parser.add_argument("--fp16", action="store_true", default=False, help="Use FP16 for inference if available")
 parser.add_argument("--deepspeed", action="store_true", default=False, help="Use DeepSpeed to accelerate if available")
 parser.add_argument("--cuda_kernel", action="store_true", default=False, help="Use CUDA kernel for inference if available")
@@ -51,27 +51,30 @@ if cmd_args.accel:
 if cmd_args.torch_compile:
     _require_optional_extra("torch_compile", "triton", "uv sync --extra torch_compile")
 
-required_files = [
-    "bpe.model",
-    "gpt.pth",
-    "s2mel.pth",
-    "wav2vec2bert_stats.pt",
-]
+REQUIRED_FILES = {
+    "2": ["bpe.model", "gpt.pth", "s2mel.pth", "wav2vec2bert_stats.pt"],
+    "2.5": [
+        "gpt.pth",
+        "s2mel.pth",
+        "codec.pth",
+        "multilingual_zh_ja_yue_char_del.tiktoken",
+        "wav2vec2bert_stats.pt",
+    ],
+}
+MODEL_REPO = {
+    "2": "IndexTeam/IndexTTS-2",
+    "2.5": "IndexTeam/IndexTTS-2.5",
+}
+required_files = REQUIRED_FILES[cmd_args.version]
 missing = [f for f in required_files if not os.path.exists(os.path.join(cmd_args.model_dir, f))]
 if missing:
-    if cmd_args.version != "2":
-        print(
-            f"Model directory {cmd_args.model_dir} is incomplete for v{cmd_args.version} "
-            f"(missing: {', '.join(missing)}). Please prepare checkpoints manually."
-        )
-        sys.exit(1)
     print(
-        f"Model directory {cmd_args.model_dir} is incomplete (missing: {', '.join(missing)}). "
-        "Downloading IndexTTS-2 model..."
+        f"Model directory {cmd_args.model_dir} is incomplete for v{cmd_args.version} "
+        f"(missing: {', '.join(missing)}). Downloading {MODEL_REPO[cmd_args.version]}..."
     )
     from indextts.utils.model_download import snapshot_download
     try:
-        snapshot_download("IndexTeam/IndexTTS-2", local_dir=cmd_args.model_dir)
+        snapshot_download(MODEL_REPO[cmd_args.version], local_dir=cmd_args.model_dir)
     except Exception as e:
         print(f"Failed to download model to {cmd_args.model_dir}: {e}")
         sys.exit(1)
@@ -83,7 +86,7 @@ if missing:
 
 from indextts.utils.model_download import ensure_config_available
 try:
-    ensure_config_available(cmd_args.model_dir)
+    ensure_config_available(cmd_args.model_dir, version=cmd_args.version)
 except Exception as e:
     print(f"Failed to download config.yaml: {e}")
     sys.exit(1)
