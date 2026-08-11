@@ -42,7 +42,7 @@
 
 **IndexTTS2.5: The Future of Voice, Now Generating**
 
-[![IndexTTS2.5 Demo](assets/IndexTTS2-video-pic.png)](https://www.bilibili.com/video/BV136a9zqEk5)
+[![IndexTTS2.5 Demo](assets/index2.5_video_cover.png)](https://www.bilibili.com/video/BV1uvMk6ZEdK/)
 
 
 **IndexTTS2: The Future of Voice, Now Generating**

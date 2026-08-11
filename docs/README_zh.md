@@ -43,7 +43,7 @@
 
 **IndexTTS2.5：语音未来，现已生成**
 
-[![IndexTTS2.5 Demo](../assets/IndexTTS2-video-pic.png)](https://www.bilibili.com/video/BV136a9zqEk5)
+[![IndexTTS2.5 Demo](../assets/index2.5_video_cover.png)](https://www.bilibili.com/video/BV1uvMk6ZEdK/)
 
 
 **IndexTTS2：语音未来，现已生成**
