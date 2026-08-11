@@ -74,7 +74,7 @@ def apply_pronunciation_annotations(text: str) -> str:
 
 class IndexTTS2:
     def __init__(
-            self, cfg_path="configs/config_v2_5.yaml", model_dir="checkpoints", use_bf16=False, device=None,
+            self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=False, device=None,
             use_gpt_latent=False, use_cuda_kernel=None,use_deepspeed=False, use_accel=False, use_torch_compile=False, use_qwen_emo=False
     ):
         """
@@ -1046,7 +1046,7 @@ class QwenEmotion:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cfg_path", type=str, default="configs/config_v2_5.yaml")
+    parser.add_argument("--cfg_path", type=str, default="checkpoints/config.yaml")
     parser.add_argument("--model_dir", type=str, default="checkpoints")
     parser.add_argument("--prompt_wav", type=str, default="examples/voice_01.wav")
     parser.add_argument("--text", type=str, default="欢迎大家来体验indextts2，并给予我们意见与反馈，谢谢大家。")
