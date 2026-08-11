@@ -660,7 +660,7 @@ def create_experimental_warning_message():
     return create_warning_message(i18n('提示：此功能为实验版，结果尚不稳定，我们正在持续优化中。'))
 
 with gr.Blocks(
-    title="IndexTTS Demo",
+    title=f"IndexTTS-{cmd_args.version} Demo",
     css="""
         /* Make the voice reference audio upload area more compact. */
         #prompt_audio_compact .audio-container,
@@ -708,10 +708,11 @@ with gr.Blocks(
     """,
 ) as demo:
     mutex = threading.Lock()
-    gr.HTML('''
-    <h2><center>IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech</h2>
+    arxiv_id = "2601.03888" if IS_V25 else "2506.21619"
+gr.HTML(f'''
+    <h2 style="text-align:center">IndexTTS-{cmd_args.version}</h2>
 <p align="center">
-<a href='https://arxiv.org/abs/2506.21619'><img src='https://img.shields.io/badge/ArXiv-2506.21619-red'></a>
+<a href='https://arxiv.org/abs/{arxiv_id}'><img src='https://img.shields.io/badge/ArXiv-{arxiv_id}-red'></a>
 </p>
     ''')
 

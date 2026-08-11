@@ -126,7 +126,7 @@ Descarga los modelos necesarios mediante [uv tool](https://docs.astral.sh/uv/gui
 Mediante `huggingface-cli`:
 
 ```bash
-uv tool install "huggingface-hub[cli,hf_xet]"
+uv tool install "huggingface-hub"
 
 # IndexTTS-2.5
 hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
@@ -294,10 +294,10 @@ Usa `use_random` para introducir estocasticidad durante la inferencia
 text = "对不起嘛！我的记性真的不太好，但是和你在一起的事情，我都会努力记住的~"
 
 # IndexTTS2
-tts.infer(spk_audio_prompt='examples/09.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_09.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
 
 # IndexTTS2.5
-tts.infer(spk_audio_prompt='examples/09.wav', text=text, lang="ZH", output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_09.wav', text=text, lang="ZH", output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
 ```
 
 #### 5. Control de emociones a partir del propio texto (`use_emo_text`)

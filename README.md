@@ -71,8 +71,8 @@ this repository:
 git clone https://github.com/index-tts/index-tts.git && cd index-tts
 ```
 
-Example audio files are downloaded on demand from HuggingFace/ModelScope on
-first run, so Git LFS is no longer required.
+Example audio files are downloaded on demand from HuggingFace/ModelScope the
+first time the WebUI starts, so Git LFS is no longer required.
 
 ### 2. Install Dependencies
 
@@ -123,7 +123,7 @@ Download the required models via [uv tool](https://docs.astral.sh/uv/guides/tool
 Via `huggingface-cli`:
 
 ```bash
-uv tool install "huggingface-hub[cli,hf_xet]"
+uv tool install "huggingface-hub"
 
 # IndexTTS-2.5
 hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
@@ -208,9 +208,6 @@ To run scripts, use `uv run <file.py>` so the code runs inside the `uv`
 environment. You may also need to add the current directory to `PYTHONPATH`:
 
 ```bash
-# IndexTTS2
-PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2.py
-
 # IndexTTS2.5
 PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2_5.py \
   --cfg_path checkpoints/config.yaml \
@@ -218,6 +215,17 @@ PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2_5.py \
   --text "Hello world" \
   --lang EN
 ```
+
+The default `--prompt_wav` lives in `examples/`, which is populated the first
+time the WebUI starts. To fetch it without the WebUI:
+
+```bash
+uv run python -c "from indextts.utils.examples_downloader import ensure_examples_available; ensure_examples_available()"
+```
+
+For IndexTTS2, use the Python API below — `indextts/infer_v2.py` runs a
+benchmark loop against a hardcoded `checkpoints/` directory, not the
+`checkpoints_2` layout from step 3.
 
 #### 0. Initialize IndexTTS
 
@@ -284,10 +292,10 @@ Use `use_random` to introduce stochasticity during inference (default: `False`).
 text = "对不起嘛！我的记性真的不太好，但是和你在一起的事情，我都会努力记住的~"
 
 # IndexTTS2
-tts.infer(spk_audio_prompt='examples/09.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_09.wav', text=text, output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
 
 # IndexTTS2.5
-tts.infer(spk_audio_prompt='examples/09.wav', text=text, lang="ZH", output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_09.wav', text=text, lang="ZH", output_path="gen.wav", emo_vector=[0, 0, 0.8, 0, 0, 0, 0, 0], use_random=False, verbose=True)
 ```
 
 #### 5. Emotion control from the text itself (`use_emo_text`)
@@ -295,6 +303,10 @@ tts.infer(spk_audio_prompt='examples/09.wav', text=text, lang="ZH", output_path=
 Enable `use_emo_text` to automatically convert your `text` script into emotion
 vectors. An `emo_alpha` around 0.6 (or lower) is recommended for more natural
 speech. Randomness can be introduced with `use_random` (default: `False`).
+
+> [!IMPORTANT]
+> For IndexTTS-2.5, `use_emo_text=True` requires constructing `IndexTTS2` with `use_qwen_emo=True` (e.g. `tts = IndexTTS2(..., use_qwen_emo=True)`), otherwise it raises a `RuntimeError`.
+> (IndexTTS-2 does not require this flag.)
 
 ```python
 text = "快躲起来！是他要来了！他要来抓我们了！"
