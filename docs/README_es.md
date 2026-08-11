@@ -126,7 +126,7 @@ Descarga los modelos necesarios mediante [uv tool](https://docs.astral.sh/uv/gui
 Mediante `huggingface-cli`:
 
 ```bash
-uv tool install "huggingface-hub[cli,hf_xet]"
+uv tool install "huggingface-hub"
 
 # IndexTTS-2.5
 hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
