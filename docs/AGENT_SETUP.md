@@ -135,7 +135,7 @@ codec, CAMPPlus, BigVGAN) are **not** in that repo; they land in
 `{model_dir}/hf_cache/` on first run.
 
 ```bash
-uv tool install "huggingface-hub[hf_xet]"
+uv tool install "huggingface-hub"
 hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
 ```
 
@@ -233,7 +233,7 @@ the user rather than silently exposing it.
 | `HTTPError: <Response [404]>` mentioning `nvidia/bigvgan_*` | BigVGAN is absent from ModelScope | benign — the code falls back to hf-mirror and continues; check for a later `>> All auxiliary models ready.` |
 | `ModuleNotFoundError: No module named 'setuptools'` while building | `no-build-isolation` on a fresh `.venv` | see step 3 |
 | `triton-windows ... only has wheels for win_amd64` | that package is Windows-only | it must carry `sys_platform == 'win32'`; Linux gets `triton` via torch |
-| `does not have an extra named 'cli'` | modern `huggingface-hub` dropped it | use `huggingface-hub[hf_xet]` |
+| `does not have an extra named 'cli'` | modern `huggingface-hub` dropped it | install it plain: `huggingface-hub` |
 | `uv pip check` reports `deepspeed requires nvidia-ml-py` | upstream declares it, the lockfile omits it | pre-existing and harmless for inference |
 | `unknown field 'preview-features'` | not a valid `[tool.uv]` key | remove it; the whole `[tool.uv]` table is ignored while it is present |
 
