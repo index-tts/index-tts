@@ -395,6 +395,22 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
+7. You can control the speaking speed of the generated speech via the `duration_factor`
+   parameter. A value greater than `1.0` slows down the speech, while a value less
+   than `1.0` speeds it up. The default is `1.0` (normal speed).
+   Valid range is `0.5 - 2.0`:
+
+```python
+text = "大家好，欢迎来到IndexTTS的语速控制演示。"
+
+# IndexTTS2.5
+# Slow down (1.2x duration)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_slow.wav", duration_factor=1.2, verbose=True)
+
+# Speed up (0.8x duration)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", duration_factor=0.8, verbose=True)
+```
+
 > [!TIP]
 >
 > **IndexTTS2.5 Pinyin/English phonemes/Japan Kana Usage Notes:**

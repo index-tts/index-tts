@@ -354,7 +354,7 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
-7. 通过 `speed_factor` 参数可以控制生成语音的语速。
+7. 通过 `duration_factor` 参数可以控制生成语音的语速。
    大于 `1.0` 语速变慢，小于 `1.0` 语速变快，默认值为 `1.0`（正常语速）。
    有效范围 `0.5 - 2.0`：
 
@@ -362,10 +362,10 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 text = "大家好，欢迎来到IndexTTS的语速控制演示。"
 
 # 语速变慢（1.2倍时长）
-tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_slow.wav", speed_factor=1.2, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_slow.wav", duration_factor=1.2, verbose=True)
 
 # 语速变快（0.8倍时长）
-tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", speed_factor=0.8, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", duration_factor=0.8, verbose=True)
 ```
 
 > [!TIP]
