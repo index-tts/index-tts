@@ -457,6 +457,19 @@ or visit the IndexTTS1 repository at [index-tts:v1.5.0](https://github.com/index
 </tbody>
 </table>
 
+## ⚡ Inference Speed
+
+RTF (wall-clock time / generated audio duration, lower is faster) on an NVIDIA RTX 4090, `kv_cache=True`.
+
+| Text | 2.0 fp16 | 2.0 fp32 | 2.5 bf16 | 2.5 fp32 |
+|---|---|---|---|---|
+| 7 chars | 0.4004 | 0.3748 | 0.2871 | 0.2547 |
+| 16 chars | 0.3322 | 0.3389 | 0.2155 | 0.1981 |
+| 28 chars | 0.3257 | 0.3480 | 0.2065 | 0.1927 |
+| 80 chars | 0.3229 | 0.3754 | 0.1997 | 0.2060 |
+| 200 chars | 0.3244 | 0.3990 | 0.1997 | 0.2144 |
+| **overall** | **0.3257** | **0.3748** | **0.2065** | **0.2060** |
+
 ## 🤝 Community & Contact
 
 - **QQ Groups:** 663272642 (No.4), 1013410623 (No.5)
