@@ -1,10 +1,17 @@
 <div align="center">
 
-<img src="assets/indextts_icon.png" width="220"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/indextts_icon_dark.png"/>
+  <img src="assets/indextts_icon_light.png" width="220"/>
+</picture>
 
 **An Industrial-Level Controllable and Efficient Zero-Shot Text-to-Speech System**
 
 [简体中文](docs/README_zh.md) | English
+
+[![GitHub Stars](https://img.shields.io/github/stars/index-tts/index-tts?style=flat&logo=github)](https://github.com/index-tts/index-tts/stargazers)
+[![arXiv](https://img.shields.io/badge/arXiv-2601.03888-b31b1b?logo=arxiv)](https://arxiv.org/abs/2601.03888)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/uT32E7KDmy)
 
 </div>
 
