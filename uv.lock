@@ -610,6 +610,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/09/e4/67eeb715b602e7024e8291554cb60bae2f3d87e9987db1f8a1b4c0a0e567/fugashi-1.5.2-cp311-cp311-win_amd64.whl", hash = "sha256:5c5e04cb808f5cd46fc682469702f1e34f6199a264514e5c21b1e17ea4f8313f", size = 508985, upload-time = "2025-10-24T07:24:03.042Z" },
 ]
 
+[package.optional-dependencies]
+unidic-lite = [
+    { name = "unidic-lite" },
+]
+
 [[package]]
 name = "future"
 version = "1.0.0"
@@ -840,7 +845,7 @@ dependencies = [
     { name = "descript-audiotools" },
     { name = "einops" },
     { name = "ffmpeg-python" },
-    { name = "fugashi" },
+    { name = "fugashi", extra = ["unidic-lite"] },
     { name = "g2p-en" },
     { name = "jieba" },
     { name = "json5" },
@@ -903,6 +908,7 @@ requires-dist = [
     { name = "ffmpeg-python", specifier = "==0.2.0" },
     { name = "flash-attn", marker = "extra == 'accel'", specifier = "==2.8.3.post1" },
     { name = "fugashi", specifier = ">=1.2.0" },
+    { name = "fugashi", extras = ["unidic-lite"] },
     { name = "g2p-en", specifier = "==2.1.0" },
     { name = "gradio", marker = "extra == 'webui'", specifier = "==5.45.0" },
     { name = "jieba", specifier = "==0.42.1" },
