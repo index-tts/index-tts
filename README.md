@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/indextts_icon_dark.png"/>
-  <img src="assets/indextts_icon_light.png" width="220"/>
+  <img src="assets/indextts_icon_light.png" width="300"/>
 </picture>
 
 **An Industrial-Level Controllable and Efficient Zero-Shot Text-to-Speech System**
@@ -18,8 +18,8 @@
 IndexTTS is a zero-shot text-to-speech system that clones a voice from a single
 reference audio clip. The latest release, **IndexTTS-2.5**, supports Chinese,
 English, Japanese, Spanish and Arabic, with fine-grained emotion control,
-pronunciation control (Pinyin / CMU phonemes / Japanese Kana), and faster
-inference than IndexTTS-2.
+speaking speed control, pronunciation control (Pinyin / CMU phonemes /
+Japanese Kana), and faster inference than IndexTTS-2.
 
 ---
 
@@ -37,6 +37,7 @@ inference than IndexTTS-2.
 - `2026/08/10` 🔥 We release **IndexTTS-2.5**
   - Now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference than IndexTTS-2, while keeping the cross-lingual and timbre-emotion disentanglement capabilities.
   - Improved controllability of Chinese Pinyin, English CMU phonemes and Japanese Kana.
+  - Speaking speed control via `duration_factor` (0.5x–2.0x duration).
 - `2025/09/08` 🔥 We release **IndexTTS-2**
   - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
   - Highly expressive emotional speech synthesis, with emotion control through multiple input modalities.

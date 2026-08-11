@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../assets/indextts_icon_dark.png"/>
-  <img src="../assets/indextts_icon_light.png" width="220"/>
+  <img src="../assets/indextts_icon_light.png" width="300"/>
 </picture>
 
 **工业级可控、高效的零样本文本转语音系统**
@@ -17,7 +17,7 @@
 
 IndexTTS 是一个零样本文本转语音（TTS）系统，只需一段参考音频即可克隆音色。
 最新发布的 **IndexTTS-2.5** 支持中文、英文、日语、西班牙语和阿拉伯语，
-具备细粒度情感控制、发音控制（拼音 / CMU 音素 / 日语假名）能力，
+具备细粒度情感控制、语速控制、发音控制（拼音 / CMU 音素 / 日语假名）能力，
 推理速度较 IndexTTS-2 更快。
 
 ---
@@ -36,6 +36,7 @@ IndexTTS 是一个零样本文本转语音（TTS）系统，只需一段参考�
 - `2026/08/10` 🔥 **IndexTTS-2.5** 全球发布！
   - 模型现已支持中文、英文、日语、西班牙语和阿拉伯语，推理速度较 IndexTTS-2 更快，同时保持跨语言合成与音色-情感解耦能力。
   - 模型提升了中文拼音、英文 CMU 音素和日语假名的可控性。
+  - 支持通过 `duration_factor` 控制语速（0.5–2.0 倍时长）。
 - `2025/09/08` 🔥 **IndexTTS-2** 全球发布！
   - 首个支持精确合成时长控制的自回归 TTS 模型，支持可控与非可控模式。<i>本版本暂未开放该功能。</i>
   - 模型实现高度情感表达的语音合成，支持多模态情感控制。
