@@ -82,12 +82,12 @@ accel = [
   "flash-attn==2.8.3.post1",
   "nvidia-cuda-runtime-cu12",
   "nvidia-cudnn-cu12",
-  "triton-windows==3.1.0.post17",
+  "triton-windows==3.1.0.post17; sys_platform == 'win32'",
 ]
 # To install torch.compile support for s2mel, use `uv sync --extra torch_compile` (or `--all-extras`).
 # On Windows this is satisfied by the triton-windows package above.
 torch_compile = [
-  "triton-windows==3.1.0.post17",
+  "triton-windows==3.1.0.post17; sys_platform == 'win32'",
 ]
 test = [
   "pytest>=7.0",
@@ -113,13 +113,12 @@ indextts2 = "indextts.cli_v2:main"
 requires = ["hatchling >= 1.27.0"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-# Disable build isolation when building DeepSpeed from source.
-# NOTE: This is *necessary* so that DeepSpeed builds directly within our `.venv`,
-# and finds our CUDA-enabled version of PyTorch, which DeepSpeed *needs* during
-# its compilation to determine what GPU support to compile for itself. It also
-# saves time, since it won't waste time downloading a generic PyTorch version.
-no-build-isolation-package = ["deepspeed"]
+[tool.uv.extra-build-dependencies]
+# Build against our CUDA-enabled PyTorch: DeepSpeed picks its GPU targets from it,
+# and flash-attn reads its version and C++ ABI flag to fetch a matching prebuilt
+# wheel instead of compiling.
+deepspeed = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
 
 [tool.uv.sources]
 # Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
