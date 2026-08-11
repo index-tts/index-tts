@@ -457,7 +457,7 @@ IndexTTS2.5:
 ```
 @misc{li2026indextts25technicalreport,
       title={IndexTTS 2.5 Technical Report}, 
-      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Jingchen Shu},
+      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Yining Wang and Yaogen Yang and Zhetao Hu and Shiyao Duan and Jiacheng Xu and Bin Xia and Jingchen Shu},
       year={2026},
       eprint={2601.03888},
       archivePrefix={arXiv},
