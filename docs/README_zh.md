@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="../assets/indextts_icon.png" width="180"/>
-
-# IndexTTS
+<img src="../assets/indextts_icon.png" width="220"/>
 
 **工业级可控、高效的零样本文本转语音系统**
 
@@ -56,19 +54,13 @@ IndexTTS 是一个零样本文本转语音（TTS）系统，只需一段参考�
 
 ### 1. 环境准备
 
-请确保已安装 [git](https://git-scm.com/downloads) 和 [git-lfs](https://git-lfs.com/)，
-并为当前用户启用 Git-LFS：
-
-```bash
-git lfs install
-```
-
-然后下载本仓库：
+请确保已安装 [git](https://git-scm.com/downloads)，然后下载本仓库：
 
 ```bash
 git clone https://github.com/index-tts/index-tts.git && cd index-tts
-git lfs pull  # 下载大文件
 ```
+
+示例音频会在首次运行时按需从 HuggingFace/ModelScope 自动下载，无需 Git LFS。
 
 ### 2. 安装依赖
 

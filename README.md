@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="assets/indextts_icon.png" width="180"/>
-
-# IndexTTS
+<img src="assets/indextts_icon.png" width="220"/>
 
 **An Industrial-Level Controllable and Efficient Zero-Shot Text-to-Speech System**
 
@@ -57,20 +55,15 @@ inference than IndexTTS-2.
 
 ### 1. Prerequisites
 
-Make sure you have [git](https://git-scm.com/downloads) and
-[git-lfs](https://git-lfs.com/) installed, with Git-LFS enabled for your
-current user account:
-
-```bash
-git lfs install
-```
-
-Then download this repository:
+Make sure you have [git](https://git-scm.com/downloads) installed, then download
+this repository:
 
 ```bash
 git clone https://github.com/index-tts/index-tts.git && cd index-tts
-git lfs pull  # download large repository files
 ```
+
+Example audio files are downloaded on demand from HuggingFace/ModelScope on
+first run, so Git LFS is no longer required.
 
 ### 2. Install Dependencies
 
