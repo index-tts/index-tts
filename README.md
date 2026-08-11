@@ -1,7 +1,7 @@
 
 
 <div align="center">
-<img src='assets/index_icon.png' width="250"/>
+<img src='assets/indextts_icon.png' width="250"/>
 </div>
 
 <div align="center">
@@ -13,23 +13,23 @@
 
 <!-- |**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
-|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) |
+|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
 | [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) | -->
 
 | Model | Demos | Paper | Modelscope | HuggingFace |
 | :--- | :---: | :---: | :---: | :---: |
-| **IndexTTS-2.5** | [Demos](https://index-tts.github.io/index-tts2-5.github.io/) | - | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
-| **IndexTTS-2** | [Demos](https://index-tts.github.io/index-tts2.github.io/) | [Paper](https://arxiv.org/abs/2506.21619) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2) |
-| **IndexTTS-1.5** | [Demos](https://index-tts.github.io/) | [Paper](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
-| **IndexTTS** | [Demos](https://index-tts.github.io/) | [Paper](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/Index-TTS) | [HuggingFace](https://huggingface.co/IndexTeam/Index-TTS) |
+| **IndexTTS-2.5** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/index-tts2-5.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2601.03888) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/index-tts2.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2506.21619) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-2) |
+| **IndexTTS-1.5** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
+| **IndexTTS** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/Index-TTS) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/Index-TTS) |
 
 ## 📣 Updates
 
 - `2026/07/17` 🔥 We release **IndexTTS-2.5**
-    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maintaining the cross-lingual and timbre-emotion disentanglement capabilities.
-    - The model improves the controllability of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
+    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maitaining the cross-lingual and timbre-emotion disentanglement capabilities.
+    - The model improves the controbility of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
 - `2025/09/08` 🔥 We release **IndexTTS-2**
     - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
     - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled through multiple input modalities.
@@ -189,11 +189,7 @@ Download via `huggingface-cli`:
 ```bash
 uv tool install "huggingface-hub[cli,hf_xet]"
 
-# IndexTTS-2.5
-hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
-
-# IndexTTS-2
-hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints_2
+hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 ```
 
 Or download via `modelscope`:
@@ -201,11 +197,7 @@ Or download via `modelscope`:
 ```bash
 uv tool install "modelscope"
 
-# IndexTTS-2.5
-modelscope download --model IndexTeam/IndexTTS-2.5 --local_dir checkpoints
-
-# IndexTTS-2
-modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints_2
+modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
 
 > [!IMPORTANT]
@@ -269,11 +261,6 @@ Have fun!
 > Lastly, be aware that *all* `uv` commands will **automatically activate** the correct
 > per-project virtual environments. Do *not* manually activate any environments
 > before running `uv` commands, since that could lead to dependency conflicts!
-
-
-#### 🚀 Serving with vLLM
-
-For production deployment, see the [vLLM recipe for IndexTTS](https://github.com/vllm-project/recipes/pull/772).
 
 
 #### 📝 Using in Python
@@ -384,7 +371,7 @@ text = "快躲起来！是他要来了！他要来抓我们了！"
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 
 # IndexTTS2.5
-tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
+tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", utput_path="gen.wav", emo_alpha=0.6, use_emo_text=True, use_random=False, verbose=True)
 ```
 
 6. It's also possible to directly provide a specific text emotion description
@@ -405,7 +392,7 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 
 > [!TIP]
 >
-> **IndexTTS2.5 Pinyin/English phonemes/Japanese Kana Usage Notes:**
+> **IndexTTS2.5 Pinyin/English phonemes/Japan Kana Usage Notes:**
 > 
 > IndexTTS2.5 now can support these character replacement, with better instruction-following capability.
 > For the full list of valid entries, please refer to `checkpoints/pinyin.vocab` for Pinyin, and 'https://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b' for CMU dictionary.
@@ -437,7 +424,7 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 >from indextts.infer import IndexTTS
 >tts = IndexTTS(model_dir="checkpoints",cfg_path="checkpoints/config.yaml")
 >voice = "examples/voice_07.wav"
->text = "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可以访问 bilibili studio，相信我，你们也会吃惊的。"
+>text = "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！比>如说，现在正在说话的其实是B站为我现场复刻的数字分身，简直就是平行宇宙的另一个我了。如果大家也想体验更多深入的AIGC功能，可>以访问 bilibili studio，相信我，你们也会吃惊的。"
 >tts.infer(voice, text, 'gen.wav')
 >```
 >
@@ -459,6 +446,20 @@ or visit the IndexTTS1 repository at <a href="https://github.com/index-tts/index
 ## 📚 Citation
 
 🌟 If you find our work helpful, please leave us a star and cite our paper.
+
+IndexTTS2.5:
+
+```
+@misc{li2026indextts25technicalreport,
+      title={IndexTTS 2.5 Technical Report}, 
+      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Jingchen Shu},
+      year={2026},
+      eprint={2601.03888},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2601.03888}, 
+}
+```
 
 IndexTTS2:
 

@@ -1,7 +1,7 @@
 
 
 <div align="center">
-<img src='../assets/index_icon.png' width="250"/>
+<img src='../assets/indextts_icon.png' width="250"/>
 </div>
 
 <div align="center">
@@ -13,17 +13,17 @@
 
 <!-- |**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
-|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) |
+|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
 | [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) | -->
 
 | 模型 | 演示 | 论文 | Modelscope | HuggingFace |
 | :--- | :---: | :---: | :---: | :---: |
-| **IndexTTS-2.5** | [演示](https://index-tts.github.io/index-tts2-5.github.io/) | - | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
-| **IndexTTS-2** | [演示](https://index-tts.github.io/index-tts2.github.io/) | [论文](https://arxiv.org/abs/2506.21619) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2) |
-| **IndexTTS-1.5** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
-| **IndexTTS** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/Index-TTS) | [HuggingFace](https://huggingface.co/IndexTeam/Index-TTS) |
+| **IndexTTS-2.5** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/index-tts2-5.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2601.03888) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/index-tts2.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2506.21619) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-2) |
+| **IndexTTS-1.5** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
+| **IndexTTS** | [![Demo](https://img.shields.io/badge/Demo-Page-orange?logo=github)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/Paper-arXiv-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/Index-TTS) | [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-blue?logo=huggingface)](https://huggingface.co/IndexTeam/Index-TTS) |
 
 ## 📣 更新日志
 
@@ -174,11 +174,7 @@ HuggingFace下载：
 ```bash
 uv tool install "huggingface-hub[cli,hf_xet]"
 
-# IndexTTS-2.5
-hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
-
-# IndexTTS-2
-hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints_2
+hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 ```
 
 ModelScope下载：
@@ -186,11 +182,7 @@ ModelScope下载：
 ```bash
 uv tool install "modelscope"
 
-# IndexTTS-2.5
-modelscope download --model IndexTeam/IndexTTS-2.5 --local_dir checkpoints
-
-# IndexTTS-2
-modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints_2
+modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 ```
 
 > [!IMPORTANT]
@@ -244,11 +236,6 @@ uv run webui.py -h
 > 
 > 注意：所有 `uv` 命令会**自动激活**对应项目的虚拟环境。请*不要*手动激活环境后再运行 `uv` 命令，
 > 否则可能导致依赖冲突！
-
-
-#### 🚀 使用 vLLM 部署
-
-生产环境部署请参考 [vLLM IndexTTS Recipe](https://github.com/vllm-project/recipes/pull/772)。
 
 
 #### 📝 Python脚本调用
@@ -421,6 +408,20 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 ## 📚 论文引用
 
 🌟 如果本项目对您有帮助，请为我们点star并引用论文。
+
+IndexTTS2.5:
+
+```
+@misc{li2026indextts25technicalreport,
+      title={IndexTTS 2.5 Technical Report}, 
+      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Jingchen Shu},
+      year={2026},
+      eprint={2601.03888},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2601.03888}, 
+}
+```
 
 IndexTTS2:
 
