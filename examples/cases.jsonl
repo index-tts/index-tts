@@ -2,12 +2,9 @@
 {"prompt_audio": "voice_04.wav", "emo_mode": 0, "lang": "ZH", "text": "你就需要我这种专业人士的帮助，就像手无缚鸡之力的人进入雪山狩猎，一定需要最老练的猎人指导。"}
 {"prompt_audio": "voice_01.wav", "emo_mode": 0, "lang": "EN", "text": "Translate for me, what is a surprise!"}
 {"prompt_audio": "voice_02.wav", "emo_mode": 0, "lang": "EN", "text": "If you’d ever treated me like a human being, would they have dared to do this?"}
-{"prompt_audio": "voice_12_web.wav", "emo_mode": 1, "lang": "ES", "text": "En la actualidad se continúa utilizando con mucha frecuencia una corona abierta.", "emo_audio": "emo_happy.wav", "emo_weight": 0.5}
 {"prompt_audio": "voice_08.wav", "emo_mode": 2, "lang": "ES", "text": "En la actualidad se continúa utilizando con mucha frecuencia una corona abierta.", "emo_weight": 0.8, "emo_vec_6": 0.8}
-{"prompt_audio": "voice_11.wav", "emo_mode": 1, "lang": "AR", "text": "فكلُّها خياراتٌ اتَّخذتَها بنفسِك، كشخصٍ بالغٍ يتحمّلُ مسؤوليّتَه كاملةً.", "emo_audio": "emo_angry.wav", "emo_weight": 0.5}
 {"prompt_audio": "voice_07.wav", "emo_mode": 2, "lang": "AR", "text": "فكلُّها خياراتٌ اتَّخذتَها بنفسِك، كشخصٍ بالغٍ يتحمّلُ مسؤوليّتَه كاملةً", "emo_weight": 0.8, "emo_vec_1": 0.8}
-{"prompt_audio": "voice_09.wav", "emo_mode": 1, "lang": "JA", "text": "電気について知らないのは非常識とされるようになる。", "emo_audio": "emo_surprise.wav", "emo_weight": 0.5}
-{"prompt_audio": "voice_12_web.wav", "emo_mode": 2, "lang": "JA", "text": "翻訳ツールのおかげで外国のサイトもよく見るようになった。", "emo_weight": 0.8, "emo_vec_1": 0.8}
+{"prompt_audio": "voice_12.wav", "emo_mode": 2, "lang": "JA", "text": "翻訳ツールのおかげで外国のサイトもよく見るようになった。", "emo_weight": 0.8, "emo_vec_1": 0.8}
 {"prompt_audio": "voice_05.wav", "emo_mode": 0, "lang": "ZH", "text": "在真正的日本剑道中，格斗过程极其短暂，常常短至半秒，最长也不超过两秒，利剑相击的转瞬间，已有一方倒在血泊中。但在这电光石火的对决之前，双方都要以一个石雕般凝固的姿势站定，长时间的逼视对方，这一过程可能长达十分钟！"}
 {"prompt_audio": "voice_06.wav", "emo_mode": 0, "lang": "ZH", "text": "床前明月光，疑是地上霜，举头望明月，我叫郭德纲。"}
 {"prompt_audio": "voice_07.wav", "emo_mode": 1, "lang": "ZH", "text": "你看看你，对我还有没有一点父子之间的信任了。", "emo_audio": "emo_hate.wav", "emo_weight": 0.65}
