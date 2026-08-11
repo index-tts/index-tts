@@ -60,6 +60,7 @@ dependencies = [
   "tqdm>=4.67.1",
   "transformers==4.52.1",
   "openai-whisper>=20231117",
+  "fugashi[unidic-lite]",
 
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",

@@ -1,7 +1,7 @@
 
 
 <div align="center">
-<img src='assets/index_icon.png' width="250"/>
+<img src='assets/indextts_icon.png' width="250"/>
 </div>
 
 <div align="center">
@@ -14,10 +14,24 @@
 
 ## 👉🏻 IndexTTS2 👈🏻
 
-<center><h3>IndexTTS2: A Breakthrough in Emotionally Expressive and Duration-Controlled Auto-Regressive Zero-Shot Text-to-Speech</h3></center>
+| Model | Demos | Paper | Modelscope | HuggingFace |
+| :--- | :---: | :---: | :---: | :---: |
+| **IndexTTS-2.5** | [![Demo](https://img.shields.io/badge/Demo-🎧-blue)](https://index-tts.github.io/index-tts2-5.github.io/) | [![Paper](https://img.shields.io/badge/arXiv-2601.03888-red?logo=arxiv)](https://arxiv.org/abs/2601.03888) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [![HuggingFace](https://img.shields.io/badge/🤗-Model-yellow)](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2** | [![Demo](https://img.shields.io/badge/Demo-🎧-blue)](https://index-tts.github.io/index-tts2.github.io/) | [![Paper](https://img.shields.io/badge/arXiv-2506.21619-red?logo=arxiv)](https://arxiv.org/abs/2506.21619) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [![HuggingFace](https://img.shields.io/badge/🤗-Model-yellow)](https://huggingface.co/IndexTeam/IndexTTS-2) |
+| **IndexTTS-1.5** | [![Demo](https://img.shields.io/badge/Demo-🎧-blue)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/arXiv-2502.05512-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [![HuggingFace](https://img.shields.io/badge/🤗-Model-yellow)](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
+| **IndexTTS** | [![Demo](https://img.shields.io/badge/Demo-🎧-blue)](https://index-tts.github.io/) | [![Paper](https://img.shields.io/badge/arXiv-2502.05512-red?logo=arxiv)](https://arxiv.org/abs/2502.05512) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-purple?logo=modelscope)](https://modelscope.cn/models/IndexTeam/Index-TTS) | [![HuggingFace](https://img.shields.io/badge/🤗-Model-yellow)](https://huggingface.co/IndexTeam/Index-TTS) |
+## 📣 Updates
 
-[![IndexTTS2](assets/IndexTTS2_banner.png)](assets/IndexTTS2_banner.png)
-
+- `2026/08/10` 🔥 We release **IndexTTS-2.5**
+    - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maitaining the cross-lingual and timbre-emotion disentanglement capabilities.
+    - The model improves the controbility of Chinese Pinyin and English CMU phonemes and Japanese Kana.
+- `2025/09/08` 🔥 We release **IndexTTS-2**
+    - The first autoregressive TTS model with precise synthesis duration control, supporting both controllable and uncontrollable modes. <i>This functionality is not yet enabled in this release.</i>
+    - The model achieves highly expressive emotional speech synthesis, with emotion-controllable capabilities enabled through multiple input modalities.
+- `2025/05/14` 🔥 We release **IndexTTS-1.5**, significantly improving the model's stability and its performance in the English language.
+- `2025/03/25` 🔥 We release **IndexTTS-1.0** with model weights and inference code.
+- `2025/02/12` 🎉 We submitted our paper to arXiv, and released our demos and test sets.
+### Feel IndexTTS
 
 <div align="center">
   <a href='https://arxiv.org/abs/2506.21619'>
@@ -46,6 +60,9 @@
   </a>
 </div>
 
+**IndexTTS2.5: Voice beyond language**
+
+[![IndexTTS2.5 Demo](assets/index2.5_video_cover.png)](https://www.bilibili.com/video/BV1uvMk6ZEdK)
 
 ### Abstract
 
@@ -79,7 +96,7 @@ Finally, experimental results on multiple datasets show that IndexTTS2 outperfor
 
 ### Contact
 
-QQ Group：663272642(No.4) 1013410623(No.5)  \
+QQ Group：1013410623(No.5)  \
 Discord：https://discord.gg/uT32E7KDmy  \
 Email：indexspeech@bilibili.com  \
 You are welcome to join our community! 🌏  \
@@ -220,6 +237,7 @@ Download via `huggingface-cli`:
 uv tool install "huggingface-hub[cli,hf_xet]"
 
 hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
+hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
 ```
 
 Or download via `modelscope`:
@@ -228,6 +246,7 @@ Or download via `modelscope`:
 uv tool install "modelscope"
 
 modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
+modelscope download --model IndexTeam/IndexTTS-2.5 --local_dir checkpoints
 ```
 
 > [!IMPORTANT]
@@ -400,6 +419,21 @@ emo_text = "你吓死我了！你是鬼吗？"
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
+7. You can control the speaking speed of the generated speech via the `speed_factor`
+   parameter. A value greater than `1.0` slows down the speech, while a value less
+   than `1.0` speeds it up. The default is `1.0` (normal speed).
+   Valid range is `0.5 - 2.0`:
+
+```python
+text = "大家好，欢迎来到IndexTTS的语速控制演示。"
+
+# Slow down (1.2x duration)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_slow.wav", speed_factor=1.2, verbose=True)
+
+# Speed up (0.8x duration)
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", speed_factor=0.8, verbose=True)
+```
+
 > [!TIP]
 > **Pinyin Usage Notes:**
 > 
@@ -476,6 +510,19 @@ We sincerely thank colleagues from different roles at Bilibili, whose combined e
 
 🌟 If you find our work helpful, please leave us a star and cite our paper.
 
+IndexTTS2.5:
+
+```
+@misc{li2026indextts25technicalreport,
+      title={IndexTTS 2.5 Technical Report},
+      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Yining Wang and Yaogen Yang and Zhetao Hu and Shiyao Duan and Jiacheng Xu and Bin Xia and Jingchen Shu},
+      year={2026},
+      eprint={2601.03888},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2601.03888},
+}
+```
 
 IndexTTS2:
 
