@@ -709,7 +709,7 @@ class UnifiedVoice(nn.Module):
                 from modelscope.pipelines import pipeline
                 self.sv_pipeline = pipeline(
                     task='speaker-verification',
-                    model='/cubefs/users/liyunpei/pretrained_models/cam++/',
+                    model='iic/speech_campplus_sv_zh-cn_16k-common',
                     device='cpu'
                 )
             speech_conditioning_latent = torch.tensor(self.sv_pipeline([wav], output_emb=True)['embs']).to(text_inputs.device)

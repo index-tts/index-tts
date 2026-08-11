@@ -7,7 +7,7 @@
 
 **工业级可控、高效的零样本文本转语音系统**
 
-简体中文 | [English](../README.md)
+简体中文 | [English](../README.md) | [日本語](README_ja.md) | [Español](README_es.md) | [العربية](README_ar.md)
 
 [![GitHub Stars](https://img.shields.io/github/stars/index-tts/index-tts?style=flat&logo=github)](https://github.com/index-tts/index-tts/stargazers)
 [![arXiv](https://img.shields.io/badge/arXiv-2601.03888-b31b1b?logo=arxiv)](https://arxiv.org/abs/2601.03888)

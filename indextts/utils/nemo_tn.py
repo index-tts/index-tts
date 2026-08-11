@@ -182,7 +182,7 @@ def print_nemo_results(lang, result_dir='nemo_tn_result'):
 
 def get_nemo_result_main():
     target_langs = ['ja']
-    normalize_root = '/cubefs/users/pintuya/code/auto-dubbing/temp/deepseek/'
+    normalize_root = 'nemo_tn_testdata'
     output_dir = 'nemo_tn_result'
     os.makedirs(output_dir, exist_ok=True)
 

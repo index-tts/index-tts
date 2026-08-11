@@ -7,7 +7,7 @@
 
 **An Industrial-Level Controllable and Efficient Zero-Shot Text-to-Speech System**
 
-[简体中文](docs/README_zh.md) | English
+[简体中文](docs/README_zh.md) | English | [日本語](docs/README_ja.md) | [Español](docs/README_es.md) | [العربية](docs/README_ar.md)
 
 [![GitHub Stars](https://img.shields.io/github/stars/index-tts/index-tts?style=flat&logo=github)](https://github.com/index-tts/index-tts/stargazers)
 [![arXiv](https://img.shields.io/badge/arXiv-2601.03888-b31b1b?logo=arxiv)](https://arxiv.org/abs/2601.03888)
