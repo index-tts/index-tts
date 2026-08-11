@@ -263,6 +263,11 @@ Have fun!
 > before running `uv` commands, since that could lead to dependency conflicts!
 
 
+#### 🚀 Serving with vLLM
+
+For production deployment, see the [vLLM recipe for IndexTTS](https://github.com/vllm-project/recipes/pull/772).
+
+
 #### 📝 Using in Python
 
 To run scripts, you *must* use the `uv run <file.py>` command to ensure that
