@@ -1,33 +1,33 @@
 
 
 <div align="center">
-<img src='../assets/index_icon.png' width="250"/>
+<img src='../assets/indextts_icon.png' width="250"/>
 </div>
 
 <div align="center">
-<a href="README_zh.md" style="font-size: 24px">简体中文</a> |
-<a href="../README.md" style="font-size: 24px">English</a>
+<a href="README2.5_ZH.md" style="font-size: 24px">简体中文</a> | 
+<a href="../README2.5.md" style="font-size: 24px">English</a>
 </div>
 
 ## 👉🏻 IndexTTS 👈🏻
 
 <!-- |**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
-|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) |
+|| [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2.5](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-2](https://huggingface.co/IndexTeam/IndexTTS-2) | [IndexTTS-2](https://modelscope.cn/models/IndexTeam/IndexTTS-2) |
 | [IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
 | [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) | -->
 
 | 模型 | 演示 | 论文 | Modelscope | HuggingFace |
 | :--- | :---: | :---: | :---: | :---: |
-| **IndexTTS-2.5** | [演示](https://index-tts.github.io/index-tts2-5.github.io/) | - | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2.5** | [演示](https://index-tts.github.io/index-tts2-5.github.io/) | [论文](https://arxiv.org/abs/2601.03888) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
 | **IndexTTS-2** | [演示](https://index-tts.github.io/index-tts2.github.io/) | [论文](https://arxiv.org/abs/2506.21619) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2) |
 | **IndexTTS-1.5** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
 | **IndexTTS** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/Index-TTS) | [HuggingFace](https://huggingface.co/IndexTeam/Index-TTS) |
 
 ## 📣 更新日志
 
-- `2026/07/17` 🔥 **IndexTTS-2.5** 全球发布！
+- `2026/08/10` 🔥 **IndexTTS-2.5** 全球发布！
     - 模型现已支持中文、英文、日语、西班牙语和阿拉伯语，推理速度较IndexTTS-2更快，同时保持跨语言合成与音色-情感解耦能力。
     - 模型提升了中文拼音、英文CMU音素和日语假名的可控性。
 - `2025/09/08` 🔥 **IndexTTS-2** 全球发布！
@@ -43,7 +43,7 @@
 
 **IndexTTS2.5：语音未来，现已生成**
 
-[![IndexTTS2.5 Demo](../assets/IndexTTS2-video-pic.png)](https://www.bilibili.com/video/BV136a9zqEk5)
+[![IndexTTS2.5 Demo](../assets/index2.5_video_cover.png)](https://www.bilibili.com/video/BV136a9zqEk5)
 
 
 **IndexTTS2：语音未来，现已生成**
@@ -174,11 +174,8 @@ HuggingFace下载：
 ```bash
 uv tool install "huggingface-hub[cli,hf_xet]"
 
-# IndexTTS-2.5
+hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 hf download IndexTeam/IndexTTS-2.5 --local-dir=checkpoints
-
-# IndexTTS-2
-hf download IndexTeam/IndexTTS-2 --local-dir=checkpoints_2
 ```
 
 ModelScope下载：
@@ -186,11 +183,8 @@ ModelScope下载：
 ```bash
 uv tool install "modelscope"
 
-# IndexTTS-2.5
+modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints
 modelscope download --model IndexTeam/IndexTTS-2.5 --local_dir checkpoints
-
-# IndexTTS-2
-modelscope download --model IndexTeam/IndexTTS-2 --local_dir checkpoints_2
 ```
 
 > [!IMPORTANT]
@@ -244,11 +238,6 @@ uv run webui.py -h
 > 
 > 注意：所有 `uv` 命令会**自动激活**对应项目的虚拟环境。请*不要*手动激活环境后再运行 `uv` 命令，
 > 否则可能导致依赖冲突！
-
-
-#### 🚀 使用 vLLM 部署
-
-生产环境部署请参考 [vLLM IndexTTS Recipe](https://github.com/vllm-project/recipes/pull/772)。
 
 
 #### 📝 Python脚本调用
@@ -365,6 +354,20 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, output_path="gen.
 tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output_path="gen.wav", emo_alpha=0.6, use_emo_text=True, emo_text=emo_text, use_random=False, verbose=True)
 ```
 
+7. 通过 `speed_factor` 参数可以控制生成语音的语速。
+   大于 `1.0` 语速变慢，小于 `1.0` 语速变快，默认值为 `1.0`（正常语速）。
+   有效范围 `0.5 - 2.0`：
+
+```python
+text = "大家好，欢迎来到IndexTTS的语速控制演示。"
+
+# 语速变慢（1.2倍时长）
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_slow.wav", speed_factor=1.2, verbose=True)
+
+# 语速变快（0.8倍时长）
+tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", speed_factor=0.8, verbose=True)
+```
+
 > [!TIP]
 >
 > **IndexTTS2.5 拼音/英文音素/日语假名使用说明：**
@@ -421,6 +424,20 @@ tts.infer(spk_audio_prompt='examples/voice_12.wav', text=text, lang="ZH", output
 ## 📚 论文引用
 
 🌟 如果本项目对您有帮助，请为我们点star并引用论文。
+
+IndexTTS2.5:
+
+```
+@misc{li2026indextts25technicalreport,
+      title={IndexTTS 2.5 Technical Report}, 
+      author={Yunpei Li and Xun Zhou and Jinchao Wang and Lu Wang and Yong Wu and Siyi Zhou and Yiquan Zhou and Yining Wang and Yaogen Yang and Zhetao Hu and Shiyao Duan and Jiacheng Xu and Bin Xia and Jingchen Shu},
+      year={2026},
+      eprint={2601.03888},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2601.03888}, 
+}
+```
 
 IndexTTS2:
 

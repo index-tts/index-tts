@@ -17,6 +17,9 @@ import pytest
 CHECKPOINTS_DIR = Path("checkpoints")
 CONFIG_PATH = CHECKPOINTS_DIR / "config.yaml"
 
+CHECKPOINTS_25_DIR = Path("checkpoints_25")
+CONFIG_25_PATH = CHECKPOINTS_25_DIR / "config.yaml"
+
 
 # -- Fixtures ------------------------------------------------------------------
 
@@ -39,6 +42,20 @@ def tts_model():
 def prompt_wav():
     from indextts.utils.examples_downloader import ensure_test_sample_available
     return ensure_test_sample_available()
+
+
+@pytest.fixture(scope="module")
+def tts_model_25():
+    pytest.importorskip("torch")
+    if not CONFIG_25_PATH.exists():
+        pytest.skip(f"Checkpoints not found at {CHECKPOINTS_25_DIR}")
+
+    from indextts.infer_v2_5 import IndexTTS2
+    return IndexTTS2(
+        cfg_path=str(CONFIG_25_PATH),
+        model_dir=str(CHECKPOINTS_25_DIR),
+        use_bf16=True,
+    )
 
 
 # -- Download URL checks (no GPU) ---------------------------------------------
@@ -159,6 +176,86 @@ def test_modelscope_single_file_download_matches_local_path(tmp_path, monkeypatc
     assert local_path.read_bytes() == expected_bytes
 
 
+# -- Text segmentation (no GPU) -----------------------------------------------
+
+def _splitter_stub():
+    """A 2.5 instance with only what split_text_by_tokens touches.
+
+    Bypasses __init__ so the test needs no checkpoints; the tokenizer stub counts
+    one token per character, which is enough to drive segmentation.
+    """
+    import types
+
+    from indextts.infer_v2_5 import IndexTTS2
+
+    obj = IndexTTS2.__new__(IndexTTS2)
+    obj.tokenizer = types.SimpleNamespace(encode=lambda text, **kwargs: list(text))
+    obj.gpt = types.SimpleNamespace(
+        text_pos_embedding=types.SimpleNamespace(
+            emb=types.SimpleNamespace(num_embeddings=602)
+        )
+    )
+    return obj
+
+
+def _annotated_long_text():
+    """Long enough to segment, with annotations spread across the boundaries."""
+    filler = "各种应用层出不穷，而语音合成作为人机交互的重要一环，其自然度和实时性同样关键。"
+    unit = filler + "他要<going|G OW1 . IH0 NG>去，银<行|XING2>也开着。"
+    return unit * 5
+
+
+def test_split_keeps_pronunciation_annotations_paired():
+    """Segment boundaries must not land inside a <|SPECIAL_TOKEN_n|> pair.
+
+    apply_pronunciation_annotations runs before segmentation and emits payloads
+    that can contain a period -- one of the splitter's break characters -- so an
+    unguarded splitter leaves halves with an unpaired marker.
+    """
+    from indextts.infer_v2_5 import apply_pronunciation_annotations
+
+    splitter = _splitter_stub()
+    text = apply_pronunciation_annotations(_annotated_long_text().lower())
+    expected_pairs = text.count("<|SPECIAL_TOKEN_1|>") // 2 + text.count("<|SPECIAL_TOKEN_2|>") // 2
+    assert expected_pairs == 10, f"fixture should carry 10 annotations, got {expected_pairs}"
+
+    segments = splitter.split_text_by_tokens(text, 120, "<|zh|> ")
+    assert len(segments) > 1, "fixture must be long enough to segment"
+
+    unpaired = [
+        s for s in segments
+        if s.count("<|SPECIAL_TOKEN_1|>") % 2 or s.count("<|SPECIAL_TOKEN_2|>") % 2
+    ]
+    assert not unpaired, f"annotation split across segments: {unpaired}"
+
+    kept = sum(
+        s.count("<|SPECIAL_TOKEN_1|>") // 2 + s.count("<|SPECIAL_TOKEN_2|>") // 2
+        for s in segments
+    )
+    assert kept == expected_pairs, f"lost annotations: {expected_pairs} -> {kept}"
+
+
+def test_split_stays_within_position_embedding_capacity():
+    """Every segment must fit text_pos_embedding, whose overrun is a CUDA assert."""
+    splitter = _splitter_stub()
+    capacity = splitter.gpt.text_pos_embedding.emb.num_embeddings
+    prefix = "<|zh|> "
+
+    text = "各种应用层出不穷，而语音合成作为人机交互的重要一环。" * 40
+    segments = splitter.split_text_by_tokens(text, 120, prefix)
+    assert len(segments) > 1
+
+    for s in segments:
+        used = splitter._token_len(prefix + s) + 1  # +1 for the trailing pad token
+        assert used <= capacity, f"segment needs {used} positions, capacity is {capacity}"
+
+
+def test_split_leaves_short_text_alone():
+    splitter = _splitter_stub()
+    text = "今天天气不错。"
+    assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
+
+
 # -- Inference (GPU required) --------------------------------------------------
 
 INFER_TEXTS = [
@@ -217,3 +314,60 @@ def test_infer_long_text(tts_model, prompt_wav, tmp_path):
     out = tmp_path / "long.wav"
     tts_model.infer(spk_audio_prompt=prompt_wav, text=text, output_path=str(out))
     assert out.exists() and out.stat().st_size > 5000
+
+
+# -- v2.5 Inference (GPU required) ---------------------------------------------
+
+INFER_25_TEXTS = [
+    ("zh", "大家好，这是一段测试语音。"),
+    ("en", "There is a vehicle arriving in dock number 7?"),
+    ("en", "Joseph Gordon-Levitt is an American actor."),
+]
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("lang,text", INFER_25_TEXTS, ids=lambda p: p[1][:20])
+def test_25_infer(tts_model_25, prompt_wav, lang, text, tmp_path):
+    out = tmp_path / "out.wav"
+    tts_model_25.infer(spk_audio_prompt=prompt_wav, text=text, lang=lang, output_path=str(out))
+    assert out.exists() and out.stat().st_size > 1000
+
+
+@pytest.mark.gpu
+def test_25_infer_with_emotion_vector(tts_model_25, prompt_wav, tmp_path):
+    emo_vec = [0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
+    out = tmp_path / "emo.wav"
+    tts_model_25.infer(
+        spk_audio_prompt=prompt_wav,
+        text="今天天气真好，心情特别愉快！",
+        lang="zh",
+        output_path=str(out),
+        emo_vector=emo_vec,
+    )
+    assert out.exists() and out.stat().st_size > 1000
+
+
+@pytest.mark.gpu
+def test_25_infer_long_text(tts_model_25, prompt_wav, tmp_path):
+    text = (
+        "《盗梦空间》是由美国华纳兄弟影片公司出品的电影，由克里斯托弗诺兰执导并编剧，"
+        "莱昂纳多迪卡普里奥、玛丽昂歌迪亚、约瑟夫高登莱维特、艾利奥特佩吉、"
+        "汤姆哈迪等联袂主演，2010年7月16日在美国上映。"
+        "影片剧情游走于梦境与现实之间，讲述了由莱昂纳多扮演的造梦师，"
+        "带领特工团队进入他人梦境，从他人的潜意识中盗取机密的故事。"
+    )
+    out = tmp_path / "long.wav"
+    tts_model_25.infer(spk_audio_prompt=prompt_wav, text=text, lang="zh", output_path=str(out))
+    assert out.exists() and out.stat().st_size > 5000
+
+
+@pytest.mark.gpu
+def test_25_infer_with_g2p_annotation(tts_model_25, prompt_wav, tmp_path):
+    out = tmp_path / "g2p.wav"
+    tts_model_25.infer(
+        spk_audio_prompt=prompt_wav,
+        text="他在银<行|XING2>里<行|HANG2>走了半天。",
+        lang="zh",
+        output_path=str(out),
+    )
+    assert out.exists() and out.stat().st_size > 1000
