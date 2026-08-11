@@ -17,6 +17,9 @@ import pytest
 CHECKPOINTS_DIR = Path("checkpoints")
 CONFIG_PATH = CHECKPOINTS_DIR / "config.yaml"
 
+CHECKPOINTS_25_DIR = Path("checkpoints_25")
+CONFIG_25_PATH = CHECKPOINTS_25_DIR / "config.yaml"
+
 
 # -- Fixtures ------------------------------------------------------------------
 
@@ -39,6 +42,20 @@ def tts_model():
 def prompt_wav():
     from indextts.utils.examples_downloader import ensure_test_sample_available
     return ensure_test_sample_available()
+
+
+@pytest.fixture(scope="module")
+def tts_model_25():
+    pytest.importorskip("torch")
+    if not CONFIG_25_PATH.exists():
+        pytest.skip(f"Checkpoints not found at {CHECKPOINTS_25_DIR}")
+
+    from indextts.infer_v2_5 import IndexTTS2
+    return IndexTTS2(
+        cfg_path=str(CONFIG_25_PATH),
+        model_dir=str(CHECKPOINTS_25_DIR),
+        use_bf16=True,
+    )
 
 
 # -- Download URL checks (no GPU) ---------------------------------------------
@@ -297,3 +314,60 @@ def test_infer_long_text(tts_model, prompt_wav, tmp_path):
     out = tmp_path / "long.wav"
     tts_model.infer(spk_audio_prompt=prompt_wav, text=text, output_path=str(out))
     assert out.exists() and out.stat().st_size > 5000
+
+
+# -- v2.5 Inference (GPU required) ---------------------------------------------
+
+INFER_25_TEXTS = [
+    ("zh", "大家好，这是一段测试语音。"),
+    ("en", "There is a vehicle arriving in dock number 7?"),
+    ("en", "Joseph Gordon-Levitt is an American actor."),
+]
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("lang,text", INFER_25_TEXTS, ids=lambda p: p[1][:20])
+def test_25_infer(tts_model_25, prompt_wav, lang, text, tmp_path):
+    out = tmp_path / "out.wav"
+    tts_model_25.infer(spk_audio_prompt=prompt_wav, text=text, lang=lang, output_path=str(out))
+    assert out.exists() and out.stat().st_size > 1000
+
+
+@pytest.mark.gpu
+def test_25_infer_with_emotion_vector(tts_model_25, prompt_wav, tmp_path):
+    emo_vec = [0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
+    out = tmp_path / "emo.wav"
+    tts_model_25.infer(
+        spk_audio_prompt=prompt_wav,
+        text="今天天气真好，心情特别愉快！",
+        lang="zh",
+        output_path=str(out),
+        emo_vector=emo_vec,
+    )
+    assert out.exists() and out.stat().st_size > 1000
+
+
+@pytest.mark.gpu
+def test_25_infer_long_text(tts_model_25, prompt_wav, tmp_path):
+    text = (
+        "《盗梦空间》是由美国华纳兄弟影片公司出品的电影，由克里斯托弗诺兰执导并编剧，"
+        "莱昂纳多迪卡普里奥、玛丽昂歌迪亚、约瑟夫高登莱维特、艾利奥特佩吉、"
+        "汤姆哈迪等联袂主演，2010年7月16日在美国上映。"
+        "影片剧情游走于梦境与现实之间，讲述了由莱昂纳多扮演的造梦师，"
+        "带领特工团队进入他人梦境，从他人的潜意识中盗取机密的故事。"
+    )
+    out = tmp_path / "long.wav"
+    tts_model_25.infer(spk_audio_prompt=prompt_wav, text=text, lang="zh", output_path=str(out))
+    assert out.exists() and out.stat().st_size > 5000
+
+
+@pytest.mark.gpu
+def test_25_infer_with_g2p_annotation(tts_model_25, prompt_wav, tmp_path):
+    out = tmp_path / "g2p.wav"
+    tts_model_25.infer(
+        spk_audio_prompt=prompt_wav,
+        text="他在银<行|XING2>里<行|HANG2>走了半天。",
+        lang="zh",
+        output_path=str(out),
+    )
+    assert out.exists() and out.stat().st_size > 1000
