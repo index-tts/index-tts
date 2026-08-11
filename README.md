@@ -27,7 +27,7 @@
 
 ## 📣 Updates
 
-- `2026/07/17` 🔥 We release **IndexTTS-2.5**
+- `2026/08/10` 🔥 We release **IndexTTS-2.5**
     - The model now supports Chinese, English, Japanese, Spanish and Arabic, with faster inference speed compared to IndexTTS-2, while maitaining the cross-lingual and timbre-emotion disentanglement capabilities.
     - The model improves the controbility of Chinese Pinyin and English CMU phonemes and Japanese Kana. 
 - `2025/09/08` 🔥 We release **IndexTTS-2**
