@@ -169,7 +169,7 @@ uv run tools/gpu_check.py
 
 ```bash
 # IndexTTS-2.5 (default)
-uv run webui.py --version 2.5 --model_dir ./checkpoints
+uv run webui.py
 
 # IndexTTS-2
 uv run webui.py --version 2 --model_dir ./checkpoints_2
