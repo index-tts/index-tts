@@ -339,6 +339,7 @@ def test_qwen_emotion_convert_accepts_label_values(module_name, monkeypatch):
         "calm": 1.0,
     }
 
+
 @pytest.mark.parametrize("module_name", ["indextts.infer_v2", "indextts.infer_v2_5"])
 def test_qwen_emotion_convert_accepts_label_only_payload(module_name, monkeypatch):
     module = _load_qwen_emotion_module(module_name, monkeypatch)
