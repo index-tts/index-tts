@@ -21,7 +21,9 @@ git -C . status --short
 uv --version                     # required; see step 2 if missing
 python3 -VV
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
-ls -d /usr/local/cuda* 2>/dev/null; nvcc --version 2>/dev/null | tail -2
+ls -d /usr/local/cuda* 2>/dev/null
+nvcc --version 2>/dev/null | grep release              # the one on PATH
+/usr/local/cuda/bin/nvcc --version 2>/dev/null | grep release   # often a different one
 
 # existing env
 ls -d .venv && .venv/bin/python -c "import torch;print(torch.__version__, torch.version.cuda)" 2>/dev/null
@@ -48,16 +50,62 @@ model files already exist. Decide the branch points in steps 3–5 from that.
 CPU-only and Apple Silicon can install, but inference expects CUDA. Say so
 early rather than after a 20-minute download.
 
+A box often has several toolkits, and `nvcc` on `PATH` is frequently the oldest
+of them — `/usr/bin/nvcc` at 11.5 while `/usr/local/cuda` points at 12.8 is
+normal. Do not conclude the machine is too old from the `PATH` one alone. What
+matters: `torch.version.cuda` for wheel selection, and `CUDA_HOME` for anything
+that compiles. Export `CUDA_HOME=/usr/local/cuda-12.8` (adjust to what step 0
+found) rather than relying on `PATH`. On a 4090 with the 11.5 `nvcc` in front,
+the BigVGAN kernel build fails with `nvcc fatal : Unsupported gpu architecture
+'compute_89'`; that one is survivable — the code prints `Failed to load custom
+CUDA kernel for BigVGAN. Falling back to torch.` and inference continues — but
+it is the same root cause and it will bite something else later.
+
 ## 2. Update the code
 
 If a repo already exists, do not clone over it — the user may have local edits
 and a warm `.venv` next to it.
 
+**Their edits are theirs. Never discard or overwrite one without showing the
+user what it is and getting an answer first.** Someone upgrading from
+IndexTTS-2 may have been running patched inference code for months.
+
 ```bash
-git stash list                       # note anything already stashed
-git status --short                   # local edits? ask before discarding
-git pull --ff-only                   # or: git fetch && git checkout <branch>
+git stash list                       # pre-existing stashes are not yours to pop
+git status --short                   # any output here means: stop and read it
+git diff                             # show the user what they changed
+git log --oneline @{u}..             # local commits not pushed anywhere
 ```
+
+If the tree is clean, just update:
+
+```bash
+git pull --ff-only
+```
+
+If it is dirty, tell the user what they have modified and let them choose. Git
+itself will not silently clobber a tracked edit — `pull --ff-only` aborts with
+`error: Your local changes to the following files would be overwritten by
+merge` and applies nothing. The danger is you "fixing" that abort. **Never run
+`git reset --hard`, `git checkout -- .`, `git clean -fd`, or `git stash drop`
+to get past it.** That is the one irreversible thing in this whole guide.
+
+To keep the edits and still update, stash and restore in the same breath:
+
+```bash
+git stash push -u -m "pre-update, agent"
+git pull --ff-only
+git stash pop
+```
+
+`pop` can end in `CONFLICT (content): Merge conflict in <file>`, leaving
+`<<<<<<<` markers in the file. That is recoverable — git keeps the stash entry
+on conflict (`git stash list` still shows it) and untracked files come back
+too — but it is the user's merge to make, not yours. Report the conflicted
+paths and stop. Do not resolve their code by guessing which side to keep.
+
+If they would rather not update at all, that is a valid answer: an older
+checkout with a working `.venv` still runs. Skip to step 4.
 
 Fresh machine:
 
@@ -165,7 +213,8 @@ on some networks even when downloads work.
 
 ### Reusing caches from an IndexTTS-2 install
 
-Do this before any auxiliary download — it saves ~4.5 GB.
+Do this before any auxiliary download — measured at 2.77 GiB migrated in 2.1s,
+versus several minutes of downloading.
 
 `ensure_models_available()` in `indextts/utils/model_download.py` searches
 `{model_dir}/hf_cache/` and then `$HF_HUB_CACHE` (default
