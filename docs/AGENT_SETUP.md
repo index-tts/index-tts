@@ -312,10 +312,10 @@ Then the WebUI:
 uv run webui.py            # 2.5, default
 ```
 
-Serves on `http://127.0.0.1:7860`. Note it binds `0.0.0.0` by default and has no
+Serves on `http://localhost:7860` (local access). Note it binds `0.0.0.0` by default and has no
 authentication — on a shared or internet-reachable machine, pass
-`--host 127.0.0.1` or put it behind something that authenticates. Report this to
-the user rather than silently exposing it.
+`--host 127.0.0.1` to restrict it to local-only, or put it behind something that authenticates.
+Report this to the user rather than silently exposing it.
 
 ## Known traps
 
