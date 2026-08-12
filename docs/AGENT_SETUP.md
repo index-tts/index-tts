@@ -267,9 +267,9 @@ versus several minutes of downloading.
 instead of downloading. So if the user has an old HuggingFace cache, just point
 at it:
 
-```bash
-export HF_HUB_CACHE=~/.cache/huggingface/hub
-```
+    export HF_HUB_CACHE=~/.cache/huggingface/hub
+
+NOTE: `indextts/infer_v2_5.py` currently sets `HF_HUB_CACHE=./checkpoints/hf_cache` internally, so this affects `webui.py` but not the step 6 smoke test.
 
 It **copies** rather than symlinks, so budget disk for a second copy of
 w2v-bert-2.0 (~2.2 GB).
