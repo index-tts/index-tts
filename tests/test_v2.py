@@ -176,6 +176,101 @@ def test_modelscope_single_file_download_matches_local_path(tmp_path, monkeypatc
     assert local_path.read_bytes() == expected_bytes
 
 
+def test_ensure_config_available_v25_prefers_versioned_path(tmp_path, monkeypatch):
+    """ensure_config_available for v2.5 should try configs/config_v2_5.yaml first."""
+    from indextts.utils import model_download
+
+    download_calls = []
+
+    def mock_download(repo_id, filename, local_path):
+        download_calls.append((repo_id, filename, local_path))
+        # Simulate success: write a placeholder so the file exists
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(local_path).write_text("version: 2.5\n")
+        return local_path
+
+    monkeypatch.setattr(model_download, "_download_single_file", mock_download)
+
+    model_dir = tmp_path / "checkpoints_25"
+    model_dir.mkdir()
+
+    model_download.ensure_config_available(str(model_dir), version="2.5")
+
+    # Should have tried configs/config_v2_5.yaml first (the correct v2.5 path)
+    assert len(download_calls) == 1
+    assert download_calls[0][1] == "configs/config_v2_5.yaml", (
+        f"Expected 'configs/config_v2_5.yaml' as first attempt, got {download_calls[0][1]!r}"
+    )
+    assert (model_dir / "config.yaml").exists()
+
+
+def test_ensure_config_available_v25_falls_back_to_root_config(tmp_path, monkeypatch):
+    """ensure_config_available falls back to config.yaml if versioned path fails."""
+    from indextts.utils import model_download
+
+    download_calls = []
+
+    def mock_download(repo_id, filename, local_path):
+        download_calls.append((repo_id, filename, local_path))
+        if filename == "configs/config_v2_5.yaml":
+            raise FileNotFoundError("not found in repo")
+        # root config.yaml succeeds
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(local_path).write_text("version: fallback\n")
+        return local_path
+
+    monkeypatch.setattr(model_download, "_download_single_file", mock_download)
+
+    model_dir = tmp_path / "checkpoints_25_fallback"
+    model_dir.mkdir()
+
+    model_download.ensure_config_available(str(model_dir), version="2.5")
+
+    attempted = [c[1] for c in download_calls]
+    assert "configs/config_v2_5.yaml" in attempted
+    assert "config.yaml" in attempted
+    assert (model_dir / "config.yaml").exists()
+
+
+def test_ensure_config_available_v2_uses_root_config(tmp_path, monkeypatch):
+    """ensure_config_available for v2 only tries config.yaml (no versioned path)."""
+    from indextts.utils import model_download
+
+    download_calls = []
+
+    def mock_download(repo_id, filename, local_path):
+        download_calls.append((repo_id, filename, local_path))
+        Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(local_path).write_text("version: 2\n")
+        return local_path
+
+    monkeypatch.setattr(model_download, "_download_single_file", mock_download)
+
+    model_dir = tmp_path / "checkpoints_2"
+    model_dir.mkdir()
+
+    model_download.ensure_config_available(str(model_dir), version="2")
+
+    assert len(download_calls) == 1
+    assert download_calls[0][1] == "config.yaml"
+
+
+def test_ensure_config_available_skips_when_exists(tmp_path, monkeypatch):
+    """ensure_config_available does nothing if config.yaml already exists."""
+    from indextts.utils import model_download
+
+    download_calls = []
+    monkeypatch.setattr(model_download, "_download_single_file", lambda *a, **kw: download_calls.append(a))
+
+    model_dir = tmp_path / "checkpoints_existing"
+    model_dir.mkdir()
+    (model_dir / "config.yaml").write_text("already: here\n")
+
+    model_download.ensure_config_available(str(model_dir), version="2.5")
+
+    assert len(download_calls) == 0, "Should not download when config.yaml already exists"
+
+
 # -- Text segmentation (no GPU) -----------------------------------------------
 
 def _splitter_stub():

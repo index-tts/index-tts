@@ -87,7 +87,14 @@ _VERSION_TO_REPO = {
 
 
 def ensure_config_available(model_dir: str, version: str = "2.5") -> None:
-    """Download only ``config.yaml`` if it is missing from *model_dir*."""
+    """Download only ``config.yaml`` if it is missing from *model_dir*.
+
+    For IndexTTS-2.5 the canonical config lives at ``configs/config_v2_5.yaml``
+    in the HuggingFace repository (the root ``config.yaml`` may be a leftover
+    from a different model version).  This function therefore tries
+    ``configs/config_v2_5.yaml`` first for v2.5, with ``config.yaml`` as a
+    fallback, so both old and updated repository layouts are handled correctly.
+    """
     if version not in _VERSION_TO_REPO:
         supported = ", ".join(sorted(_VERSION_TO_REPO))
         raise ValueError(
@@ -99,8 +106,25 @@ def ensure_config_available(model_dir: str, version: str = "2.5") -> None:
         return
     print(f">> config.yaml not found in {model_dir}, downloading...")
     repo_id = _VERSION_TO_REPO[version]
-    _download_single_file(repo_id, "config.yaml", config_path)
-    print(">> config.yaml downloaded.")
+    # For v2.5 the correct config is stored under configs/config_v2_5.yaml in
+    # the upstream repo.  Try that path first; fall back to the root config.yaml
+    # so that repositories which have already been corrected still work.
+    remote_paths = (
+        ["configs/config_v2_5.yaml", "config.yaml"] if version == "2.5" else ["config.yaml"]
+    )
+    last_exc: Exception | None = None
+    for remote_path in remote_paths:
+        try:
+            _download_single_file(repo_id, remote_path, config_path)
+            print(f">> config.yaml downloaded (from {remote_path}).")
+            return
+        except Exception as exc:
+            logger.debug("Failed to download %s/%s: %s", repo_id, remote_path, exc)
+            last_exc = exc
+    raise RuntimeError(
+        f"Could not download config for {repo_id} "
+        f"(tried: {', '.join(remote_paths)})"
+    ) from last_exc
 
 
 def _find_hf_cache_snapshot(cache_dir: str, repo_id: str) -> str | None:
