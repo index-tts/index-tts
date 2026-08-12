@@ -199,7 +199,7 @@ uv run webui.py -h
 
 ### 🚀 vLLM によるサービング
 
-本番環境へのデプロイについては、[IndexTTS 向け vLLM レシピ](https://github.com/vllm-project/recipes/pull/772)を参照してください。
+本番環境へのデプロイについては、[IndexTTS 向け vLLM レシピ](https://recipes.vllm.ai/IndexTeam/IndexTTS-2.5)を参照してください。
 
 ### 📝 Python API
 
