@@ -256,6 +256,136 @@ def test_split_leaves_short_text_alone():
     assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
 
 
+def _load_qwen_emotion_module(module_name, monkeypatch):
+    class _Dummy:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    def register(name, **attrs):
+        module = types.ModuleType(name)
+        for key, value in attrs.items():
+            setattr(module, key, value)
+        monkeypatch.setitem(sys.modules, name, module)
+        return module
+
+    torch = register("torch")
+    torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+    torch.xpu = types.SimpleNamespace(is_available=lambda: False)
+    torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False))
+    torch.float16 = "float16"
+    torch.bfloat16 = "bfloat16"
+    torch.Tensor = object
+    torch.no_grad = lambda: (lambda func: func)
+
+    torch_nn = register("torch.nn")
+    torch_nn_functional = register("torch.nn.functional")
+    torch_nn_utils = register("torch.nn.utils")
+    torch_nn_utils_rnn = register("torch.nn.utils.rnn", pad_sequence=lambda *args, **kwargs: None)
+    torch.nn = torch_nn
+    torch_nn.functional = torch_nn_functional
+    torch_nn.utils = torch_nn_utils
+    torch_nn_utils.rnn = torch_nn_utils_rnn
+
+    register("torchaudio")
+    register("librosa")
+    register("safetensors")
+    register("transformers", AutoTokenizer=_Dummy, SeamlessM4TFeatureExtractor=_Dummy, Wav2Vec2BertModel=_Dummy)
+    register("modelscope", AutoModelForCausalLM=_Dummy)
+    register("omegaconf", OmegaConf=types.SimpleNamespace(load=lambda *args, **kwargs: None))
+    register("indextts.gpt.model_v2", UnifiedVoice=_Dummy)
+    register("indextts.codec.maskgct_codec", build_semantic_codec=lambda *args, **kwargs: None)
+    register("indextts.codec.models", EnhancedCodec=_Dummy)
+    register("indextts.utils.checkpoint", load_checkpoint=lambda *args, **kwargs: None)
+    register("indextts.utils.front", TextNormalizer=_Dummy, TextTokenizer=_Dummy)
+    register("indextts.utils.tokenizer", get_tokenizer=lambda *args, **kwargs: None, lang_to_token={})
+    register("indextts.utils.ja_g2p", JapaneseG2PProcessor=_Dummy)
+    register("indextts.utils.nemo_tn", normalize_text=lambda text: text)
+    register("indextts.s2mel.modules.commons", load_checkpoint2=lambda *args, **kwargs: None, MyModel=_Dummy)
+    register("indextts.s2mel.modules.bigvgan", bigvgan=object())
+    register("indextts.s2mel.modules.campplus.DTDNN", CAMPPlus=_Dummy)
+    register("indextts.s2mel.modules.audio", mel_spectrogram=lambda *args, **kwargs: None)
+
+    sys.modules.pop(module_name, None)
+    return importlib.import_module(module_name)
+
+
+@pytest.mark.parametrize("module_name", ["indextts.infer_v2", "indextts.infer_v2_5"])
+def test_qwen_emotion_convert_accepts_label_values(module_name, monkeypatch):
+    module = _load_qwen_emotion_module(module_name, monkeypatch)
+
+    emo = module.QwenEmotion.__new__(module.QwenEmotion)
+    emo.cn_key_to_en = {
+        "高兴": "happy",
+        "愤怒": "angry",
+        "悲伤": "sad",
+        "恐惧": "afraid",
+        "反感": "disgusted",
+        "低落": "melancholic",
+        "惊讶": "surprised",
+        "自然": "calm",
+    }
+    emo.desired_vector_order = list(emo.cn_key_to_en)
+    emo.max_score = 1.2
+    emo.min_score = 0.0
+
+    assert emo.convert({"自然": "自然"}) == {
+        "happy": 0.0,
+        "angry": 0.0,
+        "sad": 0.0,
+        "afraid": 0.0,
+        "disgusted": 0.0,
+        "melancholic": 0.0,
+        "surprised": 0.0,
+        "calm": 1.0,
+    }
+
+
+@pytest.mark.parametrize("module_name", ["indextts.infer_v2", "indextts.infer_v2_5"])
+def test_qwen_emotion_convert_accepts_label_only_payload(module_name, monkeypatch):
+    module = _load_qwen_emotion_module(module_name, monkeypatch)
+
+    emo = module.QwenEmotion.__new__(module.QwenEmotion)
+    emo.cn_key_to_en = {
+        "高兴": "happy",
+        "愤怒": "angry",
+        "悲伤": "sad",
+        "恐惧": "afraid",
+        "反感": "disgusted",
+        "低落": "melancholic",
+        "惊讶": "surprised",
+        "自然": "calm",
+    }
+    emo.desired_vector_order = list(emo.cn_key_to_en)
+    emo.max_score = 1.2
+    emo.min_score = 0.0
+
+    assert emo.convert({"emotion": "自然"})["calm"] == 1.0
+
+
+@pytest.mark.parametrize("module_name", ["indextts.infer_v2", "indextts.infer_v2_5"])
+def test_qwen_emotion_convert_redirects_cross_key_labels(module_name, monkeypatch):
+    module = _load_qwen_emotion_module(module_name, monkeypatch)
+
+    emo = module.QwenEmotion.__new__(module.QwenEmotion)
+    emo.cn_key_to_en = {
+        "高兴": "happy",
+        "愤怒": "angry",
+        "悲伤": "sad",
+        "恐惧": "afraid",
+        "反感": "disgusted",
+        "低落": "melancholic",
+        "惊讶": "surprised",
+        "自然": "calm",
+    }
+    emo.desired_vector_order = list(emo.cn_key_to_en)
+    emo.max_score = 1.2
+    emo.min_score = 0.0
+
+    emotion_dict = emo.convert({"高兴": "自然"})
+    assert emotion_dict["happy"] == 0.0
+    assert emotion_dict["calm"] == 1.0
+
+
 # -- Inference (GPU required) --------------------------------------------------
 
 INFER_TEXTS = [

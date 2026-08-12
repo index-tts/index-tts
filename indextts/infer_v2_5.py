@@ -971,12 +971,51 @@ class QwenEmotion:
     def clamp_score(self, value):
         return max(self.min_score, min(self.max_score, value))
 
+    def normalize_content(self, content):
+        if isinstance(content, dict):
+            normalized = dict(content)
+        else:
+            normalized = {}
+
+        def label_to_cn_key(value):
+            if not isinstance(value, str):
+                return None
+
+            value = value.strip()
+            if value in self.cn_key_to_en:
+                return value
+
+            value_lower = value.lower()
+            for cn_key, en_key in self.cn_key_to_en.items():
+                if value_lower == en_key:
+                    return cn_key
+            return None
+
+        detected_key = label_to_cn_key(content) if isinstance(content, str) else None
+        if detected_key is None:
+            for alias in ("emotion", "emotion_label", "label", "情感", "情绪"):
+                detected_key = label_to_cn_key(normalized.get(alias))
+                if detected_key is not None:
+                    break
+        if detected_key is not None and all(key not in normalized for key in self.desired_vector_order):
+            normalized[detected_key] = 1.0
+
+        for cn_key in self.desired_vector_order:
+            detected_key = label_to_cn_key(normalized.get(cn_key))
+            if detected_key is not None:
+                normalized[cn_key] = 1.0 if detected_key == cn_key else 0.0
+                if detected_key != cn_key:
+                    normalized[detected_key] = 1.0
+
+        return normalized
+
     def convert(self, content):
         # generate emotion vector dictionary:
         # - insert values in desired order (Python 3.7+ `dict` remembers insertion order)
         # - convert Chinese keys to English
         # - clamp all values to the allowed min/max range
         # - use 0.0 for any values that were missing in `content`
+        content = self.normalize_content(content)
         emotion_dict = {
             self.cn_key_to_en[cn_key]: self.clamp_score(content.get(cn_key, 0.0))
             for cn_key in self.desired_vector_order
