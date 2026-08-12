@@ -196,7 +196,7 @@ uv run webui.py -h
 
 ### 🚀 التشغيل باستخدام vLLM
 
-للنشر الإنتاجي، راجع [وصفة vLLM لـ IndexTTS](https://github.com/vllm-project/recipes/pull/772).
+للنشر الإنتاجي، راجع [وصفة vLLM لـ IndexTTS](https://recipes.vllm.ai/IndexTeam/IndexTTS-2.5).
 
 ### 📝 واجهة Python البرمجية
 

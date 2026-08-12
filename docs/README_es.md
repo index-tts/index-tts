@@ -206,7 +206,7 @@ uv run webui.py -h
 
 ### 🚀 Servicio con vLLM
 
-Para el despliegue en producción, consulta la [receta de vLLM para IndexTTS](https://github.com/vllm-project/recipes/pull/772).
+Para el despliegue en producción, consulta la [receta de vLLM para IndexTTS](https://recipes.vllm.ai/IndexTeam/IndexTTS-2.5).
 
 ### 📝 API de Python
 
