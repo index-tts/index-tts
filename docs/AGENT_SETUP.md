@@ -43,9 +43,10 @@ model files already exist. Decide the branch points in steps 3–5 from that.
 | Requirement | Why |
 | --- | --- |
 | Python `>=3.10,<3.12` | `pyproject.toml` pins it; `uv` installs a matching interpreter itself |
-| CUDA Toolkit **12.8+** | wheels come from a `cu128` index |
+| CUDA Toolkit **12.8+** | only to *compile* anything; the torch wheels bundle their own CUDA runtime |
 | `uv` | the lockfile is the only supported dependency path |
 | ~35 GB free disk | ~10 GB venv + ~5 GB weights (2.5) + build/cache overhead |
+| ~6 GB VRAM | measured floor, in half precision with QwenEmotion skipped — see below |
 
 CPU-only and Apple Silicon can install, but inference expects CUDA. Say so
 early rather than after a 20-minute download.
@@ -60,6 +61,49 @@ the BigVGAN kernel build fails with `nvcc fatal : Unsupported gpu architecture
 'compute_89'`; that one is survivable — the code prints `Failed to load custom
 CUDA kernel for BigVGAN. Falling back to torch.` and inference continues — but
 it is the same root cause and it will bite something else later.
+
+### Small GPUs
+
+Step 0 already reports `memory.total`. Act on it — the defaults are tuned for a
+big card. Peak reserved memory for one short utterance, measured on a 4090:
+
+| Configuration | Peak |
+| --- | --- |
+| full precision + QwenEmotion | 8.15 GB |
+| half precision + QwenEmotion | 6.54 GB |
+| half precision, QwenEmotion skipped | 5.48 GB |
+
+Re-run under a hard per-process cap (`torch.cuda.set_per_process_memory_fraction`):
+
+| Cap | full + Qwen | half + Qwen | half, no Qwen |
+| --- | --- | --- | --- |
+| 8 GB | ok, but peaks at exactly 8.00 GB | ok (6.56 GB) | ok (5.45 GB) |
+| 6 GB | OOM | OOM | ok (5.44 GB) |
+| 5 GB | — | — | OOM |
+
+So an 8 GB card runs the full configuration with no headroom left for the
+display output and driver overhead it also has to fund, and a 6 GB card runs
+only the last column. The floor is between 5 and 6 GB.
+
+`webui.py` applies this automatically below 10 GB — half precision, QwenEmotion
+skipped, and emotion-control-from-text removed from the UI — and prints what it
+decided. `--qwen_emo` forces the model back on, which will not fit in 6 GB.
+
+Driving the Python API directly, make the same choice yourself:
+
+```python
+tts = IndexTTS2(
+    cfg_path="checkpoints/config.yaml",
+    model_dir="checkpoints",
+    use_bf16=True,        # half precision
+    use_qwen_emo=False,   # skip the ~1.1 GB emotion model
+)
+```
+
+Those two measurement runs at a 6 GB cap happened on a box where only ~6.2 GB
+was physically free, so the cap was not the only binding constraint. The
+conclusion holds on arithmetic regardless: those configurations need 7.70 GB and
+6.13 GB just to load.
 
 ## 2. Update the code
 
@@ -281,6 +325,7 @@ the user rather than silently exposing it.
 | `ValueError: vocab_file checkpoints/bpe.model does not exist` | `indextts/infer_v2.py` hardcodes `checkpoints/` and is a benchmark loop, not a CLI | use the Python API for 2.0, or point `checkpoints/` at 2.0 weights |
 | `HTTPError: <Response [404]>` mentioning `nvidia/bigvgan_*` | BigVGAN is absent from ModelScope | benign — the code falls back to hf-mirror and continues; check for a later `>> All auxiliary models ready.` |
 | `ModuleNotFoundError: No module named 'setuptools'` while building | `no-build-isolation` on a fresh `.venv` | see step 3 |
+| `torch.cuda.OutOfMemoryError` at load or first inference | card too small for the active configuration | half precision + `use_qwen_emo=False`, see step 1; check nothing else is holding the GPU (`nvidia-smi`) |
 | `triton-windows ... only has wheels for win_amd64` | that package is Windows-only | it must carry `sys_platform == 'win32'`; Linux gets `triton` via torch |
 | `does not have an extra named 'cli'` | modern `huggingface-hub` dropped it | install it plain: `huggingface-hub` |
 | `uv pip check` reports `deepspeed requires nvidia-ml-py` | upstream declares it, the lockfile omits it | pre-existing and harmless for inference |
