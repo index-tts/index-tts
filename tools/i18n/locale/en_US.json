@@ -20,6 +20,10 @@
   "请输入情绪描述（或留空以自动使用目标文本作为情绪描述）": "Please input an emotion description (or leave blank to automatically use the main text prompt)",
   "高级生成参数设置": "Advanced generation parameter settings",
   "情感向量之和不能超过1.5，请调整后重试。": "The sum of the emotion vectors cannot exceed 1.5. Please adjust and try again.",
+  "时长系数": "Duration Factor",
+  "快": "Fast",
+  "慢": "Slow",
+  "不变": "Normal",
   "音色参考音频": "Voice Reference",
   "音频生成": "Speech Synthesis",
   "文本": "Text",
@@ -101,5 +105,8 @@
   "确认": "Confirm",
   "取消": "Cancel",
   "预设预览": "Preset Preview",
-  "关闭": "Close"
+  "关闭": "Close",
+  "删除": "Delete",
+  "情感向量": "Emotion Vector",
+  "语言": "Language"
 }

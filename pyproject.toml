@@ -34,6 +34,8 @@ dependencies = [
   "descript-audiotools==0.7.2",
   "einops>=0.8.1",
   "ffmpeg-python==0.2.0",
+  "fugashi>=1.2.0",
+  "unidic-lite>=1.0.0",
   "g2p-en==2.1.0",
   "jieba==0.42.1",
   "json5==0.10.0",
@@ -55,6 +57,8 @@ dependencies = [
   "requests>=2.28",
   "tqdm>=4.67.1",
   "transformers==4.52.1",
+  "openai-whisper>=20231117",
+  "fugashi[unidic-lite]",
 
   # Use "wetext" on Windows/Mac, otherwise "WeTextProcessing" on Linux.
   "wetext>=0.0.9; sys_platform != 'linux'",
@@ -76,12 +80,12 @@ accel = [
   "flash-attn==2.8.3.post1",
   "nvidia-cuda-runtime-cu12",
   "nvidia-cudnn-cu12",
-  "triton-windows==3.1.0.post17",
+  "triton-windows==3.1.0.post17; sys_platform == 'win32'",
 ]
 # To install torch.compile support for s2mel, use `uv sync --extra torch_compile` (or `--all-extras`).
 # On Windows this is satisfied by the triton-windows package above.
 torch_compile = [
-  "triton-windows==3.1.0.post17",
+  "triton-windows==3.1.0.post17; sys_platform == 'win32'",
 ]
 test = [
   "pytest>=7.0",
@@ -117,13 +121,13 @@ indextts2 = "indextts.cli_v2:main"
 requires = ["hatchling >= 1.27.0"]
 build-backend = "hatchling.build"
 
+[tool.uv.extra-build-dependencies]
+# Build against our CUDA-enabled PyTorch: DeepSpeed picks its GPU targets from it,
+# and flash-attn reads its version and C++ ABI flag to fetch a matching prebuilt
+# wheel instead of compiling.
+deepspeed = [{ requirement = "torch", match-runtime = true }]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
 [tool.uv]
-# Disable build isolation when building DeepSpeed from source.
-# NOTE: This is *necessary* so that DeepSpeed builds directly within our `.venv`,
-# and finds our CUDA-enabled version of PyTorch, which DeepSpeed *needs* during
-# its compilation to determine what GPU support to compile for itself. It also
-# saves time, since it won't waste time downloading a generic PyTorch version.
-no-build-isolation-package = ["deepspeed"]
 conflicts = [
   [
     { extra = "xpu" },
