@@ -361,6 +361,30 @@ def test_qwen_emotion_convert_accepts_label_only_payload(module_name, monkeypatc
     assert emo.convert({"emotion": "自然"})["calm"] == 1.0
 
 
+@pytest.mark.parametrize("module_name", ["indextts.infer_v2", "indextts.infer_v2_5"])
+def test_qwen_emotion_convert_redirects_cross_key_labels(module_name, monkeypatch):
+    module = _load_qwen_emotion_module(module_name, monkeypatch)
+
+    emo = module.QwenEmotion.__new__(module.QwenEmotion)
+    emo.cn_key_to_en = {
+        "高兴": "happy",
+        "愤怒": "angry",
+        "悲伤": "sad",
+        "恐惧": "afraid",
+        "反感": "disgusted",
+        "低落": "melancholic",
+        "惊讶": "surprised",
+        "自然": "calm",
+    }
+    emo.desired_vector_order = list(emo.cn_key_to_en)
+    emo.max_score = 1.2
+    emo.min_score = 0.0
+
+    emotion_dict = emo.convert({"高兴": "自然"})
+    assert emotion_dict["happy"] == 0.0
+    assert emotion_dict["calm"] == 1.0
+
+
 # -- Inference (GPU required) --------------------------------------------------
 
 INFER_TEXTS = [

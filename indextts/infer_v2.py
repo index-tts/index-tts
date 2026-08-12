@@ -815,6 +815,8 @@ class QwenEmotion:
             detected_key = label_to_cn_key(normalized.get(cn_key))
             if detected_key is not None:
                 normalized[cn_key] = 1.0 if detected_key == cn_key else 0.0
+                if detected_key != cn_key:
+                    normalized[detected_key] = 1.0
 
         return normalized
 
