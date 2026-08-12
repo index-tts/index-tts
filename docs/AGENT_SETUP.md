@@ -331,9 +331,49 @@ Report this to the user rather than silently exposing it.
 | `uv pip check` reports `deepspeed requires nvidia-ml-py` | upstream declares it, the lockfile omits it | pre-existing and harmless for inference |
 | `unknown field 'preview-features'` | not a valid `[tool.uv]` key | remove it; the whole `[tool.uv]` table is ignored while it is present |
 
-## Reporting back
+## What to report when you finish
 
-State plainly: what you reused vs installed, what you downloaded, which
-verification commands you ran and their result, and anything you skipped. If the
-smoke test did not produce audio, say that instead of describing the setup as
-complete.
+Lead with whether it works, then how to use it, then what the user needs to know
+or decide. Six parts, in this order:
+
+1. **Verdict** — did the smoke test produce audio? Give the file, its size and
+   the `RTF:` figure. If it did not, say that instead of describing the setup as
+   complete.
+2. **Commands to run it again** — the WebUI line and the inference snippet, with
+   the paths this machine actually uses.
+3. **Configuration in effect** — model version, precision, extras installed, and
+   whether QwenEmotion is loaded. This determines which features exist, so it is
+   not optional detail.
+4. **Reused vs installed vs downloaded** — the point of this whole guide. Name
+   what you skipped and roughly what that saved.
+5. **Needs the user's attention** — their uncommitted edits, a WebUI bound to
+   `0.0.0.0`, a card near its VRAM limit, anything you could not verify.
+6. **Skipped or unverified** — say so explicitly rather than leaving it implied.
+
+A report that reads like this:
+
+> **Working.** `gen.wav`, 75 KB, RTF 0.71 on an RTX 4090.
+>
+> ```bash
+> uv run webui.py                      # http://127.0.0.1:7860
+> PYTHONPATH="$PYTHONPATH:." uv run indextts/infer_v2_5.py \
+>   --cfg_path checkpoints/config.yaml --model_dir checkpoints \
+>   --text "Hello world" --lang EN
+> ```
+>
+> IndexTTS-2.5, bf16, extras `webui,accel`. QwenEmotion loaded, so
+> emotion-from-text works.
+>
+> Reused your existing `.venv` (`uv sync` changed 3 packages) and migrated
+> w2v-bert-2.0, MaskGCT, CAMPPlus and BigVGAN out of `~/.cache/huggingface/hub`
+> — 2.8 GB not re-downloaded. Fetched only the 2.5 weights, 5.1 GiB.
+>
+> Two things for you: `webui.py` binds `0.0.0.0` with no authentication, so pass
+> `--host 127.0.0.1` if this box is reachable from outside. And you have
+> uncommitted changes in `indextts/infer_v2_5.py` — I left them alone and did
+> not pull.
+>
+> Not done: never started the 2.0 path, so `checkpoints_2` is still absent.
+
+Do not report a configuration you did not run. If you only checked that a
+command exists, say that, not that it works.
