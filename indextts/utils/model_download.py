@@ -112,6 +112,7 @@ def ensure_config_available(model_dir: str, version: str = "2.5") -> None:
     remote_paths = (
         ["configs/config_v2_5.yaml", "config.yaml"] if version == "2.5" else ["config.yaml"]
     )
+    assert remote_paths, f"No remote paths configured for version {version!r}"
     last_exc: Exception | None = None
     for remote_path in remote_paths:
         try:
