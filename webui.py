@@ -96,6 +96,12 @@ IS_V25 = cmd_args.version == "2.5"
 
 import gradio as gr
 from indextts.utils.examples_downloader import ensure_examples_available
+from indextts.utils.audio_tuning import (
+    DEFAULT_PRESET as TUNING_DEFAULT_PRESET,
+    preset_choices as tuning_preset_choices,
+    preset_values as tuning_preset_values,
+    tune_audio,
+)
 from indextts.utils.presets import list_presets, save_preset, load_preset, delete_preset
 from tools.i18n.i18n import I18nAuto
 
@@ -688,6 +694,30 @@ def gen_single(emo_control_method,prompt, text,
     output = tts.infer(**infer_kwargs)
     return gr.update(value=output,visible=True)
 
+
+def run_audio_tuning(*args):
+    try:
+        return tune_audio(*args)
+    except Exception as e:
+        raise gr.Error(str(e)) from e
+
+
+def save_tuning_score(audio_path, score, notes):
+    if not audio_path:
+        raise gr.Error(i18n("请先生成调音结果"))
+    record = {
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "audio": audio_path,
+        "score": int(score),
+        "notes": (notes or "").strip(),
+    }
+    score_path = os.path.join("outputs", "tuned", "scores.jsonl")
+    os.makedirs(os.path.dirname(score_path), exist_ok=True)
+    with open(score_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return f"{i18n('已保存评分')}：**{int(score)}/100**"
+
+
 def update_prompt_audio():
     update_button = gr.update(interactive=True)
     return update_button
@@ -953,6 +983,98 @@ with gr.Blocks(
             type="values",
             components=example_components
         )
+
+    with gr.Tab(i18n("声音调音")):
+        gr.Markdown(
+            f"## {i18n('声音调音与修复')}\n"
+            f"{i18n('克隆阶段保留准确声线；此处用于清理低频发闷、中频浑浊、箱体感、齿音与毛刺。所有处理都会另存 WAV，不覆盖原文件。')}"
+        )
+        with gr.Row():
+            with gr.Column():
+                tuning_input_audio = gr.Audio(
+                    label=i18n("原始音频"),
+                    sources=["upload"],
+                    type="filepath",
+                    format="wav",
+                )
+                load_generated_btn = gr.Button(
+                    i18n("载入刚生成的音频"),
+                    variant="secondary",
+                )
+            with gr.Column():
+                tuning_output_audio = gr.Audio(
+                    label=i18n("调音结果"),
+                    type="filepath",
+                    format="wav",
+                )
+                tuning_summary = gr.Markdown(i18n("等待处理"))
+
+        with gr.Row():
+            tuning_preset = gr.Dropdown(
+                choices=tuning_preset_choices(i18n),
+                value=TUNING_DEFAULT_PRESET,
+                label=i18n("调音预设"),
+                info=i18n("选择预设后仍可微调各项参数"),
+            )
+            tuning_apply_btn = gr.Button(
+                i18n("应用调音"),
+                variant="primary",
+            )
+
+        with gr.Accordion(i18n("频段与修复参数"), open=True):
+            with gr.Row():
+                tuning_low_cut = gr.Slider(
+                    20, 120, value=62, step=1,
+                    label=i18n("低切 Hz"),
+                    info=i18n("减少超低频、震动和闷胀；男声不宜过高"),
+                )
+                tuning_bass = gr.Slider(
+                    -6, 6, value=-1.4, step=0.1,
+                    label=i18n("低频厚度（145 Hz）dB"),
+                )
+                tuning_mud = gr.Slider(
+                    -8, 4, value=-3.0, step=0.1,
+                    label=i18n("浑浊（330 Hz）dB"),
+                )
+            with gr.Row():
+                tuning_box = gr.Slider(
+                    -8, 4, value=-1.5, step=0.1,
+                    label=i18n("箱体感（750 Hz）dB"),
+                )
+                tuning_presence = gr.Slider(
+                    -4, 6, value=1.0, step=0.1,
+                    label=i18n("清晰度（2.8 kHz）dB"),
+                )
+                tuning_de_ess = gr.Slider(
+                    0, 8, value=0.0, step=0.1,
+                    label=i18n("去齿音 / 毛刺（6.5 kHz）dB"),
+                )
+            with gr.Row():
+                tuning_high_cut = gr.Slider(
+                    7000, 11000, value=10500, step=100,
+                    label=i18n("高切 Hz"),
+                )
+                tuning_gain = gr.Slider(
+                    -12, 6, value=0.0, step=0.1,
+                    label=i18n("输出增益 dB"),
+                )
+                tuning_normalize = gr.Checkbox(
+                    value=False,
+                    label=i18n("响度标准化（-16 LUFS）"),
+                )
+
+        with gr.Accordion(i18n("试听评分"), open=False):
+            with gr.Row():
+                tuning_score = gr.Slider(
+                    0, 100, value=80, step=1,
+                    label=i18n("评分"),
+                )
+                tuning_notes = gr.Textbox(
+                    label=i18n("听感记录"),
+                    placeholder=i18n("例如：低频仍稍闷，声线准确"),
+                )
+            tuning_save_score_btn = gr.Button(i18n("保存评分"))
+            tuning_score_status = gr.Markdown()
 
     with gr.Tab(i18n("预设管理")):
         gr.Markdown(f"## {i18n('预设管理')}")
@@ -1339,6 +1461,42 @@ with gr.Blocks(
         on_preset_save,
         inputs=[create_preset_name] + _preset_save_inputs,
         outputs=[load_preset_dropdown, manage_preset_dropdown],
+    )
+
+    tuning_controls = [
+        tuning_low_cut,
+        tuning_bass,
+        tuning_mud,
+        tuning_box,
+        tuning_presence,
+        tuning_de_ess,
+        tuning_high_cut,
+        tuning_gain,
+        tuning_normalize,
+    ]
+    tuning_preset.change(
+        tuning_preset_values,
+        inputs=[tuning_preset],
+        outputs=tuning_controls,
+        queue=False,
+    )
+    load_generated_btn.click(
+        lambda path: path,
+        inputs=[output_audio],
+        outputs=[tuning_input_audio],
+        queue=False,
+    )
+    tuning_apply_btn.click(
+        run_audio_tuning,
+        inputs=[tuning_input_audio] + tuning_controls,
+        outputs=[tuning_output_audio, tuning_summary],
+        api_name="tune_audio",
+    )
+    tuning_save_score_btn.click(
+        save_tuning_score,
+        inputs=[tuning_output_audio, tuning_score, tuning_notes],
+        outputs=[tuning_score_status],
+        api_name="save_tuning_score",
     )
 
     gen_button.click(gen_single,
