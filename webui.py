@@ -139,6 +139,8 @@ if LOW_VRAM:
 
 def build_tts(use_accel=False, use_torch_compile=False):
     """Build an IndexTTS2 instance with the requested acceleration options."""
+    import torch
+
     kwargs = dict(
         model_dir=cmd_args.model_dir,
         cfg_path=os.path.join(cmd_args.model_dir, "config.yaml"),
@@ -149,7 +151,10 @@ def build_tts(use_accel=False, use_torch_compile=False):
         use_qwen_emo=LOAD_QWEN_EMO,
     )
     if IS_V25:
-        kwargs["use_bf16"] = HALF_PRECISION
+        use_bf16 = HALF_PRECISION and torch.cuda.is_bf16_supported()
+        if HALF_PRECISION and not use_bf16:
+            print(">> BF16 is not supported on this device, falling back to full precision.")
+        kwargs["use_bf16"] = use_bf16
     else:
         kwargs["use_fp16"] = HALF_PRECISION
     return IndexTTS2(**kwargs)
@@ -367,6 +372,8 @@ def on_preset_load(name):
         if emo_method >= len(emo_choices):
             gr.Warning(i18n("该预设使用了情感描述文本控制，当前显存不足未加载该模型，已重置为默认方式"))
             emo_method = 0
+            is_experimental = False
+            emo_choices = EMO_CHOICES_OFFICIAL
 
         return {
             experimental_checkbox: gr.update(value=is_experimental),
