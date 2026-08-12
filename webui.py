@@ -709,12 +709,12 @@ with gr.Blocks(
 ) as demo:
     mutex = threading.Lock()
     arxiv_id = "2601.03888" if IS_V25 else "2506.21619"
-gr.HTML(f'''
-    <h2 style="text-align:center">IndexTTS-{cmd_args.version}</h2>
-<p align="center">
-<a href='https://arxiv.org/abs/{arxiv_id}'><img src='https://img.shields.io/badge/ArXiv-{arxiv_id}-red'></a>
-</p>
-    ''')
+    gr.HTML(f'''
+       <h2 style="text-align:center">IndexTTS-{cmd_args.version}</h2>
+   <p align="center">
+   <a href='https://arxiv.org/abs/{arxiv_id}'><img src='https://img.shields.io/badge/ArXiv-{arxiv_id}-red'></a>
+   </p>
+       ''')
 
     with gr.Tab(i18n("音频生成")):
         os.makedirs("prompts", exist_ok=True)
