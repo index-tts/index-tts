@@ -101,6 +101,11 @@ cu128 = [
   "torchaudio==2.8.*",
   "torchvision==0.23.*",
 ]
+cpu = [
+  "torch==2.8.*",
+  "torchaudio==2.8.*",
+  "torchvision==0.23.*",
+]
 [tool.pytest.ini_options]
 markers = [
     "gpu: tests that require GPU and model checkpoints (deselect with '-m not gpu')",
@@ -132,6 +137,7 @@ conflicts = [
   [
     { extra = "xpu" },
     { extra = "cu128" },
+    { extra = "cpu" },
   ],
 ]
 
@@ -166,4 +172,9 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-xpu"
 url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
