@@ -26,7 +26,7 @@ nvcc --version 2>/dev/null | grep release              # the one on PATH
 /usr/local/cuda/bin/nvcc --version 2>/dev/null | grep release   # often a different one
 
 # existing env
-ls -d .venv && .venv/bin/python -c "import torch;print(torch.__version__, torch.version.cuda)" 2>/dev/null
+[ -d .venv ] && .venv/bin/python -c "import torch;print(torch.__version__, torch.version.cuda)" 2>/dev/null
 
 # existing weights, anywhere on the box
 ls checkpoints checkpoints_2 checkpoints_25 2>/dev/null
