@@ -257,19 +257,36 @@ on some networks even when downloads work.
 
 ### Reusing caches from an IndexTTS-2 install
 
-Do this before any auxiliary download — measured at 2.77 GiB migrated in 2.1s,
-versus several minutes of downloading.
+Do this before any auxiliary download.
 
 `ensure_models_available()` in `indextts/utils/model_download.py` searches
 `{model_dir}/hf_cache/` and then `$HF_HUB_CACHE` (default
 `~/.cache/huggingface/hub`) for the old
 `models--{owner}--{name}/snapshots/{hash}/` layout, and copies what it finds
-instead of downloading. So if the user has an old HuggingFace cache, just point
-at it:
+instead of downloading.
 
-    export HF_HUB_CACHE=~/.cache/huggingface/hub
+Exporting `HF_HUB_CACHE` on its own is not enough, because
+`indextts/infer_v2_5.py:4` overwrites it at import time:
 
-NOTE: `indextts/infer_v2_5.py` currently sets `HF_HUB_CACHE=./checkpoints/hf_cache` internally, so this affects `webui.py` but not the step 6 smoke test.
+    os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+
+That line runs before anything looks at the variable, and it applies to both
+entrypoints — `webui.py` imports `infer_v2_5` too — so an exported value is
+gone by the time the search happens, and the migration finds nothing.
+
+Run the migration as its own step first, importing only the download helper:
+
+```bash
+HF_HUB_CACHE=~/.cache/huggingface/hub uv run python -c \
+  "from indextts.utils.model_download import ensure_models_available; \
+   ensure_models_available('checkpoints')"
+```
+
+Expect one `>> Migrating <name> from existing HF cache` line per component and a
+closing `>> All auxiliary models ready.`. Measured on a box with a populated old
+cache: 2.8 GB migrated in about two seconds, against several minutes of
+downloading. Afterwards `checkpoints/hf_cache/` is populated, so the later steps
+find it there and never consult `$HF_HUB_CACHE` at all.
 
 It **copies** rather than symlinks, so budget disk for a second copy of
 w2v-bert-2.0 (~2.2 GB).
