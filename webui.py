@@ -33,6 +33,8 @@ parser.add_argument("--accel", action="store_true", default=False, help="Use GPT
 parser.add_argument("--torch_compile", action="store_true", default=False, help="Use torch.compile to optimize s2mel if available")
 parser.add_argument("--qwen_emo", action="store_true", default=False, help="Load QwenEmotion even on a low-VRAM GPU, where it is skipped by default")
 parser.add_argument("--gui_seg_tokens", type=int, default=120, help="GUI: Max tokens per generation segment")
+parser.add_argument("--share", action="store_true", default=False, help="Enable the sharing mode of Gradio WebUI for easier use on platforms such as Colab.")
+
 cmd_args = parser.parse_args()
 
 # Validate optional acceleration dependencies early, so missing extras fail
@@ -1357,4 +1359,4 @@ with gr.Blocks(
 
 if __name__ == "__main__":
     demo.queue(20)
-    demo.launch(server_name=cmd_args.host, server_port=cmd_args.port)
+    demo.launch(server_name=cmd_args.host, server_port=cmd_args.port,share=cmd_args.share)
