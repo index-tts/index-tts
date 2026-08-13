@@ -72,6 +72,17 @@ def apply_pronunciation_annotations(text: str) -> str:
     return PRONUNCIATION_ANNOTATION_PATTERN.sub(_replace, text)
 
 
+def _align_gpt_latent_to_semantic(latent: torch.Tensor, target_length: int) -> torch.Tensor:
+    """Match GPT latent time steps to the decoded semantic feature length."""
+    if latent.shape[1] == target_length:
+        return latent
+    return F.interpolate(
+        latent.transpose(1, 2),
+        size=target_length,
+        mode="nearest",
+    ).transpose(1, 2)
+
+
 class IndexTTS2:
     def __init__(
             self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=False, device=None,
@@ -852,14 +863,9 @@ class IndexTTS2:
                     if self.use_gpt_latent:
                         latent = self.s2mel.models['gpt_layer'](latent)
                         # EnhancedCodec upsamples decoded semantic features by 2x,
-                        # while GPT latent stays at the code-token rate.
-                        if latent.shape[1] != S_infer.shape[1]:
-                            latent = F.interpolate(
-                                latent.transpose(1, 2),
-                                size=S_infer.shape[1],
-                                mode="linear",
-                                align_corners=False,
-                            ).transpose(1, 2)
+                        # while GPT latent stays at the code-token rate. Match the
+                        # codec's nearest-neighbor temporal expansion.
+                        latent = _align_gpt_latent_to_semantic(latent, S_infer.shape[1])
                         S_infer = S_infer + latent
                     target_lengths = torch.LongTensor([int(S_infer.shape[1] * 1.72 * duration_factor)]).to(codes.device)
 

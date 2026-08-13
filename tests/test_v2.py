@@ -93,6 +93,27 @@ def test_example_download_reachable(tmp_path, monkeypatch):
     assert Path(path).exists() and Path(path).stat().st_size > 0
 
 
+def test_gpt_latent_alignment_uses_codec_temporal_expansion():
+    torch = pytest.importorskip("torch")
+    from indextts.infer_v2_5 import _align_gpt_latent_to_semantic
+
+    latent = torch.tensor([[[1.0], [2.0], [3.0]]])
+    aligned = _align_gpt_latent_to_semantic(latent, 6)
+
+    assert aligned.shape == (1, 6, 1)
+    assert aligned[:, :, 0].tolist() == [[1.0, 1.0, 2.0, 2.0, 3.0, 3.0]]
+
+
+def test_gpt_latent_alignment_keeps_matching_length_tensor():
+    torch = pytest.importorskip("torch")
+    from indextts.infer_v2_5 import _align_gpt_latent_to_semantic
+
+    latent = torch.randn(1, 4, 2)
+    aligned = _align_gpt_latent_to_semantic(latent, 4)
+
+    assert aligned is latent
+
+
 # -- Model download logic (no GPU) --------------------------------------------
 
 def test_legacy_cache_compatibility(tmp_path, monkeypatch):
