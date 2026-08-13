@@ -851,6 +851,15 @@ class IndexTTS2:
                     S_infer = self.semantic_codec.decode(codes)
                     if self.use_gpt_latent:
                         latent = self.s2mel.models['gpt_layer'](latent)
+                        # EnhancedCodec upsamples decoded semantic features by 2x,
+                        # while GPT latent stays at the code-token rate.
+                        if latent.shape[1] != S_infer.shape[1]:
+                            latent = F.interpolate(
+                                latent.transpose(1, 2),
+                                size=S_infer.shape[1],
+                                mode="linear",
+                                align_corners=False,
+                            ).transpose(1, 2)
                         S_infer = S_infer + latent
                     target_lengths = torch.LongTensor([int(S_infer.shape[1] * 1.72 * duration_factor)]).to(codes.device)
 
