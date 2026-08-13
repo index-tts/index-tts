@@ -66,7 +66,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_validates_manifest_without_creating_output_parent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             concat_dir = temp_path / "concat"
             concat_dir.mkdir()
             audio_path = concat_dir / "clip.wav"
@@ -110,7 +110,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_non_object_json_with_1_based_line_number(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             concat_file = temp_path / "manifest.jsonl"
             concat_file.write_text('\n["not", "an", "object"]\n', encoding="utf-8")
 
@@ -132,7 +132,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_unknown_fields_and_comment_lines(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             write_wav(audio_path)
@@ -186,7 +186,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
         for manifest, expected_message in cases:
             with self.subTest(expected_message=expected_message):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir)
+                    temp_path = Path(temp_dir).resolve()
                     write_wav(temp_path / "clip.wav")
                     concat_file = temp_path / "manifest.jsonl"
                     concat_file.write_text("\n" + manifest, encoding="utf-8")
@@ -209,7 +209,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_resolves_command_paths_from_cwd_and_audio_from_concat_file_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             cwd_path = temp_path / "cwd"
             concat_dir = temp_path / "manifests"
             assets_dir = concat_dir / "assets"
@@ -240,7 +240,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_non_wav_output_and_audio_extensions_case_insensitively(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.mp3"
             concat_file = temp_path / "manifest.jsonl"
             audio_path.write_bytes(b"not checked after extension failure")
@@ -284,7 +284,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
         for audio_name, audio_content, expected_exit_code, expected_message in cases:
             with self.subTest(expected_message=expected_message):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir)
+                    temp_path = Path(temp_dir).resolve()
                     concat_file = temp_path / "manifest.jsonl"
                     if audio_content == "empty":
                         write_empty_wav(temp_path / audio_name)
@@ -309,7 +309,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
                 self.assertIn(expected_message, stderr)
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             concat_file = temp_path / "manifest.jsonl"
             write_wav(temp_path / "first.wav", frame_rate=24000)
             write_wav(temp_path / "second.wav", frame_rate=22050)
@@ -337,7 +337,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_empty_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             concat_file = temp_path / "manifest.jsonl"
             concat_file.write_text("\n \n", encoding="utf-8")
 
@@ -358,7 +358,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_output_path_conflicts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             blocked_parent = temp_path / "blocked"
@@ -410,7 +410,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_dry_run_rejects_existing_output_unless_force_without_modifying_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             output_path = temp_path / "out.wav"
@@ -451,7 +451,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_generates_wav_with_manifest_order_and_silence(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             first_path = temp_path / "first.wav"
             second_path = temp_path / "second.wav"
             concat_file = temp_path / "manifest.jsonl"
@@ -485,7 +485,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_execution_does_not_initialize_or_check_model_resources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             output_path = temp_path / "out.wav"
@@ -515,7 +515,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_force_overwrites_existing_output_during_real_execution(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             output_path = temp_path / "out.wav"
@@ -554,7 +554,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_execution_failure_returns_code_4_and_removes_temporary_wav(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             output_path = temp_path / "out.wav"
@@ -592,7 +592,7 @@ class ConcatCommandDryRunTests(unittest.TestCase):
 
     def test_concat_cleanup_failure_is_appended_without_overriding_primary_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             audio_path = temp_path / "clip.wav"
             concat_file = temp_path / "manifest.jsonl"
             output_path = temp_path / "out.wav"

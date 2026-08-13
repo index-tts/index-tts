@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   lightweight-checks:
-    name: Lightweight Python checks
-    runs-on: ubuntu-latest
+    name: Lightweight Python checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -25,6 +29,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Run tests (no GPU)
         run: uv run --extra test pytest -m "not gpu" -v
