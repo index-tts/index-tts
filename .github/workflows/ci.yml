@@ -33,8 +33,4 @@ jobs:
           enable-cache: true
 
       - name: Run tests (no GPU)
-        # Windows exercises dependency markers and platform branches that Linux
-        # never reaches; the CLI tests currently fail there on path resolution,
-        # so it reports without blocking until those are fixed.
-        continue-on-error: ${{ matrix.os == 'windows-latest' }}
         run: uv run --extra test pytest -m "not gpu" -v
