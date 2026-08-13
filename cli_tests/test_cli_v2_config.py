@@ -128,7 +128,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_init_creates_persistent_config_and_default_model_directory_without_model_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 exit_code, stdout, stderr = self.run_cli(["init"])
@@ -145,7 +145,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_init_with_model_dir_persists_the_requested_model_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "custom-models"
 
@@ -163,7 +163,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_config_path_prints_the_persistent_config_file_location(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 exit_code, stdout, stderr = self.run_cli(["config", "path"])
@@ -174,7 +174,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_config_set_model_dir_persists_the_model_resource_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "persisted-models"
 
@@ -190,7 +190,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_config_set_runtime_preferences_persists_device_and_boolean_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 first = self.run_cli(["config", "set", "default_device", "cuda:0"])
@@ -217,7 +217,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_config_set_boolean_preference_rejects_non_boolean_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 exit_code, stdout, stderr = self.run_cli(["config", "set", "use_fp16", "yes"])
@@ -230,7 +230,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_config_get_prints_the_current_persistent_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
 
@@ -246,7 +246,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_check_uses_persisted_model_dir_when_command_line_and_environment_do_not_override_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "persisted-models"
             make_model_dir(model_dir)
@@ -262,7 +262,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_check_model_dir_resolution_prioritizes_command_line_then_environment_then_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             cli_model_dir = temp_path / "cli-models"
             env_model_dir = temp_path / "env-models"
@@ -288,7 +288,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_check_initializes_default_state_and_checks_the_platform_default_model_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            state = user_state_paths(Path(temp_dir))
+            state = user_state_paths(Path(temp_dir).resolve())
 
             with mock.patch.dict(os.environ, state["env"], clear=False):
                 with mock.patch.dict(os.environ, {"INDEXTTS2_MODEL_DIR": ""}, clear=False):
@@ -305,7 +305,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_check_with_command_model_dir_still_initializes_default_state_without_persisting_override(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             cli_model_dir = temp_path / "cli-models"
             make_model_dir(cli_model_dir)
@@ -324,7 +324,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_synth_uses_persisted_model_dir_and_runtime_preferences_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
             voice_path = temp_path / "voice.wav"
@@ -378,7 +378,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_batch_uses_persisted_model_dir_and_runtime_preferences_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
             voice_path = temp_path / "voice.wav"
@@ -427,7 +427,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_batch_command_line_can_disable_persisted_boolean_runtime_preferences_for_one_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
             voice_path = temp_path / "voice.wav"
@@ -478,7 +478,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_synth_command_line_overrides_do_not_rewrite_persistent_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             persisted_model_dir = temp_path / "persisted-models"
             cli_model_dir = temp_path / "cli-models"
@@ -538,7 +538,7 @@ class ConfigCommandTests(unittest.TestCase):
 
     def test_synth_command_line_can_disable_persisted_boolean_runtime_preferences_for_one_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             state = user_state_paths(temp_path)
             model_dir = temp_path / "models"
             voice_path = temp_path / "voice.wav"

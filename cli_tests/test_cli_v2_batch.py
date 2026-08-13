@@ -132,7 +132,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_validates_manifest_without_loading_model(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             batch_dir.mkdir()
@@ -165,7 +165,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_rejects_non_object_json_with_1_based_line_number(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             batch_file.write_text('\n["not", "an", "object"]\n', encoding="utf-8")
@@ -188,7 +188,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_rejects_unknown_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -217,7 +217,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_rejects_conflicting_text_sources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             text_path = temp_path / "input.txt"
@@ -247,7 +247,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_rejects_missing_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -272,7 +272,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_rejects_duplicate_output_paths_with_line_number(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -306,7 +306,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_resolves_text_file_and_voice_relative_to_batch_file_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             assets_dir = batch_dir / "assets"
@@ -343,7 +343,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_checks_model_files_without_importing_runtime_packages(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -371,7 +371,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_dry_run_with_force_still_rejects_duplicate_output_paths(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -406,7 +406,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_dry_run_validates_manifest_without_loading_model_or_creating_output_parent(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             batch_dir.mkdir()
@@ -460,7 +460,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
         for extra_args, expected_message in cases:
             with self.subTest(expected_message=expected_message):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir)
+                    temp_path = Path(temp_dir).resolve()
                     model_dir = make_model_dir(temp_path)
                     voice_path = temp_path / "voice.wav"
                     batch_file = temp_path / "batch.jsonl"
@@ -485,7 +485,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_enforces_row_output_and_silence_after_ms_contracts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -558,7 +558,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_generates_final_wav_and_cleans_temp_dir_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -605,7 +605,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_keep_temp_preserves_temp_dir_after_success(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -645,7 +645,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_stops_on_inference_failure_and_cleans_temp_dir_by_default(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -693,7 +693,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_keep_temp_preserves_temp_dir_after_inference_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -741,7 +741,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_rejects_mismatched_generated_segment_format_and_cleans_temp_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -785,7 +785,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_temp_cleanup_failure_does_not_override_inference_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -837,7 +837,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_temp_cleanup_failure_after_success_returns_inference_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -885,7 +885,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_dry_run_rejects_final_output_path_conflicts_without_side_effects(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -953,7 +953,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_dry_run_rejects_final_output_that_matches_batch_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.wav"
@@ -983,7 +983,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
 
     def test_batch_concat_dry_run_rejects_final_output_that_matches_empty_batch_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.wav"
             batch_file.write_text("", encoding="utf-8")
@@ -1017,7 +1017,7 @@ class BatchCommandDryRunTests(unittest.TestCase):
         for manifest, expected_message in cases:
             with self.subTest(expected_message=expected_message):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir)
+                    temp_path = Path(temp_dir).resolve()
                     model_dir = make_model_dir(temp_path)
                     voice_path = temp_path / "voice.wav"
                     batch_file = temp_path / "batch.jsonl"
@@ -1069,7 +1069,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_executes_tasks_in_order_with_one_model_initialization_and_summary(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             batch_dir.mkdir()
@@ -1127,7 +1127,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_generates_numbered_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             output_dir = temp_path / "auto"
@@ -1187,7 +1187,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_rejects_generated_output_that_conflicts_with_inputs_even_with_force(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             output_dir = temp_path / "auto"
             output_dir.mkdir()
@@ -1221,7 +1221,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_rejects_generated_output_that_conflicts_with_batch_file_even_with_force(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             output_dir = temp_path / "auto"
             output_dir.mkdir()
@@ -1252,7 +1252,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_uses_output_prefix(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             output_dir = temp_path / "auto"
             voice_path = temp_path / "voice.wav"
@@ -1297,7 +1297,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
         for extra_args, expected_message in cases:
             with self.subTest(expected_message=expected_message):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = Path(temp_dir)
+                    temp_path = Path(temp_dir).resolve()
                     model_dir = make_model_dir(temp_path)
                     voice_path = temp_path / "voice.wav"
                     batch_file = temp_path / "batch.jsonl"
@@ -1322,7 +1322,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_rejects_row_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -1352,7 +1352,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_rejects_concat_output_configuration(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -1382,7 +1382,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_dry_run_does_not_create_output_dir(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             output_dir = temp_path / "auto"
             voice_path = temp_path / "voice.wav"
@@ -1415,7 +1415,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_respects_force_for_existing_external_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             output_dir = temp_path / "auto"
             output_dir.mkdir()
@@ -1470,7 +1470,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_resolves_relative_to_current_working_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             cwd_path = temp_path / "cwd"
             batch_dir = temp_path / "batch"
@@ -1513,7 +1513,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_auto_output_dir_rejects_output_parent_that_is_a_file_during_dry_run(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             blocked_output_dir = temp_path / "blocked"
             voice_path = temp_path / "voice.wav"
@@ -1542,7 +1542,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_maps_command_runtime_options_to_indextts2_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -1601,7 +1601,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_applies_command_defaults_and_row_emotion_overrides(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_dir = temp_path / "batch"
             batch_dir.mkdir()
@@ -1674,7 +1674,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_row_emotion_weight_inherits_command_emotion_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             output_path = temp_path / "out.wav"
@@ -1720,7 +1720,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_inherits_command_emotion_vector(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             output_path = temp_path / "out.wav"
@@ -1762,7 +1762,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_accepts_row_emotion_vector_cli_style_string(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             output_path = temp_path / "out.wav"
@@ -1801,7 +1801,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_rejects_row_emotion_weight_without_emotion_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -1830,7 +1830,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_rejects_conflicting_row_emotion_sources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             emotion_path = temp_path / "emotion.wav"
@@ -1860,7 +1860,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_reuses_synth_emotion_vector_validation_for_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -1889,7 +1889,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_rejects_boolean_entries_in_json_emotion_vector(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             voice_path = temp_path / "voice.wav"
             batch_file = temp_path / "batch.jsonl"
@@ -1918,7 +1918,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_stops_on_first_inference_failure_and_keeps_prior_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -1974,7 +1974,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_rejects_existing_external_output_without_force_before_model_initialization(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -2007,7 +2007,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_force_allows_existing_external_output(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -2046,7 +2046,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_rejects_runtime_options_inside_batch_rows(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -2075,7 +2075,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_returns_resource_error_when_model_directory_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
             missing_model_dir = temp_path / "missing-models"
@@ -2103,7 +2103,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_returns_resource_error_with_download_help_when_model_file_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = temp_path / "models"
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
@@ -2133,7 +2133,7 @@ class BatchCommandExecutionTests(unittest.TestCase):
 
     def test_batch_returns_runtime_error_when_indextts2_import_fails(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+            temp_path = Path(temp_dir).resolve()
             model_dir = make_model_dir(temp_path)
             batch_file = temp_path / "batch.jsonl"
             voice_path = temp_path / "voice.wav"
