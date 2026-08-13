@@ -20,7 +20,7 @@
 
 | 模型 | 演示 | 论文 | Modelscope | HuggingFace |
 | :--- | :---: | :---: | :---: | :---: |
-| **IndexTTS-2.5** | [演示](https://index-tts.github.io/index-tts2-5.github.io/) | [论文](https://arxiv.org/abs/2601.03888) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
+| **IndexTTS-2.5** | [演示](https://index-tts.github.io/index-tts2-5.github.io/) [HF Space](https://huggingface.co/spaces/IndexTeam/IndexTTS-2.5-Demo) | [论文](https://arxiv.org/abs/2601.03888) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2.5) |
 | **IndexTTS-2** | [演示](https://index-tts.github.io/index-tts2.github.io/) | [论文](https://arxiv.org/abs/2506.21619) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-2) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-2) |
 | **IndexTTS-1.5** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) | [HuggingFace](https://huggingface.co/IndexTeam/IndexTTS-1.5) |
 | **IndexTTS** | [演示](https://index-tts.github.io/) | [论文](https://arxiv.org/abs/2502.05512) | [Modelscope](https://modelscope.cn/models/IndexTeam/Index-TTS) | [HuggingFace](https://huggingface.co/IndexTeam/Index-TTS) |
