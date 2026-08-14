@@ -646,7 +646,7 @@ def gen_single(emo_control_method,prompt, text,
     # set gradio progress
     tts.gr_progress = progress
     do_sample, top_p, top_k, temperature, \
-        length_penalty, num_beams, repetition_penalty, max_mel_tokens = args
+        length_penalty, num_beams, repetition_penalty, max_mel_tokens, *cfm_args = args
 
     kwargs = {
         "do_sample": bool(do_sample),
@@ -660,6 +660,15 @@ def gen_single(emo_control_method,prompt, text,
         # "typical_sampling": bool(typical_sampling),
         # "typical_mass": float(typical_mass),
     }
+    if IS_V25 and len(cfm_args) >= 4:
+        seed, diffusion_steps, inference_cfg_rate, cfm_temperature = cfm_args[:4]
+        seed_value = None if seed is None or int(seed) < 0 else int(seed)
+        kwargs.update(
+            seed=seed_value,
+            diffusion_steps=int(diffusion_steps),
+            inference_cfg_rate=float(inference_cfg_rate),
+            cfm_temperature=float(cfm_temperature),
+        )
     if type(emo_control_method) is not int:
         emo_control_method = emo_control_method.value
     if emo_control_method == 0:  # emotion from speaker
@@ -938,6 +947,24 @@ with gr.Blocks(
                         repetition_penalty = gr.Number(label="repetition_penalty", precision=None, value=10.0, minimum=0.1, maximum=20.0, step=0.1)
                         length_penalty = gr.Number(label="length_penalty", precision=None, value=0.0, minimum=-2.0, maximum=2.0, step=0.1)
                     max_mel_tokens = gr.Slider(label="max_mel_tokens", value=1500, minimum=50, maximum=tts.cfg.gpt.max_mel_tokens, step=10, info=i18n("生成Token最大数量，过小导致音频被截断"), key="max_mel_tokens")
+                    if IS_V25:
+                        gr.Markdown(f"**{i18n('CFM 声码器采样')}** _{i18n('影响音色稳定性和每次生成的抖动')}_")
+                        seed = gr.Number(
+                            label="seed", value=-1, precision=0,
+                            info=i18n("-1 表示随机；固定后可复现同一条结果"),
+                        )
+                        diffusion_steps = gr.Slider(
+                            label="diffusion_steps", minimum=10, maximum=80, value=25, step=1,
+                            info=i18n("步数越多越稳，也越慢；旁白可试 50"),
+                        )
+                        inference_cfg_rate = gr.Slider(
+                            label="inference_cfg_rate", minimum=0.0, maximum=1.5, value=0.7, step=0.05,
+                            info=i18n("越高越贴近参考音色/音高，过高可能过平滑"),
+                        )
+                        cfm_temperature = gr.Slider(
+                            label="cfm_temperature", minimum=0.1, maximum=1.5, value=1.0, step=0.05,
+                            info=i18n("越低抖动越小；旁白可试 0.8"),
+                        )
                     # with gr.Row():
                     #     typical_sampling = gr.Checkbox(label="typical_sampling", value=False, info="不建议使用")
                     #     typical_mass = gr.Slider(label="typical_mass", value=0.9, minimum=0.0, maximum=1.0, step=0.1)
@@ -960,6 +987,10 @@ with gr.Blocks(
                 length_penalty, num_beams, repetition_penalty, max_mel_tokens,
                 # typical_sampling, typical_mass,
             ]
+            if IS_V25:
+                advanced_params.extend([
+                    seed, diffusion_steps, inference_cfg_rate, cfm_temperature,
+                ])
 
         # we must use `gr.Dataset` to support dynamic UI rewrites, since `gr.Examples`
         # binds tightly to UI and always restores the initial state of all components,

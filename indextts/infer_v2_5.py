@@ -506,7 +506,20 @@ class IndexTTS2:
     def infer(self, spk_audio_prompt, text, output_path, lang,
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None, use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, duration_factor=1.0, text_normalization=True, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, duration_factor=1.0, text_normalization=True,
+              seed=None, diffusion_steps=25, inference_cfg_rate=0.7, cfm_temperature=1.0, **generation_kwargs):
+        """Synthesize speech from text with a reference speaker audio.
+
+        Args:
+            seed (int | None): if set, seeds torch/random so a run is reproducible.
+            diffusion_steps (int): number of CFM Euler steps (default 25; more steps
+                usually give steadier output, e.g. 50).
+            inference_cfg_rate (float): classifier-free guidance strength of the CFM
+                stage (default 0.7; higher values like 0.8-0.9 track the reference
+                timbre/pitch more closely, too high may over-smooth).
+            cfm_temperature (float): noise temperature of the CFM sampler (default
+                1.0; lower values like 0.8 reduce run-to-run wobble).
+        """
         if self.low_vram and not stream_return and len(text) > 40:
             segments = self.split_text_by_punctuation(text, max_chars=40)
             if verbose:
@@ -518,7 +531,9 @@ class IndexTTS2:
                     spk_audio_prompt, seg_text, None, lang,
                     emo_audio_prompt, emo_alpha, emo_vector,
                     use_emo_text, emo_text, use_random, 0,
-                    verbose, max_text_tokens_per_segment, False, 0, duration_factor=duration_factor, text_normalization=text_normalization, **generation_kwargs
+                    verbose, max_text_tokens_per_segment, False, 0, duration_factor=duration_factor, text_normalization=text_normalization,
+                    seed=seed, diffusion_steps=diffusion_steps, inference_cfg_rate=inference_cfg_rate, cfm_temperature=cfm_temperature,
+                    **generation_kwargs
                 )
                 result = None
                 for result in gen:
@@ -552,7 +567,9 @@ class IndexTTS2:
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
                 use_emo_text, emo_text, use_random, interval_silence,
-                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, duration_factor=duration_factor, text_normalization=text_normalization, **generation_kwargs
+                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, duration_factor=duration_factor, text_normalization=text_normalization,
+                seed=seed, diffusion_steps=diffusion_steps, inference_cfg_rate=inference_cfg_rate, cfm_temperature=cfm_temperature,
+                **generation_kwargs
             )
         else:
             try:
@@ -561,7 +578,9 @@ class IndexTTS2:
                     emo_audio_prompt, emo_alpha,
                     emo_vector,
                     use_emo_text, emo_text, use_random, interval_silence,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, duration_factor=duration_factor, text_normalization=text_normalization, **generation_kwargs
+                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, duration_factor=duration_factor, text_normalization=text_normalization,
+                    seed=seed, diffusion_steps=diffusion_steps, inference_cfg_rate=inference_cfg_rate, cfm_temperature=cfm_temperature,
+                    **generation_kwargs
                 ))[0]
             except IndexError:
                 return None
@@ -570,9 +589,15 @@ class IndexTTS2:
     def infer_generator(self, spk_audio_prompt, text, output_path, lang,
               emo_audio_prompt=None, emo_alpha=1.0, emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, duration_factor=1.0, text_normalization=True, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, duration_factor=1.0, text_normalization=True,
+              seed=None, diffusion_steps=25, inference_cfg_rate=0.7, cfm_temperature=1.0, **generation_kwargs):
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
+        if seed is not None:
+            torch.manual_seed(seed)
+            random.seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
         if verbose:
             print(f"origin text:{text}, spk_audio_prompt:{spk_audio_prompt}, "
                   f"emo_audio_prompt:{emo_audio_prompt}, emo_alpha:{emo_alpha}, "
@@ -779,7 +804,7 @@ class IndexTTS2:
                         emo_vec=emovec,
                         campplus_embedding=style,
                         wav=spk_audio_prompt,
-                        do_sample=True,
+                        do_sample=do_sample,
                         top_p=top_p,
                         top_k=top_k,
                         temperature=temperature,
@@ -846,8 +871,6 @@ class IndexTTS2:
                 dtype = None
                 with torch.amp.autocast(text_tokens.device.type, enabled=dtype is not None, dtype=dtype):
                     m_start_time = time.perf_counter()
-                    diffusion_steps = 25
-                    inference_cfg_rate = 0.7
                     S_infer = self.semantic_codec.decode(codes)
                     if self.use_gpt_latent:
                         latent = self.s2mel.models['gpt_layer'](latent)
@@ -864,6 +887,7 @@ class IndexTTS2:
                                                                    torch.LongTensor([cat_condition.size(1)]).to(
                                                                        cond.device),
                                                                    ref_mel, style, None, diffusion_steps,
+                                                                   temperature=cfm_temperature,
                                                                    inference_cfg_rate=inference_cfg_rate)
                     vc_target = vc_target[:, :, ref_mel.size(-1):]
                     s2mel_time += time.perf_counter() - m_start_time

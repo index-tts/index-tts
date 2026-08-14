@@ -141,5 +141,11 @@
   "旁白清晰": "Claridad de voz",
   "清澈旁白": "Narración clara",
   "轻柔去毛刺": "Suavizar aspereza",
-  "温暖自然": "Cálido y natural"
+  "温暖自然": "Cálido y natural",
+  "CFM 声码器采样": "Muestreo del vocoder CFM",
+  "影响音色稳定性和每次生成的抖动": "Afecta la estabilidad del timbre y la variación entre generaciones",
+  "-1 表示随机；固定后可复现同一条结果": "-1 es aleatorio; un valor fijo reproduce el mismo resultado",
+  "步数越多越稳，也越慢；旁白可试 50": "Más pasos son más estables, pero más lentos; pruebe 50 para narración",
+  "越高越贴近参考音色/音高，过高可能过平滑": "Más alto sigue más de cerca el timbre/tono de referencia; demasiado alto puede suavizar en exceso",
+  "越低抖动越小；旁白可试 0.8": "Más bajo reduce la inestabilidad; pruebe 0.8 para narración"
 }
