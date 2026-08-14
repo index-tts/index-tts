@@ -20,6 +20,7 @@ from omegaconf import OmegaConf
 from indextts.codec.models import EnhancedCodec
 from indextts.gpt.model_v2 import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
+from indextts.utils.common import save_pcm_wav
 from indextts.utils.front import TextNormalizer
 from indextts.utils.tokenizer import get_tokenizer, lang_to_token
 from indextts.utils.ja_g2p import JapaneseG2PProcessor
@@ -538,7 +539,7 @@ class IndexTTS2:
                         os.remove(output_path)
                     if os.path.dirname(output_path) != "":
                         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    torchaudio.save(output_path, wav, sampling_rate)
+                    save_pcm_wav(output_path, wav, sampling_rate)
                     print(">> wav file saved to:", output_path)
                     return output_path
                 else:
@@ -884,7 +885,7 @@ class IndexTTS2:
             if os.path.dirname(output_path) != "":
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
+            save_pcm_wav(output_path, wav, sampling_rate)
             print(">> wav file saved to:", output_path)
             if stream_return:
                 return None

@@ -28,7 +28,8 @@ import time
 
 import numpy as np
 import torch
-import torchaudio
+
+from indextts.utils.common import save_pcm_wav
 
 
 def main():
@@ -182,8 +183,8 @@ def main():
         print(f"  Total time:        {elapsed:.2f}s")
         print(f"  RTF:               {elapsed / duration:.4f}")
 
-        wav = torch.tensor(full_audio, dtype=torch.float32).unsqueeze(0).to(torch.int16)
-        torchaudio.save(outputs[0], wav, sr)
+        wav = torch.tensor(full_audio, dtype=torch.float32).unsqueeze(0)
+        save_pcm_wav(outputs[0], wav, sr)
         print(f"  Saved: {outputs[0]}")
 
     elif is_batch and args.stream:
@@ -230,8 +231,8 @@ def main():
                 total_duration += duration
                 out_path = outputs[b] if b < len(outputs) else outputs[0].replace(".wav", f"_{b}.wav")
                 os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-                wav = torch.tensor(full_audio, dtype=torch.float32).unsqueeze(0).to(torch.int16)
-                torchaudio.save(out_path, wav, sr)
+                wav = torch.tensor(full_audio, dtype=torch.float32).unsqueeze(0)
+                save_pcm_wav(out_path, wav, sr)
                 print(f"  [{b}] {duration:.2f}s -> {out_path}")
 
         print(f"\n  Total audio:       {total_duration:.2f}s")
@@ -261,8 +262,8 @@ def main():
             total_duration += duration
             out_path = outputs[i] if i < len(outputs) else outputs[0].replace(".wav", f"_{i}.wav")
             os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-            wav = torch.tensor(audio.T, dtype=torch.int16)
-            torchaudio.save(out_path, wav, sr)
+            wav = torch.tensor(audio.T, dtype=torch.float32)
+            save_pcm_wav(out_path, wav, sr)
             print(f"  [{i}] {duration:.2f}s -> {out_path}")
 
         print(f"\n  Total audio:  {total_duration:.2f}s")
