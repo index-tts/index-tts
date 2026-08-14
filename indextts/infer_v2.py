@@ -32,6 +32,52 @@ import safetensors
 import random
 import torch.nn.functional as F
 
+
+def _is_npu_available():
+    """Whether an Ascend NPU is usable through the ``torch_npu`` extension.
+
+    ``torch.npu`` is only registered as a side effect of importing ``torch_npu``,
+    so the extension has to be imported before its availability can be probed.
+    On machines without ``torch_npu`` installed this is a cheap no-op.
+
+    Returns:
+        bool: True if ``torch_npu`` is importable and reports an available NPU.
+    """
+    try:
+        import torch_npu  # noqa: F401
+    except (ImportError, OSError):
+        # Either not installed, or installed without a working CANN runtime.
+        return False
+    return hasattr(torch, "npu") and torch.npu.is_available()
+
+
+def _autodetect_device(use_fp16, use_cuda_kernel):
+    """Pick the best available device, along with the flags that suit it.
+
+    Priority order is CUDA, Ascend NPU, XPU, MPS and finally CPU. Only CUDA can
+    use the fused BigVGAN kernel, and MPS is faster in float32 than float16.
+
+    Args:
+        use_fp16 (bool): fp16 preference requested by the caller.
+        use_cuda_kernel (None | bool): BigVGAN CUDA kernel preference, where
+            None means "enable it when the device supports it".
+
+    Returns:
+        tuple[str, bool, bool]: the device, and the resolved
+            ``use_fp16`` / ``use_cuda_kernel`` flags for it.
+    """
+    if torch.cuda.is_available():
+        return "cuda:0", use_fp16, use_cuda_kernel is None or use_cuda_kernel
+    if _is_npu_available():
+        return "npu:0", use_fp16, False
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        return "xpu", use_fp16, False
+    if hasattr(torch, "mps") and torch.backends.mps.is_available():
+        return "mps", False, False  # Use float16 on MPS is overhead than float32
+    print(">> Be patient, it may take a while to run in CPU mode.")
+    return "cpu", False, False
+
+
 class IndexTTS2:
     def __init__(
             self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_fp16=False, device=None,
@@ -43,7 +89,8 @@ class IndexTTS2:
             cfg_path (str): path to the config file.
             model_dir (str): path to the model directory.
             use_fp16 (bool): whether to use fp16.
-            device (str): device to use (e.g., 'cuda:0', 'cpu'). If None, it will be set automatically based on the availability of CUDA or MPS.
+            device (str): device to use (e.g., 'cuda:0', 'npu:0', 'cpu'). If None, it will be set automatically
+                based on the availability of CUDA, Ascend NPU, XPU or MPS.
             use_cuda_kernel (None | bool): whether to use BigVGan custom fused activation CUDA kernel, only for CUDA device.
             use_deepspeed (bool): whether to use DeepSpeed or not.
             use_accel (bool): whether to use acceleration engine for GPT2 or not.
@@ -63,23 +110,8 @@ class IndexTTS2:
             self.device = device
             self.use_fp16 = False if device == "cpu" else use_fp16
             self.use_cuda_kernel = use_cuda_kernel is not None and use_cuda_kernel and device.startswith("cuda")
-        elif torch.cuda.is_available():
-            self.device = "cuda:0"
-            self.use_fp16 = use_fp16
-            self.use_cuda_kernel = use_cuda_kernel is None or use_cuda_kernel
-        elif hasattr(torch, "xpu") and torch.xpu.is_available():
-            self.device = "xpu"
-            self.use_fp16 = use_fp16
-            self.use_cuda_kernel = False
-        elif hasattr(torch, "mps") and torch.backends.mps.is_available():
-            self.device = "mps"
-            self.use_fp16 = False  # Use float16 on MPS is overhead than float32
-            self.use_cuda_kernel = False
         else:
-            self.device = "cpu"
-            self.use_fp16 = False
-            self.use_cuda_kernel = False
-            print(">> Be patient, it may take a while to run in CPU mode.")
+            self.device, self.use_fp16, self.use_cuda_kernel = _autodetect_device(use_fp16, use_cuda_kernel)
 
         self.cfg = OmegaConf.load(cfg_path)
         self.model_dir = model_dir
