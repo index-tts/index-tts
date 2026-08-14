@@ -8,6 +8,7 @@ import time
 import librosa
 import torch
 import torchaudio
+import soundfile as sf
 from torch.nn.utils.rnn import pad_sequence
 
 import warnings
@@ -538,7 +539,7 @@ class IndexTTS2:
                         os.remove(output_path)
                     if os.path.dirname(output_path) != "":
                         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                    torchaudio.save(output_path, wav, sampling_rate)
+                    sf.write(output_path, wav.numpy().T, sampling_rate, subtype="PCM_16")
                     print(">> wav file saved to:", output_path)
                     return output_path
                 else:
@@ -884,7 +885,7 @@ class IndexTTS2:
             if os.path.dirname(output_path) != "":
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
+            sf.write(output_path, wav.type(torch.int16).cpu().numpy().T, sampling_rate, subtype="PCM_16")
             print(">> wav file saved to:", output_path)
             if stream_return:
                 return None
