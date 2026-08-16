@@ -680,11 +680,11 @@ def gen_single(emo_control_method,prompt, text,
         use_emo_text=(emo_control_method==3), emo_text=emo_text, use_random=emo_random,
         verbose=cmd_args.verbose,
         max_text_tokens_per_segment=int(max_text_tokens_per_segment),
-        duration_factor=float(duration_factor),
         **kwargs,
     )
     if IS_V25:
         infer_kwargs["lang"] = lang_choice or "ZH"
+        infer_kwargs["duration_factor"] = float(duration_factor)
     output = tts.infer(**infer_kwargs)
     return gr.update(value=output,visible=True)
 
@@ -804,11 +804,16 @@ with gr.Blocks(
                     )
                 else:
                     lang_dropdown = gr.State(value=None)
-                duration_factor = gr.Slider(
-                    label=i18n("时长系数"), minimum=0.5, maximum=2.0, value=1.0, step=0.01,
-                    info=f'{i18n("快")} ← — {i18n("不变")} — → {i18n("慢")}',
-                    key="duration_factor",
-                )
+                if IS_V25:
+                    duration_factor = gr.Slider(
+                        label=i18n("时长系数"), minimum=0.5, maximum=2.0, value=1.0, step=0.01,
+                        info=f'{i18n("快")} ← — {i18n("不变")} — → {i18n("慢")}',
+                        key="duration_factor",
+                    )
+                else:
+                    # Keep the shared callback input order stable without
+                    # exposing a v2.5-only control in the v2 WebUI.
+                    duration_factor = gr.State(value=1.0)
             with gr.Column(scale=1):
                 gen_button = gr.Button(
                     i18n("生成语音"), key="gen_button", interactive=True
