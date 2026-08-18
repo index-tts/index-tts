@@ -78,10 +78,12 @@ deepspeed = [
 ]
 # To install the GPT2 acceleration engine, use `uv sync --extra accel` (or `--all-extras`).
 # NOTE: flash-attn 2.8.3.post1 also requires triton at import time on Windows.
+# NOTE: The nvidia-cuda Python dependencies simplify installation on Windows,
+# but aren't necessary on Linux (provided by system) or Mac (no CUDA support).
 accel = [
   "flash-attn==2.8.3.post1",
-  "nvidia-cuda-runtime-cu12",
-  "nvidia-cudnn-cu12",
+  "nvidia-cuda-runtime-cu12; sys_platform == 'win32'",
+  "nvidia-cudnn-cu12; sys_platform == 'win32'",
   "triton-windows==3.1.0.post17; sys_platform == 'win32'",
 ]
 # To install torch.compile support for s2mel, use `uv sync --extra torch_compile` (or `--all-extras`).
