@@ -104,6 +104,8 @@ uv sync --all-extras --default-index "https://mirrors.tuna.tsinghua.edu.cn/pypi/
 >
 > - `--all-extras`: Automatically adds *every* extra feature listed below. You can
 >   remove this flag if you want to customize your installation choices.
+> - `--extra cu128`: Install torch-cu128,Only for cuda cu128.
+> - `--extra xpu`: Install torch-xpu,Only for intel GPU.
 > - `--extra webui`: Adds WebUI support (recommended).
 > - `--extra deepspeed`: Adds DeepSpeed support (may speed up inference on some
 >   systems).
