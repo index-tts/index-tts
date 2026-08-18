@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from indextts.BigVGAN.models import BigVGAN as Generator
 from indextts.gpt.model import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
+from indextts.utils.common import save_pcm_wav
 from indextts.utils.feature_extractors import MelSpectrogramFeatures
 
 from indextts.utils.front import TextNormalizer, TextTokenizer
@@ -506,7 +507,7 @@ class IndexTTS:
         if output_path:
             # 直接保存音频到指定路径中
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
+            save_pcm_wav(output_path, wav, sampling_rate)
             print(">> wav file saved to:", output_path)
             return output_path
         else:
@@ -673,7 +674,7 @@ class IndexTTS:
                 print(">> remove old wav file:", output_path)
             if os.path.dirname(output_path) != "":
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            torchaudio.save(output_path, wav.type(torch.int16), sampling_rate)
+            save_pcm_wav(output_path, wav, sampling_rate)
             print(">> wav file saved to:", output_path)
             return output_path
         else:

@@ -8,8 +8,9 @@ from typing import Generator, List, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchaudio
 from transformers import SeamlessM4TFeatureExtractor
+
+from indextts.utils.common import save_pcm_wav
 
 from backends.trt.pipeline.config import TTSConfig, load_config
 from backends.trt.pipeline.text_processing import TextNormalizer, TextTokenizer
@@ -1011,5 +1012,5 @@ class FasterIndexTTS2:
         if os.path.isfile(path):
             os.remove(path)
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        torchaudio.save(path, wav.cpu().to(torch.int16), SAMPLE_RATE)
+        save_pcm_wav(path, wav, SAMPLE_RATE)
         print(f">> WAV saved to {path}")
