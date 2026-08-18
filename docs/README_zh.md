@@ -168,6 +168,16 @@ uv run webui.py --version 2 --model_dir ./checkpoints_2
 
 浏览器访问 `http://127.0.0.1:7860` 查看演示。
 
+WebUI 新增 **声音调音** 页，用于在克隆之后做可选的后期处理（低切、均衡、去齿音、响度），
+会另存 WAV，不覆盖合成原文件。同一套滤镜也可通过命令行调用：
+
+```bash
+uv run python -m indextts.utils.audio_tuning \
+  --input outputs/example.wav \
+  --output outputs/example_tuned.wav \
+  --preset voice-clarity
+```
+
 可通过命令行参数开启 BF16（IndexTTS-2.5）/ FP16（IndexTTS-2）推理（降低显存占用）、
 DeepSpeed 加速、CUDA 内核编译加速等。运行以下命令查看所有可用选项：
 
