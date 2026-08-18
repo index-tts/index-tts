@@ -1,0 +1,9 @@
+onnx_models/
+trt_engines_*/
+tllm_engines_*/
+tllm_checkpoint_*/
+.venv/
+pipeline/tagger_cache/
+tests/
+__pycache__/
+*.pyc
