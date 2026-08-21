@@ -251,6 +251,8 @@ def _build_preset_data(
     repetition_penalty,
     max_mel_tokens,
     max_text_tokens_per_segment,
+    duration_factor,
+    target_duration,
 ):
     """Collect all non-audio UI values into a dictionary for preset storage."""
     return {
@@ -262,6 +264,10 @@ def _build_preset_data(
         ],
         "emo_text": emo_text or "",
         "emo_random": bool(emo_random),
+        "duration_factor": float(duration_factor) if duration_factor is not None else 1.0,
+        "target_duration": (
+            float(target_duration) if target_duration is not None else None
+        ),
         "advanced_params": {
             "do_sample": bool(do_sample),
             "top_p": float(top_p) if top_p is not None else 0.8,
@@ -295,6 +301,8 @@ def on_preset_save(
     repetition_penalty,
     max_mel_tokens,
     max_text_tokens_per_segment,
+    duration_factor,
+    target_duration,
 ):
     """Save the current UI state as a named preset."""
     name = name.strip() if name else ""
@@ -309,6 +317,7 @@ def on_preset_save(
         do_sample, top_p, top_k, temperature,
         length_penalty, num_beams, repetition_penalty,
         max_mel_tokens, max_text_tokens_per_segment,
+        duration_factor, target_duration,
     )
 
     existed = name in list_presets()
@@ -402,6 +411,8 @@ def on_preset_load(name):
             max_text_tokens_per_segment: gr.update(
                 value=advanced.get("max_text_tokens_per_segment", 120)
             ),
+            duration_factor: gr.update(value=data.get("duration_factor", 1.0)),
+            target_duration: gr.update(value=data.get("target_duration")),
         }
     except Exception as e:
         gr.Error(f"{i18n('加载预设失败')}: {e}")
@@ -453,6 +464,8 @@ def format_preset_details(name):
         emo_vec = data.get("emo_vector", [0.0] * 8)
         emo_text = data.get("emo_text", "") or i18n("无")
         emo_random = data.get("emo_random", False)
+        duration_factor_value = data.get("duration_factor", 1.0)
+        target_duration_value = data.get("target_duration")
         advanced = data.get("advanced_params", {})
         prompt_path = data.get("prompt_audio", "") or i18n("无")
         emo_path = data.get("emo_audio", "") or i18n("无")
@@ -468,6 +481,8 @@ def format_preset_details(name):
             f"| {i18n('情感随机采样')} | {'On' if emo_random else 'Off'} |",
             f"| {i18n('音色音频')} | `{prompt_path}` |",
             f"| {i18n('情感音频')} | `{emo_path}` |",
+            f"| {i18n('时长系数')} | {duration_factor_value} |",
+            f"| {i18n('定制生成时长（秒）')} | {target_duration_value if target_duration_value is not None else i18n('无')} |",
             "",
             f"**{i18n('情感向量')}**: `[{', '.join(str(round(v, 2)) for v in emo_vec)}]`",
             "",
@@ -510,6 +525,8 @@ def _format_preset_preview(
     repetition_penalty,
     max_mel_tokens,
     max_text_tokens_per_segment,
+    duration_factor,
+    target_duration,
 ):
     """Format the current UI state as a Markdown preview for the save modal."""
     emo_label = EMO_CHOICES_ALL[emo_control_method] if 0 <= emo_control_method < len(EMO_CHOICES_ALL) else i18n("未知")
@@ -537,6 +554,8 @@ def _format_preset_preview(
         f"- repetition_penalty: {repetition_penalty}",
         f"- max_mel_tokens: {max_mel_tokens}",
         f"- max_text_tokens_per_segment: {max_text_tokens_per_segment}",
+        f"- duration_factor: {duration_factor}",
+        f"- target_duration: {target_duration if target_duration is not None else i18n('无')}",
     ]
     return "\n".join(lines)
 
@@ -558,6 +577,8 @@ def open_save_preset_modal(
     repetition_penalty,
     max_mel_tokens,
     max_text_tokens_per_segment,
+    duration_factor,
+    target_duration,
 ):
     """Open the save-preset modal and populate the preview."""
     preview = _format_preset_preview(
@@ -567,6 +588,7 @@ def open_save_preset_modal(
         do_sample, top_p, top_k, temperature,
         length_penalty, num_beams, repetition_penalty,
         max_mel_tokens, max_text_tokens_per_segment,
+        duration_factor, target_duration,
     )
     return (
         gr.update(visible=True),
@@ -593,6 +615,8 @@ def confirm_save_preset_from_modal(
     repetition_penalty,
     max_mel_tokens,
     max_text_tokens_per_segment,
+    duration_factor,
+    target_duration,
 ):
     """Save the preset and close the modal."""
     result = on_preset_save(
@@ -613,6 +637,8 @@ def confirm_save_preset_from_modal(
         repetition_penalty,
         max_mel_tokens,
         max_text_tokens_per_segment,
+        duration_factor,
+        target_duration,
     )
     return (
         gr.update(visible=False),  # modal
@@ -633,6 +659,7 @@ def gen_single(emo_control_method,prompt, text,
                emo_text,emo_random,
                max_text_tokens_per_segment=120,
                duration_factor=1.0,
+               target_duration=None,
                 *args, progress=gr.Progress()):
     output_path = None
     if not output_path:
@@ -681,6 +708,9 @@ def gen_single(emo_control_method,prompt, text,
         verbose=cmd_args.verbose,
         max_text_tokens_per_segment=int(max_text_tokens_per_segment),
         duration_factor=float(duration_factor),
+        target_duration=(
+            float(target_duration) if target_duration is not None else None
+        ),
         **kwargs,
     )
     if IS_V25:
@@ -804,11 +834,20 @@ with gr.Blocks(
                     )
                 else:
                     lang_dropdown = gr.State(value=None)
-                duration_factor = gr.Slider(
-                    label=i18n("时长系数"), minimum=0.5, maximum=2.0, value=1.0, step=0.01,
-                    info=f'{i18n("快")} ← — {i18n("不变")} — → {i18n("慢")}',
-                    key="duration_factor",
-                )
+                with gr.Row():
+                    duration_factor = gr.Slider(
+                        label=i18n("时长系数"), minimum=0.5, maximum=2.0, value=1.0, step=0.01,
+                        info=f'{i18n("快")} ← — {i18n("不变")} — → {i18n("慢")}',
+                        key="duration_factor",
+                    )
+                    target_duration = gr.Number(
+                        label=i18n("定制生成时长（秒）"),
+                        value=None,
+                        minimum=0.1,
+                        step=0.1,
+                        info=i18n("留空则按时长系数生成；填写后将按目标总时长生成（包含分句间静音）"),
+                        key="target_duration",
+                    )
             with gr.Column(scale=1):
                 gen_button = gr.Button(
                     i18n("生成语音"), key="gen_button", interactive=True
@@ -1268,6 +1307,8 @@ with gr.Blocks(
         repetition_penalty,
         max_mel_tokens,
         max_text_tokens_per_segment,
+        duration_factor,
+        target_duration,
     ]
     _preset_save_inputs = [
         prompt_audio,
@@ -1286,6 +1327,8 @@ with gr.Blocks(
         repetition_penalty,
         max_mel_tokens,
         max_text_tokens_per_segment,
+        duration_factor,
+        target_duration,
     ]
 
     # Audio generation tab: load from preset on dropdown change
@@ -1366,6 +1409,7 @@ with gr.Blocks(
                              emo_text,emo_random,
                              max_text_tokens_per_segment,
                              duration_factor,
+                             target_duration,
                              *advanced_params,
                      ],
                      outputs=[output_audio])

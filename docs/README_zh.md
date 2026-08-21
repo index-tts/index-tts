@@ -323,6 +323,23 @@ tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output
 tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", duration_factor=0.8, verbose=True)
 ```
 
+#### 8. 定制生成时长（`target_duration`）
+
+通过秒数指定输出音频的总时长。设置后会优先于 `duration_factor`，总时长包含分句之间
+插入的静音。目标时长与文本正常语速差异过大时，语音自然度可能下降。
+
+```python
+# 生成总时长恰好为 5 秒的音频
+tts.infer(
+    spk_audio_prompt='examples/voice_01.wav',
+    text="这句话需要正好匹配可用的时间段。",
+    lang="ZH",
+    output_path="gen_5s.wav",
+    target_duration=5.0,
+    verbose=True,
+)
+```
+
 ### 🗣️ 发音控制
 
 **IndexTTS2.5 —— 拼音 / CMU 音素 / 日语假名：**
