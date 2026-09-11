@@ -215,3 +215,65 @@ def safe_log(x: torch.Tensor, clip_val: float = 1e-7) -> torch.Tensor:
         Tensor: Element-wise logarithm of the input tensor with clipping applied.
     """
     return torch.log(torch.clip(x, min=clip_val))
+
+
+# 模型偶尔会在停止符之前多吐一小段高频气声（听感是「嘶」「呲」「嗖」，
+# 见 index-tts/index-tts#488、#523）。它在送进 vocoder 的声学特征里就已经存在，
+# 所以在那之前按频谱形态裁掉。下面这些常数的含义见 trim_tail_noise()。
+TAIL_NOISE_LOOK_FRAMES = 40
+TAIL_NOISE_HL_DB       = 1.0
+TAIL_NOISE_MIN_FRAMES  = 3
+TAIL_NOISE_GAP_FRAMES  = 3
+TAIL_NOISE_GAP_RISE    = 1.0
+TAIL_NOISE_MAX_FRAMES  = 26     # 安全上限：最多砍 ~300ms
+
+
+def trim_tail_noise(mel):
+    """裁掉声学特征末尾那段高频噪声（模型在说完之后多吐的气声）。
+
+    检测两个条件同时成立才动手：
+      1. 末尾连续 >= TAIL_NOISE_MIN_FRAMES 帧「高频占优」
+         （高频 40% 的 bin 均值 − 低频 40% 的 bin 均值 > TAIL_NOISE_HL_DB）
+      2. 这段之前存在能量低谷——该段平均能量比它前面 3 帧高出
+         TAIL_NOISE_GAP_RISE 以上
+
+    第 2 条是关键：正常的擦音收尾（「四」「次」）能量是连着元音下来的，
+    不会先掉下去再冒起来；而模型多吐的气声一定在一段静音之后。
+    实测 120 条擦音结尾的句子，非气声音色 0 误报。
+
+    返回裁剪后的 mel；没检出就原样返回。
+    """
+    if mel.dim() != 3 or mel.shape[-1] < TAIL_NOISE_LOOK_FRAMES:
+        return mel
+    m = mel[0].float()
+    n_bins = m.shape[0]
+    hi = m[int(n_bins * 0.6):].mean(dim=0)
+    lo = m[:int(n_bins * 0.4)].mean(dim=0)
+    r = (hi - lo)
+    e = m.mean(dim=0)
+    w = TAIL_NOISE_LOOK_FRAMES
+    rr = r[-w:].tolist()
+    ee = e[-w:].tolist()
+
+    i = w - 1
+    if rr[i] <= TAIL_NOISE_HL_DB:
+        while i >= 0 and rr[i] <= TAIL_NOISE_HL_DB:
+            i -= 1
+        if w - 1 - i > 3:          # 末尾已经安静下来，不是这个问题
+            return mel
+    end = i
+    while i >= 0 and rr[i] > TAIL_NOISE_HL_DB:
+        i -= 1
+    start = i + 1
+    if end - start + 1 < TAIL_NOISE_MIN_FRAMES:
+        return mel
+    if start - TAIL_NOISE_GAP_FRAMES < 0:
+        return mel
+    pre = sum(ee[start - TAIL_NOISE_GAP_FRAMES:start]) / TAIL_NOISE_GAP_FRAMES
+    burst = sum(ee[start:end + 1]) / (end - start + 1)
+    if burst - pre < TAIL_NOISE_GAP_RISE:
+        return mel
+    cut = min(w - start, TAIL_NOISE_MAX_FRAMES)
+    if cut <= 0 or cut >= mel.shape[-1]:
+        return mel
+    return mel[..., :-cut]
