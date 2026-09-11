@@ -20,7 +20,7 @@ from omegaconf import OmegaConf
 from indextts.codec.models import EnhancedCodec
 from indextts.gpt.model_v2 import UnifiedVoice
 from indextts.utils.checkpoint import load_checkpoint
-from indextts.utils.common import save_pcm_wav
+from indextts.utils.common import save_pcm_wav, trim_tail_noise
 from indextts.utils.front import TextNormalizer
 from indextts.utils.tokenizer import get_tokenizer, lang_to_token
 from indextts.utils.ja_g2p import JapaneseG2PProcessor
@@ -844,6 +844,9 @@ class IndexTTS2:
                                                                    ref_mel, style, None, diffusion_steps,
                                                                    inference_cfg_rate=inference_cfg_rate)
                     vc_target = vc_target[:, :, ref_mel.size(-1):]
+                    # 模型在停止符之前有时会多吐一段高频气声（#488、#523），
+                    # 它在声学特征里就存在，所以在进 vocoder 之前裁掉。
+                    vc_target = trim_tail_noise(vc_target)
                     s2mel_time += time.perf_counter() - m_start_time
 
                     m_start_time = time.perf_counter()
