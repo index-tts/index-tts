@@ -634,9 +634,6 @@ class IndexTTS2:
             input_features = input_features.to(self.device)
             attention_mask = attention_mask.to(self.device)
             spk_cond_emb = self.get_emb(input_features, attention_mask)
-
-            # _, S_ref = self.semantic_codec.quantize(spk_cond_emb)
-            S_ref = self.get_emb(input_features, attention_mask)
             ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
             ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
 
