@@ -640,7 +640,6 @@ class IndexTTS2:
             ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
             ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
 
-            audio_16k = torchaudio.transforms.Resample(sr, 16000)(self._load_and_cut_audio(spk_audio_prompt, 15, verbose)[0])
             feat = torchaudio.compliance.kaldi.fbank(audio_16k.to(ref_mel.device),
                                                     num_mel_bins=80,
                                                     dither=0,
