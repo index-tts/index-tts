@@ -888,6 +888,14 @@ with gr.Blocks(
                         placeholder="Index T-T-S two",
                     )
                     btn_add_term = gr.Button(i18n("添加术语"), scale=1)
+                    glossary_delete_term = gr.Dropdown(
+                        choices=list(tts.normalizer.term_glossary) if _has_glossary else [],
+                        value=None,
+                        label=i18n("术语"),
+                        allow_custom_value=False,
+                        interactive=_has_glossary and bool(tts.normalizer.term_glossary),
+                    )
+                    btn_delete_term = gr.Button(i18n("删除"), scale=1, interactive=False)
                 with gr.Column(scale=2):
                     glossary_table = gr.Markdown(
                         value=format_glossary_markdown()
@@ -1081,21 +1089,25 @@ with gr.Blocks(
             }
 
     # 术语词汇表事件处理函数
+    def glossary_term_choices_update():
+        choices = list(tts.normalizer.term_glossary) if _has_glossary else []
+        return gr.update(choices=choices, value=None, interactive=bool(choices))
+
     def on_add_glossary_term(term, reading_zh, reading_en):
         """添加术语到词汇表并自动保存"""
         if IS_V25 or not hasattr(tts, 'normalizer'):
-            return gr.update()
+            return {}
         term = term.rstrip()
         reading_zh = reading_zh.rstrip()
         reading_en = reading_en.rstrip()
 
         if not term:
             gr.Warning(i18n("请输入术语"))
-            return gr.update()
+            return {}
             
         if not reading_zh and not reading_en:
             gr.Warning(i18n("请至少输入一种读法"))
-            return gr.update()
+            return {}
         
 
         # 构建读法数据
@@ -1118,10 +1130,30 @@ with gr.Blocks(
         except Exception as e:
             gr.Error(i18n("保存词汇表时出错"))
             print(f"Error details: {e}")
-            return gr.update()
+            return {}
 
-        # 更新Markdown表格
-        return gr.update(value=format_glossary_markdown())
+        return {
+            glossary_table: gr.update(value=format_glossary_markdown()),
+            glossary_delete_term: glossary_term_choices_update(),
+            btn_delete_term: gr.update(interactive=False),
+        }
+
+    def on_delete_glossary_term(term):
+        if IS_V25 or not hasattr(tts, 'normalizer') or not term:
+            return {}
+        try:
+            deleted = tts.normalizer.delete_glossary_term(term, tts.glossary_path)
+        except Exception as e:
+            gr.Error(i18n("保存词汇表时出错"))
+            print(f"Error details: {e}")
+            return {}
+        if deleted:
+            gr.Info(i18n("已删除"), duration=1)
+        return {
+            glossary_table: gr.update(value=format_glossary_markdown()),
+            glossary_delete_term: glossary_term_choices_update(),
+            btn_delete_term: gr.update(interactive=False),
+        }
         
 
     def on_method_change(emo_control_method):
@@ -1226,27 +1258,40 @@ with gr.Blocks(
     def on_demo_load():
         """页面加载时重新加载glossary数据并刷新预设列表"""
         if IS_V25 or not hasattr(tts, 'normalizer'):
-            return (gr.update(), *refresh_preset_choices())
+            return (gr.update(), gr.update(), gr.update(), *refresh_preset_choices())
         try:
             tts.normalizer.load_glossary_from_yaml(tts.glossary_path)
         except Exception as e:
             gr.Error(i18n("加载词汇表时出错"))
             print(f"Failed to reload glossary on page load: {e}")
         return (gr.update(value=format_glossary_markdown()),
+                glossary_term_choices_update(),
+                gr.update(interactive=False),
                 *refresh_preset_choices())
 
     # 术语词汇表事件绑定
     btn_add_term.click(
         on_add_glossary_term,
         inputs=[glossary_term, glossary_reading_zh, glossary_reading_en],
-        outputs=[glossary_table]
+        outputs=[glossary_table, glossary_delete_term, btn_delete_term]
+    )
+    glossary_delete_term.change(
+        lambda term: gr.update(interactive=bool(term)),
+        inputs=[glossary_delete_term],
+        outputs=[btn_delete_term]
+    )
+    btn_delete_term.click(
+        on_delete_glossary_term,
+        inputs=[glossary_delete_term],
+        outputs=[glossary_table, glossary_delete_term, btn_delete_term]
     )
 
     # 页面加载时重新加载glossary并刷新预设列表
     demo.load(
         on_demo_load,
         inputs=[],
-        outputs=[glossary_table, load_preset_dropdown, manage_preset_dropdown]
+        outputs=[glossary_table, glossary_delete_term, btn_delete_term,
+                 load_preset_dropdown, manage_preset_dropdown]
     )
 
     # Preset event bindings
