@@ -300,7 +300,8 @@ def on_preset_save(
     name = name.strip() if name else ""
     if not name:
         gr.Warning(i18n("预设名称不能为空"))
-        return gr.update()
+        # both callers expect two outputs (the two preset dropdowns)
+        return gr.update(), gr.update()
 
     data = _build_preset_data(
         emo_control_method, emo_weight,
@@ -317,7 +318,7 @@ def on_preset_save(
         msg = i18n("预设名称已存在，已覆盖") if existed else i18n("预设已保存")
         gr.Info(msg, duration=2)
     except Exception as e:
-        gr.Error(f"{i18n('加载预设失败')}: {e}")
+        gr.Warning(f"{i18n('加载预设失败')}: {e}")
         return gr.update(), gr.update()
 
     choices = [""] + list_presets()
@@ -404,7 +405,7 @@ def on_preset_load(name):
             ),
         }
     except Exception as e:
-        gr.Error(f"{i18n('加载预设失败')}: {e}")
+        gr.Warning(f"{i18n('加载预设失败')}: {e}")
         return {}
 
 
@@ -1116,7 +1117,7 @@ with gr.Blocks(
             tts.normalizer.save_glossary_to_yaml(tts.glossary_path)
             gr.Info(i18n("词汇表已更新"), duration=1)
         except Exception as e:
-            gr.Error(i18n("保存词汇表时出错"))
+            gr.Warning(i18n("保存词汇表时出错"))
             print(f"Error details: {e}")
             return gr.update()
 
@@ -1230,7 +1231,7 @@ with gr.Blocks(
         try:
             tts.normalizer.load_glossary_from_yaml(tts.glossary_path)
         except Exception as e:
-            gr.Error(i18n("加载词汇表时出错"))
+            gr.Warning(i18n("加载词汇表时出错"))
             print(f"Failed to reload glossary on page load: {e}")
         return (gr.update(value=format_glossary_markdown()),
                 *refresh_preset_choices())
