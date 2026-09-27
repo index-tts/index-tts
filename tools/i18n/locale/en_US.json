@@ -28,6 +28,8 @@
   "音频生成": "Speech Synthesis",
   "文本": "Text",
   "生成语音": "Synthesize",
+  "停止生成": "Stop",
+  "已停止生成": "Generation stopped.",
   "生成结果": "Synthesis Result",
   "功能设置": "Settings",
   "分句设置": "Text segmentation settings",

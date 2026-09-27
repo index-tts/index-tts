@@ -161,6 +161,101 @@ def build_tts(use_accel=False, use_torch_compile=False):
 
 
 tts = build_tts(use_accel=cmd_args.accel, use_torch_compile=cmd_args.torch_compile)
+
+
+# ---------------------------------------------------------------------------
+# Live progress and a Stop button.
+# Forward pre-hooks on the per-step modules report progress (speech tokens,
+# diffusion steps, vocoder, and which low-VRAM text chunk is running) and let
+# the Stop button interrupt generation within one step. The model code is
+# unchanged; the hooks do nothing outside a WebUI generation.
+# ---------------------------------------------------------------------------
+class GenerationStopped(Exception):
+    pass
+
+
+STOP_EVENT = threading.Event()
+DIFFUSION_STEPS = 25  # `diffusion_steps` in indextts/infer_v2*.py
+_PROGRESS = {"cb": None, "phase": None, "tokens": 0, "steps": 0, "part": 0, "parts": 1}
+
+
+def _report():
+    p = _PROGRESS
+    if p["cb"] is None:
+        return
+    parts = max(p["parts"], p["part"], 1)
+    if p["phase"] == "gpt":
+        # the final token count is unknown up front, so this part of the bar only approaches 50%
+        within, desc = 0.5 * p["tokens"] / (p["tokens"] + 150.0), f"speech tokens: {p['tokens']}"
+    elif p["phase"] == "diff":
+        steps = min(p["steps"], DIFFUSION_STEPS)
+        within, desc = 0.5 + 0.45 * steps / DIFFUSION_STEPS, f"diffusion step {steps}/{DIFFUSION_STEPS}"
+    elif p["phase"] == "voc":
+        within, desc = 0.97, "vocoder"
+    else:
+        within, desc = 0.0, "preparing voice..."
+    if parts > 1:
+        desc = f"part {max(p['part'], 1)}/{parts} | {desc}"
+    try:
+        p["cb"](min(0.99, (max(p["part"] - 1, 0) + within) / parts), desc=desc)
+    except Exception:
+        pass
+
+
+def _check_stop():
+    if STOP_EVENT.is_set():
+        raise GenerationStopped()
+
+
+def _hook_gpt(module, args):
+    _check_stop()
+    p = _PROGRESS
+    if p["phase"] != "gpt":
+        p.update(phase="gpt", tokens=0, part=p["part"] + 1)
+    p["tokens"] += 1
+    if p["tokens"] % 5 == 1:
+        _report()
+
+
+def _hook_diffusion(module, args):
+    _check_stop()
+    p = _PROGRESS
+    if p["phase"] != "diff":
+        p.update(phase="diff", steps=0)
+    p["steps"] += 1
+    _report()
+
+
+def _hook_vocoder(module, args):
+    _check_stop()
+    _PROGRESS["phase"] = "voc"
+    _report()
+
+
+def _hook_stop_only(module, args):
+    _check_stop()
+
+
+for _module, _hook in (
+    (getattr(tts.gpt, "inference_model", None), _hook_gpt),
+    (tts.s2mel.models["cfm"].estimator, _hook_diffusion),
+    (tts.bigvgan, _hook_vocoder),
+    (tts.semantic_model, _hook_stop_only),
+):
+    if _module is not None:
+        _module.register_forward_pre_hook(_hook)
+
+
+def _estimate_parts(text):
+    # mirrors the low-VRAM 40-char split in IndexTTS2.infer(); internal token segments may add more
+    try:
+        if getattr(tts, "low_vram", False) and len(text) > 40:
+            return max(1, len(tts.split_text_by_punctuation(text, max_chars=40)))
+    except Exception:
+        pass
+    return 1
+
+
 # 支持的语言列表
 LANGUAGES = {
     "中文": "zh_CN",
@@ -637,8 +732,8 @@ def gen_single(emo_control_method,prompt, text,
     output_path = None
     if not output_path:
         output_path = os.path.join("outputs", f"spk_{int(time.time())}.wav")
-    # set gradio progress
-    tts.gr_progress = progress
+    # progress comes from the model hooks above; the coarse per-stage updates would fight them
+    tts.gr_progress = None
     do_sample, top_p, top_k, temperature, \
         length_penalty, num_beams, repetition_penalty, max_mel_tokens = args
 
@@ -685,7 +780,16 @@ def gen_single(emo_control_method,prompt, text,
     )
     if IS_V25:
         infer_kwargs["lang"] = lang_choice or "ZH"
-    output = tts.infer(**infer_kwargs)
+    STOP_EVENT.clear()
+    _PROGRESS.update(cb=progress, phase=None, tokens=0, steps=0, part=0, parts=_estimate_parts(text or ""))
+    _report()
+    try:
+        output = tts.infer(**infer_kwargs)
+    except GenerationStopped:
+        gr.Info(i18n("已停止生成"))
+        return gr.update()
+    finally:
+        _PROGRESS["cb"] = None
     return gr.update(value=output,visible=True)
 
 def update_prompt_audio():
@@ -810,9 +914,11 @@ with gr.Blocks(
                     key="duration_factor",
                 )
             with gr.Column(scale=1):
-                gen_button = gr.Button(
-                    i18n("生成语音"), key="gen_button", interactive=True
-                )
+                with gr.Row():
+                    gen_button = gr.Button(
+                        i18n("生成语音"), key="gen_button", interactive=True, scale=3
+                    )
+                    stop_button = gr.Button(i18n("停止生成"), key="stop_button", variant="stop", scale=1)
                 output_audio = gr.Audio(
                     label=i18n("生成结果"), visible=True, key="output_audio"
                 )
@@ -1369,6 +1475,9 @@ with gr.Blocks(
                              *advanced_params,
                      ],
                      outputs=[output_audio])
+    # Not `cancels=`: that only detaches the browser while the GPU keeps working, and the next
+    # Generate would clear the flag and run alongside it. The flag stops the model within one step.
+    stop_button.click(lambda: STOP_EVENT.set(), inputs=None, outputs=None, queue=False)
 
 
 
