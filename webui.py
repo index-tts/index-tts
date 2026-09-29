@@ -300,7 +300,11 @@ def on_preset_save(
     name = name.strip() if name else ""
     if not name:
         gr.Warning(i18n("预设名称不能为空"))
-        return gr.update()
+        # Callers index this result (`confirm_save_preset_from_modal` reads
+        # `result[0]`/`result[1]`), so EVERY path has to return two updates. A bare
+        # `gr.update()` is gradio's "skip" sentinel -- a plain dict -- and indexing
+        # it raises `KeyError: 0`.
+        return gr.update(), gr.update()
 
     data = _build_preset_data(
         emo_control_method, emo_weight,
@@ -329,14 +333,21 @@ def on_preset_save(
 
 
 def on_preset_load(name):
-    """Load a preset and return updates for all relevant UI components."""
+    """Load a preset and return updates for all relevant UI components.
+
+    The early-exit paths below return gradio's "skip" sentinel (a bare
+    `gr.update()`), NOT `{}`. This handler drives multi-output events, and gradio
+    wraps a lone non-tuple value into a one-element list, so an empty dict fails
+    its output-arity check with "didn't return enough output values". The
+    sentinel, by contrast, is expanded to skip every output.
+    """
     if not name:
-        return {}
+        return gr.update()
 
     data = load_preset(name)
     if data is None:
         gr.Warning(i18n("预设不存在"))
-        return {}
+        return gr.update()
 
     try:
         emo_method = int(data.get("emo_control_method", 0))
@@ -405,7 +416,7 @@ def on_preset_load(name):
         }
     except Exception as e:
         gr.Error(f"{i18n('加载预设失败')}: {e}")
-        return {}
+        return gr.update()
 
 
 def on_preset_delete(name):
