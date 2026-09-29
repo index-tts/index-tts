@@ -458,6 +458,10 @@ class AccelInferenceEngine:
             self.kv_manager.allocate(req)
             sequences.append(req)
 
+        if tts_embeddings is not None:
+            for seq in sequences:
+                seq.num_cached_tokens = 0
+
         self.current_sequences = sequences
 
         prefill_ids, prefill_pos = self._prepare_prefill(sequences)
