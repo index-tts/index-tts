@@ -410,6 +410,15 @@ class IndexTTS2:
 
     SPLIT_PROTECTED_PATTERN = re.compile(r'<\|SPECIAL_TOKEN_\d+\|>.*?<\|SPECIAL_TOKEN_\d+\|>')
 
+    # Text-token density differs by script: CJK speech carries ~4.3 text tokens
+    # per second of audio vs ~3.1 for Latin-script languages (measured in #775).
+    # The same token budget therefore allows ~1.4x longer single-segment audio
+    # outside CJK, past the ~25-30s range where GPT alignment stays stable.
+    # Scale non-CJK budgets so one segment maps to the same audio duration as
+    # CJK at the same budget.
+    CJK_LANGS = {"zh", "zhen", "ja", "ko", "yue"}
+    NON_CJK_BUDGET_SCALE = 3.1 / 4.3
+
     def _token_len(self, text):
         return len(self.tokenizer.encode(text, allowed_special='all'))
 
@@ -425,8 +434,20 @@ class IndexTTS2:
         return pieces
 
     def split_text_by_tokens(self, text, max_tokens, lang_prefix=""):
+        """Split text into segments of at most the effective token budget.
+
+        ``max_tokens`` is the pre-scaling budget set by the caller; it is
+        first capped by the GPT text position capacity, reduced by the
+        per-segment ``lang_prefix`` length, and then scaled by
+        ``NON_CJK_BUDGET_SCALE`` when ``lang_prefix`` carries a non-CJK
+        language tag. An empty ``lang_prefix`` skips the tag lookup and the
+        scaling (conservative: keeps the caller's budget unscaled).
+        """
         capacity = self.gpt.text_pos_embedding.emb.num_embeddings
         budget = min(max_tokens, capacity - 2) - self._token_len(lang_prefix)
+        lang_match = re.match(r"<\|([^|]+)\|>", lang_prefix)
+        if lang_match and lang_match.group(1).lower() not in self.CJK_LANGS:
+            budget = int(budget * self.NON_CJK_BUDGET_SCALE)
         budget = max(1, budget)
         if self._token_len(text) <= budget:
             return [text]

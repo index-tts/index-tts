@@ -256,6 +256,45 @@ def test_split_leaves_short_text_alone():
     assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
 
 
+def test_split_scales_budget_for_latin_scripts():
+    """Non-CJK budgets must map to CJK-equivalent audio duration (#775).
+
+    Latin-script text carries ~3.1 speech-seconds per text token vs ~4.3 for
+    CJK, so the same budget lets one English segment run ~1.4x longer before
+    GPT alignment destabilizes. With the 1-token-per-char stub and prefix
+    "<|en|> " (7 chars), budget 120 gives 113, scaled by 3.1/4.3 to 79. The
+    fixture fits the unscaled budget (one segment before the fix) but must be
+    split under the scaled one.
+    """
+    splitter = _splitter_stub()
+    text = (
+        "A quick brown fox jumps over the lazy dog near the riverbank at sunrise. "
+        "Some more words follow here. "
+    )
+    unscaled = 120 - len("<|en|> ")
+    budget = int(unscaled * (3.1 / 4.3))
+    assert budget < splitter._token_len(text) <= unscaled, "fixture must straddle the two budgets"
+
+    segments = splitter.split_text_by_tokens(text, 120, "<|en|> ")
+    assert len(segments) > 1, "English text must be split under the scaled budget"
+    for s in segments:
+        assert splitter._token_len(s) <= budget, f"segment exceeds scaled budget: {len(s)}"
+
+
+def test_split_keeps_cjk_budget_unchanged():
+    """CJK languages keep the unscaled budget: 50 chars <= 120-7 stays one segment."""
+    splitter = _splitter_stub()
+    text = "各种应用层出不穷，而语音合成作为人机交互的重要一环。" * 2
+    assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
+
+
+def test_split_latin_short_text_stays_single():
+    """Short Latin-script text must not be over-split by the scaled budget."""
+    splitter = _splitter_stub()
+    text = "Hello world, this is a short check."
+    assert splitter.split_text_by_tokens(text, 120, "<|en|> ") == [text]
+
+
 def _load_qwen_emotion_module(module_name, monkeypatch):
     class _Dummy:
         def __init__(self, *args, **kwargs):
