@@ -1,0 +1,12 @@
+# Exclude large artifacts not needed during docker build
+deploy/onnx_models/
+deploy/trt_engines_*/
+deploy/tllm_engines_*/
+deploy/tllm_checkpoint_*/
+deploy/.venv/
+outputs/
+.git/
+*.engine
+*.onnx
+*.onnx.data
+__pycache__/
