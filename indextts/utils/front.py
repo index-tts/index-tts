@@ -378,7 +378,7 @@ class TextNormalizer:
             import yaml
             with open(glossary_path, 'r', encoding='utf-8') as f:
                 external_glossary = yaml.safe_load(f)
-                if external_glossary and isinstance(external_glossary, dict):
+                if isinstance(external_glossary, dict):
                     self.term_glossary = external_glossary
                     return True
         return False
@@ -393,6 +393,21 @@ class TextNormalizer:
         import yaml
         with open(glossary_path, 'w', encoding='utf-8') as f:
             yaml.dump(self.term_glossary, f, allow_unicode=True, default_flow_style=False)
+
+    def delete_glossary_term(self, term, glossary_path):
+        """Delete a saved term, restoring the in-memory glossary if saving fails."""
+        if term not in self.term_glossary:
+            return False
+
+        previous_glossary = self.term_glossary.copy()
+        del self.term_glossary[term]
+        try:
+            self.save_glossary_to_yaml(glossary_path)
+        except Exception:
+            self.term_glossary.clear()
+            self.term_glossary.update(previous_glossary)
+            raise
+        return True
 
     def save_pinyin_tones(self, original_text):
         """
