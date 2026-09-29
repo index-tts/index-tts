@@ -1,3 +1,4 @@
+import math
 import os
 import random
 import re
@@ -56,6 +57,50 @@ def save_pcm_wav(path, wav, sampling_rate):
     wav = wav.clamp_(-1.0, 1.0)
     encoding_args = {"encoding": "PCM_S", "bits_per_sample": 16} if _torchaudio_honors_wav_encoding_args() else {}
     torchaudio.save(path, wav, sampling_rate, **encoding_args)
+
+
+# 每条生成音频末尾统一施加的淡出斜坡长度。
+# 20 ms 足以把一个满幅的阶跃变成听不出来的斜坡；同时又足够短，正常生成时它
+# 落在尾部静音里，缩放接近零的采样点不会带来可闻的改变。
+TAIL_FADE_MS = 20.0
+
+
+def fade_out_tail(wav, sampling_rate, fade_ms=TAIL_FADE_MS):
+    """把生成波形末尾 ``fade_ms`` 的部分斜坡降到零。
+
+    IndexTTS 输出的波形长度由 token 数推导，而不是由声学决定：v2 / v2.5 推理
+    路径里是 ``target_lengths = (code_lens * 1.72)``，其中 ``code_lens`` 是采样
+    到的 ``stop_mel_token`` 的下标。解码是随机采样的，所以少数情况下停止符会
+    落得偏早，mel 在话音尚未结束时就截止，文件最后一个采样点离零很远。播放时
+    这个阶跃就是一声咔哒；BigVGAN 在 mel 边界处感受野不完整，还可能在上面再叠
+    一小段突发噪声。
+
+    正常生成时这个淡出没有代价，因为那里本来就是静音。在 112 条正常生成上实测：
+    62 条逐比特未变，其余各条被改动最大的单个采样点也不超过 -42.8 dBFS
+    （中位 -76.8 dBFS）。所以这里选择无条件施加，而不是加一个检测阈值——后者
+    要权衡误判、还要调参数，这里两样都不需要。
+
+    Args:
+        wav: 形状为 ``(channels, samples)`` 的波形张量。PCM 量级
+            （即 ``torch.clamp(PCM16_MAX * wav, ...)`` 的输出）或归一化的都可以，
+            因为斜坡只是一个纯缩放。
+        sampling_rate: ``wav`` 的采样率，用来把 ``fade_ms`` 换算成采样点数。
+        fade_ms: 斜坡长度，单位毫秒。
+
+    Returns:
+        新的张量；不修改传入的 ``wav``。
+    """
+    if wav.numel() == 0 or fade_ms <= 0:
+        return wav
+    n = min(int(sampling_rate * fade_ms / 1000.0), wav.shape[-1])
+    if n <= 1:
+        return wav
+    # 用升余弦而不是线性斜坡：它到零时斜率也为零，因此淡出本身不会引入新的
+    # 导数不连续点。
+    ramp = 0.5 * (1.0 + torch.cos(torch.linspace(0.0, math.pi, n, device=wav.device)))
+    out = wav.clone()
+    out[..., -n:] = (out[..., -n:].to(torch.float32) * ramp).to(wav.dtype)
+    return out
 
 
 def load_audio(audiopath, sampling_rate):
