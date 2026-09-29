@@ -434,6 +434,15 @@ class IndexTTS2:
         return pieces
 
     def split_text_by_tokens(self, text, max_tokens, lang_prefix=""):
+        """Split text into segments of at most the effective token budget.
+
+        ``max_tokens`` is the pre-scaling budget set by the caller; it is
+        first capped by the GPT text position capacity, reduced by the
+        per-segment ``lang_prefix`` length, and then scaled by
+        ``NON_CJK_BUDGET_SCALE`` when ``lang_prefix`` carries a non-CJK
+        language tag. An empty ``lang_prefix`` skips the tag lookup and the
+        scaling (conservative: keeps the caller's budget unscaled).
+        """
         capacity = self.gpt.text_pos_embedding.emb.num_embeddings
         budget = min(max_tokens, capacity - 2) - self._token_len(lang_prefix)
         lang_match = re.match(r"<\|([^|]+)\|>", lang_prefix)
