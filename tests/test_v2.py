@@ -7,6 +7,7 @@ Run with:
 CI only (no GPU):
     uv run --extra test pytest tests/test_v2.py -v -m "not gpu"
 """
+import builtins
 import importlib
 import sys
 import types
@@ -384,6 +385,127 @@ def test_qwen_emotion_convert_redirects_cross_key_labels(module_name, monkeypatc
     emotion_dict = emo.convert({"高兴": "自然"})
     assert emotion_dict["happy"] == 0.0
     assert emotion_dict["calm"] == 1.0
+
+
+# -- Device auto-detection (no GPU) -------------------------------------------
+
+def _fake_torch(cuda=False, xpu=False, mps=False, npu=None):
+    """Build a stand-in for the ``torch`` module exposing only device probes.
+
+    ``npu=None`` models a machine where ``torch_npu`` never registered
+    ``torch.npu``; True/False model an Ascend backend that is present and
+    reports itself as available or not.
+    """
+    fake = types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: cuda),
+        xpu=types.SimpleNamespace(is_available=lambda: xpu),
+        # torch.mps exists on any modern build; torch.backends.mps.is_available()
+        # is what actually reports usable Apple silicon.
+        mps=types.SimpleNamespace(is_available=lambda: mps),
+        backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: mps)),
+    )
+    if npu is not None:
+        fake.npu = types.SimpleNamespace(is_available=lambda: npu)
+    return fake
+
+
+def _install_torch_npu(monkeypatch, module=None):
+    """Pretend the ``torch_npu`` extension is installed and importable."""
+    monkeypatch.setitem(sys.modules, "torch_npu", module or types.ModuleType("torch_npu"))
+
+
+def test_autodetect_selects_npu_when_only_ascend_is_available(monkeypatch):
+    """An Ascend NPU host must not silently fall back to CPU (issue #712)."""
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    _install_torch_npu(monkeypatch)
+    monkeypatch.setattr(module, "torch", _fake_torch(npu=True))
+
+    device, use_fp16, use_cuda_kernel = module._autodetect_device(use_fp16=True, use_cuda_kernel=None)
+
+    assert device == "npu:0"
+    assert use_fp16 is True
+    # The fused BigVGAN kernel is CUDA-only.
+    assert use_cuda_kernel is False
+
+
+def test_autodetect_prefers_cuda_over_npu(monkeypatch):
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    _install_torch_npu(monkeypatch)
+    monkeypatch.setattr(module, "torch", _fake_torch(cuda=True, npu=True))
+
+    device, _, use_cuda_kernel = module._autodetect_device(use_fp16=True, use_cuda_kernel=None)
+
+    assert device == "cuda:0"
+    assert use_cuda_kernel is True
+
+
+def test_autodetect_prefers_npu_over_xpu_and_mps(monkeypatch):
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    _install_torch_npu(monkeypatch)
+    monkeypatch.setattr(module, "torch", _fake_torch(npu=True, xpu=True, mps=True))
+
+    device, _, _ = module._autodetect_device(use_fp16=True, use_cuda_kernel=None)
+
+    assert device == "npu:0"
+
+
+@pytest.mark.parametrize(
+    "torch_npu_installed,npu,expected",
+    [
+        (False, None, False),  # torch_npu not installed at all
+        (True, None, False),   # imported, but torch.npu never registered
+        (True, False, False),  # extension present, no usable NPU device
+        (True, True, True),    # Ascend NPU present and usable
+    ],
+)
+def test_is_npu_available(torch_npu_installed, npu, expected, monkeypatch):
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    if torch_npu_installed:
+        _install_torch_npu(monkeypatch)
+    else:
+        monkeypatch.delitem(sys.modules, "torch_npu", raising=False)
+    monkeypatch.setattr(module, "torch", _fake_torch(npu=npu))
+
+    assert module._is_npu_available() is expected
+
+
+def test_is_npu_available_survives_broken_cann_runtime(monkeypatch):
+    """A torch_npu install without a working CANN runtime must not crash startup."""
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    monkeypatch.delitem(sys.modules, "torch_npu", raising=False)
+    monkeypatch.setattr(module, "torch", _fake_torch(npu=True))
+
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "torch_npu":
+            raise OSError("libascendcl.so: cannot open shared object file")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+
+    assert module._is_npu_available() is False
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected_device,expected_fp16",
+    [
+        ({"cuda": True}, "cuda:0", True),
+        ({"xpu": True}, "xpu", True),
+        ({"mps": True}, "mps", False),
+        ({}, "cpu", False),
+    ],
+)
+def test_autodetect_preserves_existing_backend_order(kwargs, expected_device, expected_fp16, monkeypatch):
+    """Adding NPU must not change how the pre-existing backends are picked."""
+    module = _load_qwen_emotion_module("indextts.infer_v2", monkeypatch)
+    monkeypatch.delitem(sys.modules, "torch_npu", raising=False)
+    monkeypatch.setattr(module, "torch", _fake_torch(**kwargs))
+
+    device, use_fp16, _ = module._autodetect_device(use_fp16=True, use_cuda_kernel=None)
+
+    assert device == expected_device
+    assert use_fp16 is expected_fp16
 
 
 # -- Inference (GPU required) --------------------------------------------------
