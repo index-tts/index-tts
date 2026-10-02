@@ -481,6 +481,140 @@ def test_25_reuse_spk_cond_preserves_explicit_emo_audio_encoder_for_same_path(mo
     assert [call[0] for call in calls].count("encode") == 1
 
 
+@pytest.mark.parametrize("enabled", [False, True], ids=["default-off", "reuse-enabled"])
+def test_25_explicit_emotion_cache_survives_default_speaker_sequence(monkeypatch, enabled):
+    """Exercise E -> default A -> default B -> E through reference preparation.
+
+    Dependency doubles stop inference before synthesis: this validates cache
+    routing and encoding counts, not checkpoint output or acoustic equivalence.
+    """
+    module, tts = _new_v25_reuse_stub(monkeypatch, enabled=enabled)
+    load_calls = []
+    encode_calls = []
+    resample_calls = []
+    emotion_results = []
+
+    class FakeTensor:
+        device = "cpu"
+
+        def __init__(self, name):
+            self.name = name
+
+        def to(self, device):
+            assert device == "cpu"
+            return self
+
+        def float(self):
+            return self
+
+        def size(self, dim):
+            return 2
+
+        def mean(self, **kwargs):
+            return self
+
+        def __sub__(self, other):
+            return self
+
+        def unsqueeze(self, dim):
+            return self
+
+    class ConditioningPrepared(Exception):
+        pass
+
+    def set_progress(value, description):
+        if value == 0.1:
+            raise ConditioningPrepared
+
+    def load_audio(path, *args, **kwargs):
+        load_calls.append((path, kwargs.get("sr")))
+        return FakeTensor(path), kwargs.get("sr", 24000)
+
+    def resample(source_rate, target_rate):
+        def convert(audio):
+            resample_calls.append((audio.name, source_rate, target_rate))
+            return FakeTensor(audio.name)
+        return convert
+
+    def encode(features, mask):
+        encoded = FakeTensor(features.name)
+        encode_calls.append(encoded)
+        return encoded
+
+    tts.device = "cpu"
+    tts.cache_spk_cond = None
+    tts.cache_spk_audio_prompt = None
+    tts.cache_emo_cond = None
+    tts.cache_emo_audio_prompt = None
+    tts._set_gr_progress = set_progress
+    tts._load_and_cut_audio = load_audio
+    tts.extract_features = lambda audio, **kwargs: {
+        "input_features": audio,
+        "attention_mask": FakeTensor("mask"),
+    }
+    tts.get_emb = encode
+    tts.mel_fn = lambda audio: audio
+    tts.campplus_model = lambda features: FakeTensor("style")
+    tts.s2mel = types.SimpleNamespace(
+        models={"length_regulator": lambda cond, **kwargs: (cond,)},
+    )
+    module.torch.cuda.empty_cache = lambda: None
+    module.torch.LongTensor = lambda values: FakeTensor("lengths")
+    module.torchaudio.transforms = types.SimpleNamespace(Resample=resample)
+    module.torchaudio.compliance = types.SimpleNamespace(
+        kaldi=types.SimpleNamespace(fbank=lambda audio, **kwargs: audio),
+    )
+    get_emo_cond_emb = tts._get_emo_cond_emb
+
+    def record_emotion(*args):
+        result = get_emo_cond_emb(*args)
+        emotion_results.append(result)
+        return result
+
+    tts._get_emo_cond_emb = record_emotion
+
+    def prepare(speaker, emotion=None):
+        with pytest.raises(ConditioningPrepared):
+            next(tts.infer_generator(
+                spk_audio_prompt=speaker, emo_audio_prompt=emotion,
+                text="hello", output_path=None, lang="en",
+            ))
+
+    prepare("speaker-a.wav", "emotion-e.wav")
+    explicit_e = emotion_results[-1]
+    assert tts.cache_emo_cond is explicit_e
+    assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+
+    for speaker in ("speaker-a.wav", "speaker-b.wav"):
+        prepare(speaker)
+        if enabled:
+            assert emotion_results[-1] is tts.cache_spk_cond
+            assert tts.cache_emo_cond is explicit_e
+            assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+        else:
+            assert emotion_results[-1] is not tts.cache_spk_cond
+            assert tts.cache_emo_audio_prompt == speaker
+
+    prepare("speaker-b.wav", "emotion-e.wav")
+    assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+    assert emotion_results[-1] is tts.cache_emo_cond
+    assert (emotion_results[-1] is explicit_e) is enabled
+
+    expected_loads = [("speaker-a.wav", None), ("emotion-e.wav", 16000)]
+    if not enabled:
+        expected_loads.append(("speaker-a.wav", 16000))
+    expected_loads.append(("speaker-b.wav", None))
+    if not enabled:
+        expected_loads.extend([("speaker-b.wav", 16000), ("emotion-e.wav", 16000)])
+    assert load_calls == expected_loads
+    assert len(encode_calls) == len(expected_loads)
+    assert resample_calls == [
+        (speaker, 24000, rate)
+        for speaker in ("speaker-a.wav", "speaker-b.wav")
+        for rate in (22050, 16000)
+    ]
+
+
 def test_25_reuse_spk_cond_fast_path_uses_single_emovec_encoding(monkeypatch):
     _, tts = _new_v25_reuse_stub(monkeypatch)
 
