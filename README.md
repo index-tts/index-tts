@@ -239,6 +239,25 @@ from indextts.infer_v2_5 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=True)
 ```
 
+On a low-VRAM GPU, IndexTTS-2.5 can keep the Wav2Vec2-BERT and CAMPPlus
+reference encoders on CPU while the synthesis models remain on the selected
+accelerator. Reference preparation takes longer and uses additional system RAM,
+but its cached conditioning tensors are moved to the synthesis device. Reference
+conditioning is recomputed on the selected backend, so results are not guaranteed
+to be bit-identical across devices:
+
+```python
+tts = IndexTTS2(
+    cfg_path="checkpoints/config.yaml",
+    model_dir="checkpoints",
+    device="cuda:0",
+    reference_device="cpu",
+)
+```
+
+The same option is available in the WebUI with
+`uv run webui.py --reference_device cpu`.
+
 #### 1. Voice cloning with a single reference audio
 
 ```python
