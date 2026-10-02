@@ -239,6 +239,44 @@ from indextts.infer_v2_5 import IndexTTS2
 tts = IndexTTS2(cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=True)
 ```
 
+On a low-VRAM GPU, IndexTTS-2.5 can keep the Wav2Vec2-BERT and CAMPPlus
+reference encoders on CPU while the synthesis models remain on the selected
+accelerator. Reference preparation takes longer and uses additional system RAM,
+but its cached conditioning tensors are moved to the synthesis device. Reference
+conditioning is recomputed on the selected backend, so results are not guaranteed
+to be bit-identical across devices:
+
+```python
+tts = IndexTTS2(
+    cfg_path="checkpoints/config.yaml",
+    model_dir="checkpoints",
+    device="cuda:0",
+    reference_device="cpu",
+)
+```
+
+The same option is available in the WebUI with
+`uv run webui.py --reference_device cpu`.
+
+IndexTTS-2.5 can optionally reuse the speaker conditioning for the default
+emotion reference:
+
+```python
+tts = IndexTTS2(
+    cfg_path="checkpoints/config.yaml",
+    model_dir="checkpoints",
+    reuse_spk_cond_for_emo=True,
+)
+```
+
+This opt-in mode skips one Wav2Vec2-BERT reference-encoding pass on a cache miss
+and one of the two conditioning-to-emotion-vector projections for each generated
+segment. It does not materially reduce resident memory. Speaker and emotion audio
+normally use different resampling paths, so enabling it may change the resulting
+voice or emotion. Explicit emotion audio, vectors, and text continue to use their
+normal paths. The same option is available in the WebUI as
+`uv run webui.py --reuse_spk_cond_for_emo`; it is not supported by IndexTTS-2.
+
 #### 1. Voice cloning with a single reference audio
 
 ```python

@@ -13,6 +13,14 @@ def test_webui_python_source_parses():
     assert compile(source, str(webui_path), "exec") is not None
 
 
+def test_webui_wires_spk_condition_reuse_to_v25_only():
+    _, source = _webui_source()
+
+    assert '"--reuse_spk_cond_for_emo"' in source
+    assert 'cmd_args.reuse_spk_cond_for_emo and cmd_args.version != "2.5"' in source
+    assert 'kwargs["reuse_spk_cond_for_emo"] = cmd_args.reuse_spk_cond_for_emo' in source
+
+
 def test_duration_factor_is_only_forwarded_to_v25():
     webui_path, source = _webui_source()
     tree = ast.parse(source, filename=str(webui_path))

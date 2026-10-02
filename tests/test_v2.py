@@ -8,6 +8,7 @@ CI only (no GPU):
     uv run --extra test pytest tests/test_v2.py -v -m "not gpu"
 """
 import importlib
+import inspect
 import sys
 import types
 from pathlib import Path
@@ -256,6 +257,219 @@ def test_split_leaves_short_text_alone():
     assert splitter.split_text_by_tokens(text, 120, "<|zh|> ") == [text]
 
 
+# -- IndexTTS-2.5 reference preparation (no GPU) ------------------------------
+
+class _TrackingTensor:
+    def __init__(self, name):
+        self.name = name
+        self.moves = []
+
+    def to(self, device):
+        self.moves.append(str(device))
+        return self
+
+
+@pytest.mark.parametrize("device,reference_device", [
+    ("cuda:0", "cpu"), ("cpu", "cpu"), ("mps", "cpu"), ("mps", "mps"),
+])
+def test_25_reference_embedding_routes_devices(device, reference_device):
+    from indextts.infer_v2_5 import IndexTTS2
+
+    model = IndexTTS2.__new__(IndexTTS2)
+    model.reference_device = reference_device
+    model.device = device
+
+    features = _TrackingTensor("features")
+    attention = _TrackingTensor("attention")
+    embedding = _TrackingTensor("embedding")
+
+    class _Extractor:
+        def __call__(self, audio, sampling_rate, return_tensors):
+            assert sampling_rate == 16000
+            assert return_tensors == "pt"
+            return {"input_features": features, "attention_mask": attention}
+
+    model.extract_features = _Extractor()
+
+    def get_emb(input_features, attention_mask):
+        assert input_features is features
+        assert attention_mask is attention
+        assert features.moves == [reference_device]
+        assert attention.moves == [reference_device]
+        return embedding
+
+    model.get_emb = get_emb
+
+    assert model._get_reference_embedding(object()) is embedding
+    assert embedding.moves == [device]
+
+
+def test_25_emotion_reference_cache_refreshes_only_when_path_changes():
+    from indextts.infer_v2_5 import IndexTTS2
+
+    model = IndexTTS2.__new__(IndexTTS2)
+    model.cache_emo_cond = None
+    model.cache_emo_audio_prompt = None
+    encoded = []
+    emptied = []
+
+    model._load_and_cut_audio = lambda path, *args, **kwargs: (f"audio:{path}", 16000)
+    model._get_reference_embedding = lambda audio: encoded.append(audio) or f"cond:{audio}"
+    model._empty_cuda_cache = lambda: emptied.append(True)
+
+    first = model._prepare_emotion_reference("emotion-a.wav")
+    assert model._prepare_emotion_reference("emotion-a.wav") == first
+    second = model._prepare_emotion_reference("emotion-b.wav")
+
+    assert first == "cond:audio:emotion-a.wav"
+    assert second == "cond:audio:emotion-b.wav"
+    assert encoded == ["audio:emotion-a.wav", "audio:emotion-b.wav"]
+    assert emptied == [True]
+
+
+def test_25_speaker_reference_cache_hit_skips_preprocessing():
+    from indextts.infer_v2_5 import IndexTTS2
+
+    model = IndexTTS2.__new__(IndexTTS2)
+    model.cache_spk_audio_prompt = "speaker.wav"
+    model.cache_spk_cond = "spk"
+    model.cache_s2mel_style = "style"
+    model.cache_s2mel_prompt = "prompt"
+    model.cache_mel = "mel"
+    model._load_and_cut_audio = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("cache hit must not reload the speaker reference")
+    )
+
+    assert model._prepare_speaker_reference("speaker.wav") == (
+        "spk",
+        "style",
+        "prompt",
+        "mel",
+    )
+
+
+@pytest.mark.parametrize("device,reference_device", [
+    ("cuda:0", "cpu"), ("cpu", "cpu"), ("mps", "cpu"), ("mps", "mps"),
+])
+def test_25_speaker_reference_cache_miss_routes_devices(monkeypatch, device, reference_device):
+    import indextts.infer_v2_5 as infer_v25
+
+    events = []
+
+    class _Tensor:
+        def __init__(self, name, device=None):
+            self.name = name
+            self.device = device
+
+        def to(self, device):
+            self.device = str(device)
+            events.append(("to", self.name, self.device))
+            return self
+
+        def clone(self):
+            events.append(("clone", self.name))
+            return _Tensor(f"{self.name}-clone", self.device)
+
+        def float(self):
+            return self
+
+        def size(self, dim):
+            assert dim == 2
+            return 42
+
+        def mean(self, *args, **kwargs):
+            return _Tensor(f"{self.name}-mean", self.device)
+
+        def __sub__(self, other):
+            return self
+
+        def unsqueeze(self, dim):
+            events.append(("unsqueeze", self.name, dim))
+            return self
+
+    class _Resample:
+        def __init__(self, source_rate, target_rate):
+            self.target_rate = target_rate
+            events.append(("resample-init", source_rate, target_rate))
+
+        def __call__(self, audio):
+            events.append(("resample", self.target_rate))
+            return _Tensor(f"audio-{self.target_rate}", "cpu")
+
+    monkeypatch.setattr(infer_v25.torchaudio.transforms, "Resample", _Resample)
+
+    def fbank(audio, **kwargs):
+        assert audio.device == device
+        events.append(("fbank", audio.device, kwargs["sample_frequency"]))
+        return _Tensor("fbank", audio.device)
+
+    monkeypatch.setattr(infer_v25.torchaudio.compliance.kaldi, "fbank", fbank)
+    monkeypatch.setattr(infer_v25.torch, "LongTensor", lambda values: _Tensor("lengths"))
+
+    model = infer_v25.IndexTTS2.__new__(infer_v25.IndexTTS2)
+    model.device = device
+    model.reference_device = reference_device
+    model.cache_spk_cond = None
+    model.cache_s2mel_style = None
+    model.cache_s2mel_prompt = None
+    model.cache_spk_audio_prompt = None
+    model.cache_mel = None
+    model._empty_cuda_cache = lambda: events.append(("empty-cache",))
+
+    loads = []
+    model._load_and_cut_audio = lambda path, *args, **kwargs: (
+        loads.append(path) or _Tensor("audio", "cpu"),
+        22050,
+    )
+
+    embeddings = []
+
+    def get_embedding(audio):
+        embeddings.append(audio.name)
+        return _Tensor("spk", device)
+
+    model._get_reference_embedding = get_embedding
+
+    def mel_fn(audio):
+        assert audio.device == device
+        events.append(("mel", audio.device))
+        return _Tensor("mel", audio.device)
+
+    model.mel_fn = mel_fn
+
+    class _CampPlus:
+        def __call__(self, feat):
+            assert feat.device == reference_device
+            events.append(("campplus", feat.device))
+            return _Tensor("style", reference_device)
+
+    model.campplus_model = _CampPlus()
+
+    def length_regulator(spk_cond, ylens, **kwargs):
+        assert spk_cond.device == device
+        assert ylens.device == device
+        events.append(("length-regulator", spk_cond.device, ylens.device))
+        return [_Tensor("prompt", device)]
+
+    model.s2mel = types.SimpleNamespace(models={"length_regulator": length_regulator})
+
+    spk, style, prompt, mel = model._prepare_speaker_reference("speaker.wav")
+
+    assert loads == ["speaker.wav"]
+    assert embeddings == ["audio-16000-clone"]
+    assert [event for event in events if event[0] == "resample"] == [
+        ("resample", 22050),
+        ("resample", 16000),
+    ]
+    assert ("mel", device) in events
+    assert ("fbank", device, 16000) in events
+    assert ("to", "fbank", reference_device) in events
+    assert ("campplus", reference_device) in events
+    assert ("to", "style", device) in events
+    assert ("length-regulator", device, device) in events
+    assert (spk.name, style.name, prompt.name, mel.name) == ("spk", "style", "prompt", "mel")
+
+
 def _load_qwen_emotion_module(module_name, monkeypatch):
     class _Dummy:
         def __init__(self, *args, **kwargs):
@@ -384,6 +598,388 @@ def test_qwen_emotion_convert_redirects_cross_key_labels(module_name, monkeypatc
     emotion_dict = emo.convert({"高兴": "自然"})
     assert emotion_dict["happy"] == 0.0
     assert emotion_dict["calm"] == 1.0
+
+
+# -- IndexTTS-2.5 default emotion conditioning reuse (no GPU) -----------------
+
+def _new_v25_reuse_stub(monkeypatch, enabled=True):
+    module = _load_qwen_emotion_module("indextts.infer_v2_5", monkeypatch)
+    tts = module.IndexTTS2.__new__(module.IndexTTS2)
+    tts.reuse_spk_cond_for_emo = enabled
+    tts.reference_device = "cpu"
+    return module, tts
+
+
+def test_25_reuse_spk_cond_constructor_option_defaults_off(monkeypatch):
+    module, _ = _new_v25_reuse_stub(monkeypatch)
+    parameter = inspect.signature(module.IndexTTS2.__init__).parameters["reuse_spk_cond_for_emo"]
+
+    assert parameter.default is False
+
+
+@pytest.mark.parametrize(
+    "enabled,emo_audio_prompt,emo_vector,use_emo_text,expected",
+    [
+        (False, None, None, False, False),
+        (True, None, None, False, True),
+        (True, "speaker.wav", None, False, False),
+        (True, None, [0.0] * 8, False, False),
+        (True, None, None, True, False),
+    ],
+)
+def test_25_reuse_spk_cond_only_applies_to_implicit_default_emotion(
+        monkeypatch, enabled, emo_audio_prompt, emo_vector, use_emo_text, expected):
+    _, tts = _new_v25_reuse_stub(monkeypatch, enabled=enabled)
+
+    assert tts._should_reuse_spk_cond_for_emo(
+        emo_audio_prompt,
+        emo_vector,
+        use_emo_text,
+    ) is expected
+
+
+def test_25_reuse_spk_cond_aliases_current_speaker_without_polluting_emo_cache(monkeypatch):
+    _, tts = _new_v25_reuse_stub(monkeypatch)
+    explicit_emo_cond = object()
+    tts.cache_emo_cond = explicit_emo_cond
+    tts.cache_emo_audio_prompt = "emotion.wav"
+    tts._load_and_cut_audio = lambda *args, **kwargs: pytest.fail("emotion audio must not be loaded")
+
+    first_spk_cond = object()
+    second_spk_cond = object()
+    assert tts._get_emo_cond_emb("speaker-a.wav", first_spk_cond, True, False) is first_spk_cond
+    assert tts._get_emo_cond_emb("speaker-b.wav", second_spk_cond, True, False) is second_spk_cond
+    assert tts.cache_emo_cond is explicit_emo_cond
+    assert tts.cache_emo_audio_prompt == "emotion.wav"
+
+
+def test_25_reuse_spk_cond_preserves_explicit_emo_audio_encoder_for_same_path(monkeypatch):
+    _, tts = _new_v25_reuse_stub(monkeypatch)
+    calls = []
+
+    class FakeTensor:
+        def to(self, device):
+            calls.append(("to", device))
+            return self
+
+    input_features = FakeTensor()
+    attention_mask = FakeTensor()
+    encoded_emo = FakeTensor()
+    tts.device = "cuda:0"
+    tts.cache_emo_cond = None
+    tts.cache_emo_audio_prompt = None
+
+    def load_audio(*args, **kwargs):
+        calls.append(("load", args, kwargs))
+        return object(), 16000
+
+    tts._load_and_cut_audio = load_audio
+    tts.extract_features = lambda *args, **kwargs: {
+        "input_features": input_features,
+        "attention_mask": attention_mask,
+    }
+    tts.get_emb = lambda features, mask: calls.append(("encode", features, mask)) or encoded_emo
+
+    reuse_spk_cond = tts._should_reuse_spk_cond_for_emo("speaker.wav", None, False)
+    result = tts._get_emo_cond_emb("speaker.wav", object(), reuse_spk_cond, False)
+
+    assert reuse_spk_cond is False
+    assert result is encoded_emo
+    assert [call[0] for call in calls].count("load") == 1
+    assert [call[0] for call in calls].count("encode") == 1
+    assert tts.cache_emo_cond is encoded_emo
+    assert tts.cache_emo_audio_prompt == "speaker.wav"
+    assert [call[1] for call in calls if call[0] == "to"] == ["cpu", "cpu", "cuda:0"]
+
+    assert tts._get_emo_cond_emb("speaker.wav", object(), False, False) is encoded_emo
+    assert [call[0] for call in calls].count("load") == 1
+    assert [call[0] for call in calls].count("encode") == 1
+
+
+@pytest.mark.parametrize("enabled", [False, True], ids=["default-off", "reuse-enabled"])
+def test_25_explicit_emotion_cache_survives_default_speaker_sequence(monkeypatch, enabled):
+    """Exercise E -> default A -> default B -> E through reference preparation.
+
+    Dependency doubles stop inference before synthesis: this validates cache
+    routing and encoding counts, not checkpoint output or acoustic equivalence.
+    """
+    module, tts = _new_v25_reuse_stub(monkeypatch, enabled=enabled)
+    load_calls = []
+    encode_calls = []
+    resample_calls = []
+    emotion_results = []
+
+    class FakeTensor:
+        device = "cpu"
+
+        def __init__(self, name):
+            self.name = name
+
+        def to(self, device):
+            assert device == "cpu"
+            return self
+
+        def float(self):
+            return self
+
+        def clone(self):
+            return FakeTensor(self.name)
+
+        def size(self, dim):
+            return 2
+
+        def mean(self, **kwargs):
+            return self
+
+        def __sub__(self, other):
+            return self
+
+        def unsqueeze(self, dim):
+            return self
+
+    class ConditioningPrepared(Exception):
+        pass
+
+    def set_progress(value, description):
+        if value == 0.1:
+            raise ConditioningPrepared
+
+    def load_audio(path, *args, **kwargs):
+        load_calls.append((path, kwargs.get("sr")))
+        return FakeTensor(path), kwargs.get("sr", 24000)
+
+    def resample(source_rate, target_rate):
+        def convert(audio):
+            resample_calls.append((audio.name, source_rate, target_rate))
+            return FakeTensor(audio.name)
+        return convert
+
+    def encode(features, mask):
+        encoded = FakeTensor(features.name)
+        encode_calls.append(encoded)
+        return encoded
+
+    tts.device = "cpu"
+    tts.cache_spk_cond = None
+    tts.cache_spk_audio_prompt = None
+    tts.cache_emo_cond = None
+    tts.cache_emo_audio_prompt = None
+    tts._set_gr_progress = set_progress
+    tts._load_and_cut_audio = load_audio
+    tts.extract_features = lambda audio, **kwargs: {
+        "input_features": audio,
+        "attention_mask": FakeTensor("mask"),
+    }
+    tts.get_emb = encode
+    tts.mel_fn = lambda audio: audio
+    tts.campplus_model = lambda features: FakeTensor("style")
+    tts.s2mel = types.SimpleNamespace(
+        models={"length_regulator": lambda cond, **kwargs: (cond,)},
+    )
+    module.torch.cuda.empty_cache = lambda: None
+    module.torch.LongTensor = lambda values: FakeTensor("lengths")
+    module.torchaudio.transforms = types.SimpleNamespace(Resample=resample)
+    module.torchaudio.compliance = types.SimpleNamespace(
+        kaldi=types.SimpleNamespace(fbank=lambda audio, **kwargs: audio),
+    )
+    get_emo_cond_emb = tts._get_emo_cond_emb
+
+    def record_emotion(*args):
+        result = get_emo_cond_emb(*args)
+        emotion_results.append(result)
+        return result
+
+    tts._get_emo_cond_emb = record_emotion
+
+    def prepare(speaker, emotion=None):
+        with pytest.raises(ConditioningPrepared):
+            next(tts.infer_generator(
+                spk_audio_prompt=speaker, emo_audio_prompt=emotion,
+                text="hello", output_path=None, lang="en",
+            ))
+
+    prepare("speaker-a.wav", "emotion-e.wav")
+    explicit_e = emotion_results[-1]
+    assert tts.cache_emo_cond is explicit_e
+    assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+
+    for speaker in ("speaker-a.wav", "speaker-b.wav"):
+        prepare(speaker)
+        if enabled:
+            assert emotion_results[-1] is tts.cache_spk_cond
+            assert tts.cache_emo_cond is explicit_e
+            assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+        else:
+            assert emotion_results[-1] is not tts.cache_spk_cond
+            assert tts.cache_emo_audio_prompt == speaker
+
+    prepare("speaker-b.wav", "emotion-e.wav")
+    assert tts.cache_emo_audio_prompt == "emotion-e.wav"
+    assert emotion_results[-1] is tts.cache_emo_cond
+    assert (emotion_results[-1] is explicit_e) is enabled
+
+    expected_loads = [("speaker-a.wav", None), ("emotion-e.wav", 16000)]
+    if not enabled:
+        expected_loads.append(("speaker-a.wav", 16000))
+    expected_loads.append(("speaker-b.wav", None))
+    if not enabled:
+        expected_loads.extend([("speaker-b.wav", 16000), ("emotion-e.wav", 16000)])
+    assert load_calls == expected_loads
+    assert len(encode_calls) == len(expected_loads)
+    assert resample_calls == [
+        (speaker, 24000, rate)
+        for speaker in ("speaker-a.wav", "speaker-b.wav")
+        for rate in (22050, 16000)
+    ]
+
+
+def test_25_reuse_spk_cond_fast_path_uses_single_emovec_encoding(monkeypatch):
+    _, tts = _new_v25_reuse_stub(monkeypatch)
+
+    class FakeGpt:
+        def __init__(self):
+            self.get_calls = []
+            self.merge_calls = []
+
+        def get_emovec(self, cond, lengths):
+            self.get_calls.append((cond, lengths))
+            return "reused-emovec"
+
+        def merge_emovec(self, *args, **kwargs):
+            self.merge_calls.append((args, kwargs))
+            return "merged-emovec"
+
+    tts.gpt = FakeGpt()
+    spk_cond = object()
+    emo_cond = object()
+    spk_lengths = object()
+    emo_lengths = object()
+
+    assert tts._get_emovec(spk_cond, spk_cond, spk_lengths, spk_lengths, 1.0, True) == "reused-emovec"
+    assert len(tts.gpt.get_calls) == 1
+    assert tts.gpt.merge_calls == []
+
+    assert tts._get_emovec(spk_cond, emo_cond, spk_lengths, emo_lengths, 0.5, False) == "merged-emovec"
+    assert len(tts.gpt.get_calls) == 1
+    assert len(tts.gpt.merge_calls) == 1
+    assert tts.gpt.merge_calls[0][1] == {"alpha": 0.5}
+
+
+# -- Reference encoder constructor placement (no checkpoints or GPU) ----------
+
+@pytest.mark.parametrize("device,available,reference_device,use_bf16,expected_device,expected_bf16", [
+    (None, "cpu", None, True, "cpu", False),
+    (None, "mps", None, True, "mps", False),
+    (None, "cuda", None, True, "cuda:0", True),
+    ("cuda:0", "cuda", "cpu", True, "cuda:0", True),
+    ("cpu", "cpu", "mps", True, "cpu", False),
+    ("mps", "mps", "cpu", False, "mps", False),
+])
+def test_25_constructor_places_reference_models_and_preserves_precision(
+    monkeypatch, tmp_path, device, available, reference_device, use_bf16,
+    expected_device, expected_bf16,
+):
+    # Reuse the dependency doubles while keeping this constructor probe scoped
+    # so it cannot leave its fake inference module in subsequent tests.
+    import indextts
+
+    monkeypatch.setitem(sys.modules, "indextts.infer_v2_5", None)
+    monkeypatch.setattr(indextts, "infer_v2_5", None, raising=False)
+    module = _load_qwen_emotion_module("indextts.infer_v2_5", monkeypatch)
+
+    class _Model:
+        def __init__(self):
+            self.moves = []
+            self.bf16 = False
+            self.models = {"cfm": types.SimpleNamespace(
+                estimator=types.SimpleNamespace(setup_caches=lambda **kwargs: None),
+            )}
+
+        def to(self, target):
+            self.moves.append(str(target))
+            return self
+
+        def eval(self):
+            return self
+
+        def bfloat16(self):
+            self.bf16 = True
+            return self
+
+        def post_init_gpt2_config(self, **kwargs):
+            self.gpt_config = kwargs
+
+        def load_checkpoint(self, *args):
+            pass
+
+        def load_state_dict(self, *args):
+            pass
+
+        def remove_weight_norm(self):
+            pass
+
+    class _Config(dict):
+        def __getattr__(self, name):
+            return self[name]
+
+    cfg = types.SimpleNamespace(
+        gpt=_Config(stop_mel_token=0), gpt_checkpoint="gpt.pth",
+        w2v_stat="stats.pt", semantic_codec={}, s2mel_checkpoint="s2mel.pth",
+        s2mel={"preprocess_params": {"sr": 22050, "spect_params": {
+            "n_fft": 1024, "win_length": 1024, "hop_length": 256, "n_mels": 80,
+        }}}, emo_matrix="emo.pt", spk_matrix="spk.pt", emo_num=[1],
+    )
+    monkeypatch.setattr(module.OmegaConf, "load", lambda path: cfg)
+    monkeypatch.setattr(module, "UnifiedVoice", lambda **kwargs: _Model())
+    monkeypatch.setattr(module, "EnhancedCodec", lambda **kwargs: _Model())
+    monkeypatch.setattr(module, "MyModel", lambda config: _Model())
+    monkeypatch.setattr(module, "load_checkpoint2", lambda model, *args, **kwargs: (model, None, None, None))
+    monkeypatch.setattr(module, "CAMPPlus", lambda **kwargs: _Model())
+    monkeypatch.setattr(module, "Wav2Vec2BertModel", types.SimpleNamespace(
+        from_pretrained=lambda *args, **kwargs: _Model(),
+    ))
+    monkeypatch.setattr(module.SeamlessM4TFeatureExtractor, "from_pretrained", lambda *args, **kwargs: None, raising=False)
+    monkeypatch.setattr(module, "bigvgan", types.SimpleNamespace(BigVGAN=types.SimpleNamespace(
+        from_pretrained=lambda *args, **kwargs: _Model(),
+    )))
+    monkeypatch.setattr(module, "TextNormalizer", lambda **kwargs: types.SimpleNamespace(load=lambda: None))
+
+    stats = {"mean": _TrackingTensor("mean"), "var": _TrackingTensor("var")}
+    monkeypatch.setattr(module.torch, "load", lambda path, **kwargs: (
+        stats if str(path).endswith("stats.pt") else _TrackingTensor(str(path))
+    ), raising=False)
+    monkeypatch.setattr(module.torch, "sqrt", lambda tensor: tensor, raising=False)
+    monkeypatch.setattr(module.torch, "split", lambda tensor, sizes: [tensor], raising=False)
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: available == "cuda")
+    monkeypatch.setattr(module.torch.cuda, "get_device_properties", lambda index: types.SimpleNamespace(
+        total_memory=12 * 1024 ** 3,
+    ), raising=False)
+    monkeypatch.setattr(module.torch, "mps", object(), raising=False)
+    monkeypatch.setattr(module.torch.backends.mps, "is_available", lambda: available == "mps")
+
+    cache_dir = tmp_path / "hf_cache"
+    (cache_dir / "w2v-bert-2.0").mkdir(parents=True)
+    (cache_dir / "bigvgan").mkdir()
+    (cache_dir / "campplus_cn_common.bin").touch()
+    model = module.IndexTTS2(
+        cfg_path="unused.yaml", model_dir=str(tmp_path), device=device,
+        reference_device=reference_device, use_bf16=use_bf16, use_cuda_kernel=False,
+    )
+
+    expected_reference = reference_device or expected_device
+    assert model.device == expected_device
+    assert model.reference_device == expected_reference
+    assert model.use_bf16 is expected_bf16
+    assert model.dtype == (module.torch.bfloat16 if expected_bf16 else None)
+    assert model.gpt.bf16 is expected_bf16
+    assert model.gpt.gpt_config["half"] is expected_bf16
+    for reference in (model.semantic_model, model.campplus_model, model.semantic_mean, model.semantic_std):
+        assert reference.moves == [expected_reference]
+    assert model.semantic_model.bf16 is False
+    assert model.campplus_model.bf16 is False
+    for synthesis in (model.gpt, model.semantic_codec, model.s2mel, model.bigvgan,
+                      *model.emo_matrix, *model.spk_matrix):
+        assert synthesis.moves == [expected_device]
 
 
 # -- Inference (GPU required) --------------------------------------------------
