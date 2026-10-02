@@ -19,7 +19,7 @@ from omegaconf import OmegaConf
 from indextts.gpt.model_v2 import UnifiedVoice
 from indextts.codec.maskgct_codec import build_semantic_codec
 from indextts.utils.checkpoint import load_checkpoint
-from indextts.utils.common import save_pcm_wav
+from indextts.utils.common import fade_out_tail, save_pcm_wav
 from indextts.utils.front import TextNormalizer, TextTokenizer
 
 from indextts.s2mel.modules.commons import load_checkpoint2, MyModel
@@ -587,7 +587,7 @@ class IndexTTS2:
                         cond_lengths=torch.tensor([spk_cond_emb.shape[-1]], device=text_tokens.device),
                         emo_cond_lengths=torch.tensor([emo_cond_emb.shape[-1]], device=text_tokens.device),
                         emo_vec=emovec,
-                        do_sample=True,
+                        do_sample=do_sample,
                         top_p=top_p,
                         top_k=top_k,
                         temperature=temperature,
@@ -695,6 +695,9 @@ class IndexTTS2:
         self._set_gr_progress(0.9, "saving audio...")
         wavs = self.insert_interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
         wav = torch.cat(wavs, dim=1)
+        # 停止符采样偏早时，末尾可能停在话音中间
+        # (index-tts/index-tts#247, #488, #523, #633)，详见 fade_out_tail()。
+        wav = fade_out_tail(wav, sampling_rate)
         wav_length = wav.shape[-1] / sampling_rate
         print(f">> gpt_gen_time: {gpt_gen_time:.2f} seconds")
         print(f">> gpt_forward_time: {gpt_forward_time:.2f} seconds")
