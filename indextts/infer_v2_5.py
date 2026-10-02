@@ -77,7 +77,7 @@ class IndexTTS2:
     def __init__(
             self, cfg_path="checkpoints/config.yaml", model_dir="checkpoints", use_bf16=False, device=None,
             use_cuda_kernel=None,use_deepspeed=False, use_accel=False, use_torch_compile=False, use_qwen_emo=False,
-            reuse_spk_cond_for_emo=False
+            reference_device=None, reuse_spk_cond_for_emo=False
     ):
         """
         Args:
@@ -97,6 +97,12 @@ class IndexTTS2:
                 is supplied. This avoids one reference encoder pass, but may change the output
                 because speaker and emotion audio use different preprocessing paths. It does
                 not materially reduce resident memory.
+            reference_device (str): device used by the Wav2Vec2-BERT and CAMPPlus
+                reference encoders. Defaults to ``device``. Set this to ``"cpu"``
+                to keep reference-only models out of GPU memory; the resulting
+                conditioning tensors are moved to ``device`` before synthesis.
+                This trades system RAM and reference preparation latency for VRAM;
+                results are not guaranteed to be bit-identical across backends.
         """
         if device is not None:
             self.device = device
@@ -119,6 +125,10 @@ class IndexTTS2:
             self.use_bf16 = False
             self.use_cuda_kernel = False
             print(">> Be patient, it may take a while to run in CPU mode.")
+
+        self.reference_device = str(reference_device) if reference_device is not None else str(self.device)
+        if self.reference_device != str(self.device):
+            print(f">> Reference encoders will use {self.reference_device} (synthesis uses {self.device})")
 
         self.cfg = OmegaConf.load(cfg_path)
         self.model_dir = model_dir
@@ -186,11 +196,11 @@ class IndexTTS2:
             w2v_bert_dir = aux_paths["w2v_bert"]
         self.extract_features = SeamlessM4TFeatureExtractor.from_pretrained(w2v_bert_dir, local_files_only=True)
         self.semantic_model = Wav2Vec2BertModel.from_pretrained(w2v_bert_dir, local_files_only=True)
-        self.semantic_model = self.semantic_model.to(self.device)
+        self.semantic_model = self.semantic_model.to(self.reference_device)
         self.semantic_model.eval()
         stat_mean_var = torch.load(os.path.join(self.model_dir, self.cfg.w2v_stat))
-        self.semantic_mean = stat_mean_var["mean"].to(self.device)
-        self.semantic_std = torch.sqrt(stat_mean_var["var"]).to(self.device)
+        self.semantic_mean = stat_mean_var["mean"].to(self.reference_device)
+        self.semantic_std = torch.sqrt(stat_mean_var["var"]).to(self.reference_device)
 
         start_time = time.perf_counter()
         self.semantic_codec = EnhancedCodec(**self.cfg.semantic_codec, cfg=self.cfg.semantic_codec)
@@ -230,7 +240,7 @@ class IndexTTS2:
             campplus_ckpt_path = aux_paths["campplus"]
         campplus_model = CAMPPlus(feat_dim=80, embedding_size=192)
         campplus_model.load_state_dict(torch.load(campplus_ckpt_path, map_location="cpu"))
-        self.campplus_model = campplus_model.to(self.device)
+        self.campplus_model = campplus_model.to(self.reference_device)
         self.campplus_model.eval()
         print(">> campplus_model weights restored from:", campplus_ckpt_path)
 
@@ -313,24 +323,8 @@ class IndexTTS2:
     def _get_emo_cond_emb(self, emo_audio_prompt, spk_cond_emb, reuse_spk_cond, verbose):
         if reuse_spk_cond:
             return spk_cond_emb
-
-        if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
-            if self.cache_emo_cond is not None:
-                self.cache_emo_cond = None
-                torch.cuda.empty_cache()
-            emo_audio, _ = self._load_and_cut_audio(emo_audio_prompt, 15, verbose, sr=16000)
-            emo_inputs = self.extract_features(emo_audio, sampling_rate=16000, return_tensors="pt")
-            emo_input_features = emo_inputs["input_features"]
-            emo_attention_mask = emo_inputs["attention_mask"]
-            emo_input_features = emo_input_features.to(self.device)
-            emo_attention_mask = emo_attention_mask.to(self.device)
-            emo_cond_emb = self.get_emb(emo_input_features, emo_attention_mask)
-
-            self.cache_emo_cond = emo_cond_emb
-            self.cache_emo_audio_prompt = emo_audio_prompt
-        else:
-            emo_cond_emb = self.cache_emo_cond
-        return emo_cond_emb
+        # Preserve the independent emotion cache and reference-device routing.
+        return self._prepare_emotion_reference(emo_audio_prompt, verbose)
 
     def _get_emovec(self, spk_cond_emb, emo_cond_emb, cond_lengths, emo_cond_lengths,
                     emo_alpha, reuse_spk_cond):
@@ -343,6 +337,13 @@ class IndexTTS2:
             emo_cond_lengths,
             alpha=emo_alpha,
         )
+
+    @torch.no_grad()
+    def _get_reference_embedding(self, audio_16k):
+        inputs = self.extract_features(audio_16k, sampling_rate=16000, return_tensors="pt")
+        input_features = inputs["input_features"].to(self.reference_device)
+        attention_mask = inputs["attention_mask"].to(self.reference_device)
+        return self.get_emb(input_features, attention_mask).to(self.device)
 
     @torch.no_grad()
     def get_scode(self, inputs):
@@ -462,6 +463,73 @@ class IndexTTS2:
                 print(f"Audio too long ({audio.shape[1]} samples), truncating to {max_audio_samples} samples")
             audio = audio[:, :max_audio_samples]
         return audio, sr
+
+    def _empty_cuda_cache(self):
+        devices = (str(self.device), str(self.reference_device))
+        if torch.cuda.is_available() and any(device.startswith("cuda") for device in devices):
+            torch.cuda.empty_cache()
+
+    @torch.no_grad()
+    def _prepare_speaker_reference(self, spk_audio_prompt, verbose=False):
+        if self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
+            if self.cache_spk_cond is not None:
+                self.cache_spk_cond = None
+                self.cache_s2mel_style = None
+                self.cache_s2mel_prompt = None
+                self.cache_mel = None
+                self._empty_cuda_cache()
+
+            audio, sr = self._load_and_cut_audio(spk_audio_prompt, 15, verbose)
+            audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
+            audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
+
+            # Keep the waveform used by CAMPPlus independent from feature
+            # extractor internals while avoiding a second file read/resample.
+            spk_cond_emb = self._get_reference_embedding(audio_16k.clone())
+            ref_mel = self.mel_fn(audio_22k.to(self.device).float())
+            ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(self.device)
+
+            feat = torchaudio.compliance.kaldi.fbank(
+                audio_16k.to(self.device),
+                num_mel_bins=80,
+                dither=0,
+                sample_frequency=16000,
+            ).to(self.reference_device)
+            feat = feat - feat.mean(dim=0, keepdim=True)
+            style = self.campplus_model(feat.unsqueeze(0)).to(self.device)
+
+            prompt_condition = self.s2mel.models['length_regulator'](
+                spk_cond_emb,
+                ylens=ref_target_lengths,
+                n_quantizers=3,
+                f0=None,
+            )[0]
+
+            self.cache_spk_cond = spk_cond_emb
+            self.cache_s2mel_style = style
+            self.cache_s2mel_prompt = prompt_condition
+            self.cache_spk_audio_prompt = spk_audio_prompt
+            self.cache_mel = ref_mel
+
+        return (
+            self.cache_spk_cond,
+            self.cache_s2mel_style,
+            self.cache_s2mel_prompt,
+            self.cache_mel,
+        )
+
+    @torch.no_grad()
+    def _prepare_emotion_reference(self, emo_audio_prompt, verbose=False):
+        if self.cache_emo_cond is None or self.cache_emo_audio_prompt != emo_audio_prompt:
+            if self.cache_emo_cond is not None:
+                self.cache_emo_cond = None
+                self._empty_cuda_cache()
+
+            emo_audio, _ = self._load_and_cut_audio(emo_audio_prompt, 15, verbose, sr=16000)
+            self.cache_emo_cond = self._get_reference_embedding(emo_audio)
+            self.cache_emo_audio_prompt = emo_audio_prompt
+
+        return self.cache_emo_cond
 
     SPLIT_PROTECTED_PATTERN = re.compile(r'<\|SPECIAL_TOKEN_\d+\|>.*?<\|SPECIAL_TOKEN_\d+\|>')
 
@@ -677,51 +745,10 @@ class IndexTTS2:
             # must always use alpha=1.0 when we don't have an external reference voice
             emo_alpha = 1.0
 
-        # 如果参考音频改变了，才需要重新生成, 提升速度
-        if self.cache_spk_cond is None or self.cache_spk_audio_prompt != spk_audio_prompt:
-            if self.cache_spk_cond is not None:
-                self.cache_spk_cond = None
-                self.cache_s2mel_style = None
-                self.cache_s2mel_prompt = None
-                self.cache_mel = None
-                torch.cuda.empty_cache()
-            audio, sr = self._load_and_cut_audio(spk_audio_prompt, 15, verbose)
-            audio_22k = torchaudio.transforms.Resample(sr, 22050)(audio)
-            audio_16k = torchaudio.transforms.Resample(sr, 16000)(audio)
-
-            inputs = self.extract_features(audio_16k, sampling_rate=16000, return_tensors="pt")
-            input_features = inputs["input_features"]
-            attention_mask = inputs["attention_mask"]
-            input_features = input_features.to(self.device)
-            attention_mask = attention_mask.to(self.device)
-            spk_cond_emb = self.get_emb(input_features, attention_mask)
-            ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
-            ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
-
-            feat = torchaudio.compliance.kaldi.fbank(audio_16k.to(ref_mel.device),
-                                                    num_mel_bins=80,
-                                                    dither=0,
-                                                    sample_frequency=16000)
-            feat = feat - feat.mean(dim=0, keepdim=True)  # feat2另外一个滤波器能量组特征[922, 80]
-            style = self.campplus_model(feat.unsqueeze(0))  # 参考音频的全局style2[1,192]
-
-            prompt_condition = self.s2mel.models['length_regulator'](
-                # S_ref,
-                spk_cond_emb,
-                ylens=ref_target_lengths,
-                n_quantizers=3,
-                f0=None)[0]
-
-            self.cache_spk_cond = spk_cond_emb
-            self.cache_s2mel_style = style
-            self.cache_s2mel_prompt = prompt_condition
-            self.cache_spk_audio_prompt = spk_audio_prompt
-            self.cache_mel = ref_mel
-        else:
-            style = self.cache_s2mel_style
-            prompt_condition = self.cache_s2mel_prompt
-            spk_cond_emb = self.cache_spk_cond
-            ref_mel = self.cache_mel
+        spk_cond_emb, style, prompt_condition, ref_mel = self._prepare_speaker_reference(
+            spk_audio_prompt,
+            verbose,
+        )
 
         if emo_vector is not None:
             weight_vector = torch.tensor(emo_vector, device=self.device)
