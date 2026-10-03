@@ -81,7 +81,7 @@ gestionar el entorno de dependencias del proyecto. Es **obligatorio** para una
 instalación fiable:
 
 ```bash
-pip install -U uv  # or see the link above for other install methods
+pip install -U uv
 ```
 
 ```bash

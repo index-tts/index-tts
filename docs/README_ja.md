@@ -78,7 +78,7 @@ git clone https://github.com/index-tts/index-tts.git && cd index-tts
 プロジェクトの依存環境の管理には [uv](https://docs.astral.sh/uv/getting-started/installation/) を使用しています。確実なインストールのために **必須** です：
 
 ```bash
-pip install -U uv  # or see the link above for other install methods
+pip install -U uv
 ```
 
 ```bash

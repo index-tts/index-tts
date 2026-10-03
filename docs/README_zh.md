@@ -77,7 +77,7 @@ git clone https://github.com/index-tts/index-tts.git && cd index-tts
 这是保证安装可靠的**必需**工具：
 
 ```bash
-pip install -U uv  # 其他安装方式见上方官网链接
+pip install -U uv
 ```
 
 ```bash
