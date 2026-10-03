@@ -8,6 +8,7 @@ __pycache__/
 # Environments.
 .venv*/
 venv*/
+.conda_env*/
 conda_env*/
 
 # Python Bytecode.
@@ -26,8 +27,13 @@ desktop.ini
 
 # IndexTTS.
 /cache/
+/container/compose.yml
+/container/home
+/container/venv
 /checkpoints*/*
+!/checkpoints*/*.vocab
 !/checkpoints*/*.yaml
+/checkpoints*/config.yaml
 /outputs/
 
 # Example audio files (downloaded on demand, not stored in git)
