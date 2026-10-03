@@ -1,6 +1,6 @@
 
 <div align="center">
-<img src='assets/index_icon.png' width="250"/>
+<img src='../assets/index_icon.png' width="250"/>
 </div>
 
 
@@ -33,7 +33,7 @@ Discord：https://discord.gg/uT32E7KDmy  \
 The overview of IndexTTS is shown as follows.
 
 <picture>
-  <img src="assets/IndexTTS.png"  width="800"/>
+  <img src="../assets/IndexTTS.png"  width="800"/>
 </picture>
 
 
