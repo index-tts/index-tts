@@ -100,7 +100,12 @@ class TextNormalizer:
     """
 
     # 匹配常见英语缩写 's，仅用于替换为 is，不匹配所有 's
-    ENGLISH_CONTRACTION_PATTERN = r"(what|where|who|which|how|t?here|it|s?he|that|this)'s"
+    # Reject suffix matches in possessives such as rabbit's. ASCII boundaries
+    # still allow standalone English contractions next to Chinese characters.
+    ENGLISH_CONTRACTION_PATTERN = (
+        r"(?<![A-Za-z0-9_])(what|where|who|which|how|t?here|it|s?he|that|this)'s"
+        r"(?![A-Za-z0-9_])"
+    )
 
 
     def use_chinese(self, s):
