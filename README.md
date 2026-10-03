@@ -81,7 +81,7 @@ the project's dependency environment. It is **required** for a reliable
 installation:
 
 ```bash
-pip install -U uv  # or see the link above for other install methods
+pip install -U uv
 ```
 
 ```bash

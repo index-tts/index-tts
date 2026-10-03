@@ -78,7 +78,7 @@ git clone https://github.com/index-tts/index-tts.git && cd index-tts
 بيئة تبعيات المشروع. وهو **مطلوب** لتثبيت موثوق:
 
 ```bash
-pip install -U uv  # or see the link above for other install methods
+pip install -U uv
 ```
 
 ```bash
