@@ -179,6 +179,18 @@ uv run webui.py --version 2 --model_dir ./checkpoints_2
 
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
+The WebUI includes an **Audio Tuning** tab for optional post-processing
+(high-pass, EQ, de-ess, loudness) after cloning. It writes a new WAV and
+does not overwrite the synthesizer output. The same filters are available
+from the CLI:
+
+```bash
+uv run python -m indextts.utils.audio_tuning \
+  --input outputs/example.wav \
+  --output outputs/example_tuned.wav \
+  --preset voice-clarity
+```
+
 You can adjust the settings to enable BF16 (IndexTTS-2.5) / FP16 (IndexTTS-2)
 inference (lower VRAM usage), DeepSpeed acceleration, compiled CUDA kernels for
 speed, etc. All available options can be seen via:
