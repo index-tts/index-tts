@@ -21,6 +21,8 @@
   "高级生成参数设置": "Advanced generation parameter settings",
   "情感向量之和不能超过1.5，请调整后重试。": "The sum of the emotion vectors cannot exceed 1.5. Please adjust and try again.",
   "时长系数": "Duration Factor",
+  "定制生成时长（秒）": "Custom Duration (seconds)",
+  "留空则按时长系数生成；填写后将按目标总时长生成（包含分句间静音）": "Leave blank to use the duration factor. When set, this controls the total duration, including silence between segments.",
   "快": "Fast",
   "慢": "Slow",
   "不变": "Normal",

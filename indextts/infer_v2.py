@@ -20,6 +20,13 @@ from indextts.gpt.model_v2 import UnifiedVoice
 from indextts.codec.maskgct_codec import build_semantic_codec
 from indextts.utils.checkpoint import load_checkpoint
 from indextts.utils.common import fade_out_tail, save_pcm_wav
+from indextts.utils.duration_control import (
+    allocate_target_frames,
+    fit_final_segment_length,
+    fit_waveform_length,
+    get_max_target_frames,
+    normalize_target_duration,
+)
 from indextts.utils.front import TextNormalizer, TextTokenizer
 
 from indextts.s2mel.modules.commons import load_checkpoint2, MyModel
@@ -372,14 +379,28 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, more_segment_before=0,
+              duration_factor=1.0, target_duration=None, **generation_kwargs):
+        """Synthesize audio or return an audio-chunk iterator.
+
+        ``target_duration`` is the total output duration in seconds, including
+        ``interval_silence`` milliseconds between text segments. A positive,
+        finite value overrides the dimensionless ``duration_factor`` multiplier;
+        ``None`` or an empty string uses automatic duration with that multiplier.
+        Targeted output is trimmed or padded to the nearest sample at 22050 Hz.
+        Invalid values, durations too short for the segments and pauses, or
+        allocations exceeding the DiT position budget after reserving reference
+        and conditioning positions raise ``ValueError`` before speech generation.
+        For streaming, capacity validation runs when the iterator is consumed.
+        """
         if stream_return:
             return self.infer_generator(
                 spk_audio_prompt, text, output_path,
                 emo_audio_prompt, emo_alpha,
                 emo_vector,
                 use_emo_text, emo_text, use_random, interval_silence,
-                verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+                verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
+                duration_factor=duration_factor, target_duration=target_duration, **generation_kwargs
             )
         else:
             try:
@@ -388,7 +409,8 @@ class IndexTTS2:
                     emo_audio_prompt, emo_alpha,
                     emo_vector,
                     use_emo_text, emo_text, use_random, interval_silence,
-                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before, **generation_kwargs
+                    verbose, max_text_tokens_per_segment, stream_return, more_segment_before,
+                    duration_factor=duration_factor, target_duration=target_duration, **generation_kwargs
                 ))[0]
             except IndexError:
                 return None
@@ -397,9 +419,23 @@ class IndexTTS2:
               emo_audio_prompt=None, emo_alpha=1.0,
               emo_vector=None,
               use_emo_text=False, emo_text=None, use_random=False, interval_silence=200,
-              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0, **generation_kwargs):
+              verbose=False, max_text_tokens_per_segment=120, stream_return=False, quick_streaming_tokens=0,
+              duration_factor=1.0, target_duration=None, **generation_kwargs):
+        """Generate audio, yielding chunks when streaming is enabled.
+
+        ``target_duration`` is the total output duration in seconds, including
+        ``interval_silence`` milliseconds between text segments. A positive,
+        finite value overrides the dimensionless ``duration_factor`` multiplier;
+        ``None`` or an empty string uses automatic duration with that multiplier.
+        Targeted output is trimmed or padded to the nearest sample at 22050 Hz.
+        Invalid values, durations too short for the segments and pauses, or
+        allocations exceeding the DiT position budget after reserving reference
+        and conditioning positions raise ``ValueError`` before speech generation.
+        For streaming, capacity validation runs when the iterator is consumed.
+        """
         print(">> starting inference...")
         self._set_gr_progress(0, "starting inference...")
+        target_duration = normalize_target_duration(target_duration)
         if verbose:
             print(f"origin text:{text}, spk_audio_prompt:{spk_audio_prompt}, "
                   f"emo_audio_prompt:{emo_audio_prompt}, emo_alpha:{emo_alpha}, "
@@ -544,6 +580,23 @@ class IndexTTS2:
         repetition_penalty = generation_kwargs.pop("repetition_penalty", 10.0)
         max_mel_tokens = generation_kwargs.pop("max_mel_tokens", 1500)
         sampling_rate = 22050
+        hop_length = int(self.cfg.s2mel.preprocess_params.spect_params.hop_length)
+        target_segment_frames, target_samples = allocate_target_frames(
+            target_duration,
+            [len(segment) for segment in segments],
+            sampling_rate,
+            hop_length,
+            interval_silence,
+            max_segment_frames=(
+                get_max_target_frames(self.s2mel.models['cfm'], prompt_condition.size(1))
+                if target_duration is not None else None
+            ),
+        )
+        if target_segment_frames is not None:
+            print(
+                f">> Target audio duration: {target_duration:.3f} seconds "
+                f"({target_samples} samples across {segments_count} segment(s))"
+            )
 
         wavs = []
         gpt_gen_time = 0
@@ -659,7 +712,13 @@ class IndexTTS2:
                     S_infer = self.semantic_codec.quantizer.vq2emb(codes.unsqueeze(1))
                     S_infer = S_infer.transpose(1, 2)
                     S_infer = S_infer + latent
-                    target_lengths = (code_lens * 1.72).long()
+                    if target_segment_frames is None:
+                        target_lengths = (code_lens * 1.72 * float(duration_factor)).long()
+                        target_lengths = torch.clamp(target_lengths, min=1)
+                    else:
+                        target_lengths = torch.LongTensor(
+                            [target_segment_frames[seg_idx]]
+                        ).to(codes.device)
 
                     cond = self.s2mel.models['length_regulator'](S_infer,
                                                                  ylens=target_lengths,
@@ -680,6 +739,11 @@ class IndexTTS2:
                     bigvgan_time += time.perf_counter() - m_start_time
                     wav = wav.squeeze(1)
 
+                    if seg_idx == segments_count - 1:
+                        wav = fit_final_segment_length(
+                            wav, wavs, target_samples, sampling_rate, interval_silence
+                        )
+
                 wav = torch.clamp(32767 * wav, -32767.0, 32767.0)
                 if verbose:
                     print(f"wav shape: {wav.shape}", "min:", wav.min(), "max:", wav.max())
@@ -687,14 +751,16 @@ class IndexTTS2:
                 wavs.append(wav.cpu())  # to cpu before saving
                 if stream_return:
                     yield wav.cpu()
-                    if silence == None:
+                    if silence is None:
                         silence = self.interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
-                    yield silence
+                    if target_samples is None or seg_idx < segments_count - 1:
+                        yield silence
         end_time = time.perf_counter()
 
         self._set_gr_progress(0.9, "saving audio...")
         wavs = self.insert_interval_silence(wavs, sampling_rate=sampling_rate, interval_silence=interval_silence)
         wav = torch.cat(wavs, dim=1)
+        wav = fit_waveform_length(wav, target_samples)
         # 停止符采样偏早时，末尾可能停在话音中间
         # (index-tts/index-tts#247, #488, #523, #633)，详见 fade_out_tail()。
         wav = fade_out_tail(wav, sampling_rate)

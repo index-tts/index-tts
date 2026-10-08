@@ -1,5 +1,11 @@
 import ast
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+import os
+import time
+
+import pytest
 
 
 def _webui_source():
@@ -74,3 +80,33 @@ def test_duration_factor_control_is_hidden_for_v2():
         and assigned_component(node.body, "Slider")
     )
     assert assigned_component(duration_control.orelse, "State")
+
+
+@pytest.mark.parametrize("is_v25", [False, True])
+@pytest.mark.parametrize("target_duration", [None, 1.23])
+def test_generation_callback_forwards_target_duration_in_both_versions(is_v25, target_duration):
+    webui_path, source = _webui_source()
+    function = next(node for node in ast.parse(source).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "gen_single")
+    tts = SimpleNamespace(infer=Mock(return_value="output.wav"))
+    namespace = {
+        "os": os, "time": time, "tts": tts, "IS_V25": is_v25,
+        "cmd_args": SimpleNamespace(verbose=False),
+        "gr": SimpleNamespace(Progress=lambda: None, update=lambda **kwargs: kwargs),
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(webui_path), "exec"), namespace)
+    result = namespace["gen_single"](
+        0, "reference.wav", "text", "EN", None, 1.0,
+        *([0.0] * 8), "", False, 120, 1.5, target_duration,
+        False, 0.8, 30, 0.8, 0.0, 3, 10.0, 1500,
+    )
+    kwargs = tts.infer.call_args.kwargs
+    assert kwargs["target_duration"] == target_duration
+    assert kwargs["do_sample"] is False
+    if is_v25:
+        assert kwargs["duration_factor"] == 1.5
+        assert kwargs["lang"] == "EN"
+    else:
+        assert "duration_factor" not in kwargs
+        assert "lang" not in kwargs
+    assert result == {"value": "output.wav", "visible": True}

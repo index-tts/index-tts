@@ -351,6 +351,24 @@ tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output
 tts.infer(spk_audio_prompt='examples/voice_01.wav', text=text, lang="ZH", output_path="gen_fast.wav", duration_factor=0.8, verbose=True)
 ```
 
+#### 8. Custom output duration (`target_duration`)
+
+Set the desired total output duration in seconds. This value takes precedence
+over `duration_factor` and includes silence inserted between text segments.
+Large speed changes can reduce speech naturalness.
+
+```python
+# Generate an output that is exactly 5 seconds long.
+tts.infer(
+    spk_audio_prompt='examples/voice_01.wav',
+    text="This sentence must fit the available time slot.",
+    lang="EN",
+    output_path="gen_5s.wav",
+    target_duration=5.0,
+    verbose=True,
+)
+```
+
 ### 🗣️ Pronunciation Control
 
 **IndexTTS2.5 — Pinyin / CMU phonemes / Japanese Kana:**
