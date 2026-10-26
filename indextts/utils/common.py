@@ -55,8 +55,11 @@ def save_pcm_wav(path, wav, sampling_rate):
     """
     wav = wav.detach().to(device="cpu", dtype=torch.float32) / PCM16_MAX
     wav = wav.clamp_(-1.0, 1.0)
-    encoding_args = {"encoding": "PCM_S", "bits_per_sample": 16} if _torchaudio_honors_wav_encoding_args() else {}
-    torchaudio.save(path, wav, sampling_rate, **encoding_args)
+    import soundfile as sf
+    wav_np = wav.cpu().numpy()
+    if wav_np.ndim == 2:
+        wav_np = wav_np.T
+    sf.write(path, wav_np, sampling_rate, subtype='PCM_16')
 
 
 # 每条生成音频末尾统一施加的淡出斜坡长度。

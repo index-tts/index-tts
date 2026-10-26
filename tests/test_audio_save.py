@@ -18,6 +18,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 torchaudio = pytest.importorskip("torchaudio")
+soundfile = pytest.importorskip("soundfile")
 
 from indextts.utils.common import PCM16_MAX, save_pcm_wav  # noqa: E402
 
@@ -151,7 +152,7 @@ def test_save_pcm_wav_does_not_warn_about_ignored_encoding_args(tmp_path):
 # -- what is handed to torchaudio.save(): version-independent negative control --
 
 
-def test_save_pcm_wav_hands_normalized_float32_to_torchaudio(tmp_path, monkeypatch):
+def test_save_pcm_wav_hands_normalized_float32_to_soundfile(tmp_path, monkeypatch):
     """The core contract, asserted without depending on the installed torchaudio.
 
     TorchCodec requires float32 in [-1, 1]; anything else is silently clipped.
@@ -162,11 +163,11 @@ def test_save_pcm_wav_hands_normalized_float32_to_torchaudio(tmp_path, monkeypat
         captured["src"] = src.clone()
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(torchaudio, "save", spy)
+    monkeypatch.setattr(soundfile, "write", lambda p, data, sr, **kw: spy(p, torch.from_numpy(data.T if data.ndim == 2 else data).float(), sr, **kw))
     save_pcm_wav(str(tmp_path / "out.wav"), _to_pcm_scale(_reference_waveform()), SAMPLE_RATE)
 
     src = captured["src"]
-    assert src.dtype == torch.float32, f"torchaudio.save() got {src.dtype}, not float32"
+    assert src.dtype == torch.float32, f"soundfile.write() got {src.dtype}, not float32"
     assert float(src.abs().max()) <= 1.0, f"samples out of [-1, 1]: peak {float(src.abs().max())}"
     assert float(src.abs().max()) == pytest.approx(0.8, abs=1e-3), "amplitude was not preserved"
 
@@ -175,7 +176,7 @@ def test_save_pcm_wav_hands_normalized_float32_to_torchaudio(tmp_path, monkeypat
 def test_save_pcm_wav_normalizes_every_pcm_scale_dtype(tmp_path, monkeypatch, dtype):
     """Call sites pass PCM-scale data as float32 *and* as int16; both must normalize."""
     captured = {}
-    monkeypatch.setattr(torchaudio, "save", lambda uri, src, sr, **kw: captured.update(src=src.clone()))
+    monkeypatch.setattr(soundfile, "write", lambda p, data, sr, **kw: captured.update(src=torch.from_numpy(data.T if data.ndim == 2 else data).float()))
 
     save_pcm_wav(str(tmp_path / "out.wav"), _to_pcm_scale(_reference_waveform()).to(dtype), SAMPLE_RATE)
 
