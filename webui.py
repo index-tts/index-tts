@@ -118,9 +118,11 @@ LOW_VRAM_THRESHOLD_GB = 10.0
 def detect_vram_gb():
     import torch
 
-    if not torch.cuda.is_available():
-        return None
-    return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+    elif hasattr(torch, "xpu") and torch.xpu.is_available():
+        return torch.xpu.get_device_properties(0).total_memory / (1024 ** 3)
+    return None
 
 
 _vram_gb = detect_vram_gb()
@@ -153,7 +155,12 @@ def build_tts(use_accel=False, use_torch_compile=False):
         use_qwen_emo=LOAD_QWEN_EMO,
     )
     if IS_V25:
-        use_bf16 = HALF_PRECISION and torch.cuda.is_bf16_supported()
+        use_bf16 = False
+        if HALF_PRECISION:
+            if torch.cuda.is_available():
+                use_bf16 = torch.cuda.is_bf16_supported()
+            elif hasattr(torch, "xpu") and torch.xpu.is_available():
+                use_bf16 = torch.xpu.is_bf16_supported()
         if HALF_PRECISION and not use_bf16:
             print(">> BF16 is not supported on this device, falling back to full precision.")
         kwargs["use_bf16"] = use_bf16
