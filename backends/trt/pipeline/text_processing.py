@@ -65,11 +65,13 @@ class TextNormalizer:
         pattern = r"^[a-zA-Z0-9]+@[a-zA-Z0-9]+\.[a-zA-Z]+$"
         return re.match(pattern, email) is not None
 
-    PINYIN_TONE_PATTERN = (
-        r"(?<![a-z])((?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)?"
+    _PINYIN_SYLLABLE = (
+        r"(?:(?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)"
         r"(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?"
-        r"|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)|ng|er)([1-5])"
+        r"|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)"
+        r"|a(?=[15])|ai|an|ang(?=[1245])|ao|e|ei(?=[25])|en(?=[145])|er(?=[2-5])|o(?=[125])|ou)"
     )
+    PINYIN_TONE_PATTERN = rf"(?<![a-z])({_PINYIN_SYLLABLE})([1-5])(?={_PINYIN_SYLLABLE}[1-5]|[^a-z0-9]|$)"
     NAME_PATTERN = r"[\u4e00-\u9fff]+(?:[-·—][\u4e00-\u9fff]+){1,2}"
     ENGLISH_CONTRACTION_PATTERN = r"(what|where|who|which|how|t?here|it|s?he|that|this)'s"
 
