@@ -79,11 +79,17 @@ class TextNormalizer:
         pattern = r"^[a-zA-Z0-9]+@[a-zA-Z0-9]+\.[a-zA-Z]+$"
         return re.match(pattern, email) is not None
 
-    PINYIN_TONE_PATTERN = r"(?<![a-z])((?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)?(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)|ng|er)([1-5])"
+    _PINYIN_SYLLABLE = (
+        r"(?:(?:[bpmfdtnlgkhjqxzcsryw]|[zcs]h)(?:[aeiouüv]|[ae]i|u[aio]|ao|ou|i[aue]|[uüv]e|[uvü]ang?|uai|[aeiuv]n|[aeio]ng|ia[no]|i[ao]ng)"
+        r"|a(?=[15])|ai|an|ang(?=[1245])|ao|e|ei(?=[25])|en(?=[145])|er(?=[2-5])|o(?=[125])|ou)"
+    )
+    PINYIN_TONE_PATTERN = rf"(?<![a-z])({_PINYIN_SYLLABLE})([1-5])(?={_PINYIN_SYLLABLE}[1-5]|[^a-z0-9]|$)"
     """
     匹配拼音声调格式：pinyin+数字，声调1-5，5表示轻声
     例如：xuan4, jve2, ying1, zhong4, shang5
     不匹配：beta1, voice2
+    无声母的音节只保留 checkpoints/pinyin.vocab 中存在的，例如：a5, er2；不匹配：v1, U2, i5, A4
+    声调后不能紧跟数字或字母，下一个带调音节除外，例如：ni3hao3；不匹配：A380, Tu154, E2E
     """
     NAME_PATTERN = r"[\u4e00-\u9fff]+(?:[-·—][\u4e00-\u9fff]+){1,2}"
     """
