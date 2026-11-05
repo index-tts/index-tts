@@ -88,7 +88,10 @@ class TextNormalizer:
             return
         if platform.system() != "Linux":
             from wetext import Normalizer
-            self.zh_normalizer = Normalizer(remove_erhua=False, lang="zh", operator="tn")
+            # WeTextProcessing (Linux) enables these two by default, wetext does not.
+            self.zh_normalizer = Normalizer(
+                remove_erhua=False, lang="zh", operator="tn", traditional_to_simple=True, full_to_half=True
+            )
             self.en_normalizer = Normalizer(lang="en", operator="tn")
         else:
             from tn.chinese.normalizer import Normalizer as NormalizerZh
