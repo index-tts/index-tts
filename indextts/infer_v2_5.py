@@ -944,7 +944,6 @@ class IndexTTS2:
             ref_mel = self.mel_fn(audio_22k.to(spk_cond_emb.device).float())
             ref_target_lengths = torch.LongTensor([ref_mel.size(2)]).to(ref_mel.device)
 
-            audio_16k = torchaudio.transforms.Resample(sr, 16000)(self._load_and_cut_audio(spk_audio_prompt, 15, verbose)[0])
             feat = torchaudio.compliance.kaldi.fbank(audio_16k.to(ref_mel.device),
                                                     num_mel_bins=80,
                                                     dither=0,
@@ -1364,6 +1363,8 @@ class IndexTTS2:
             wavs = self.insert_interval_silence(seg_wavs[ti], sampling_rate=sampling_rate,
                                                 interval_silence=interval_silence)
             wav = torch.cat(wavs, dim=1)
+            # Same tail fade as infer() (#806): the stop token can be sampled early.
+            wav = fade_out_tail(wav, sampling_rate)
             seg_wavs[ti] = None
             lengths[ti] = wav.shape[-1] / sampling_rate
             if output_paths is not None:
