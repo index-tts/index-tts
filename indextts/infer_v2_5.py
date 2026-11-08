@@ -1237,7 +1237,7 @@ class IndexTTS2:
                     emo_audio_prompt=None, emo_alpha=1.0, emo_vector=None, use_random=False,
                     interval_silence=200, verbose=False, max_text_tokens_per_segment=120,
                     duration_factor=1.0, text_normalization=True,
-                    max_batch_segments=32, vram_budget_gb=None, batch_s2mel=True, **generation_kwargs):
+                    max_batch_segments=32, vram_budget_gb=None, batch_s2mel=False, **generation_kwargs):
         """Synthesize many texts with one reference voice, batching GPT generation.
 
         Gives the same per-text result as calling `infer` once per text (same
@@ -1255,7 +1255,9 @@ class IndexTTS2:
             vram_budget_gb: VRAM this process may use while decoding; by
                 default, what is free on the device minus 2 GiB.
             batch_s2mel: also run the s2mel diffusion of several segments
-                together (padded and masked); False runs it per segment.
+                together (padded and masked). Off by default: s2mel runs in
+                fp32 and already keeps the GPU busy, so padding made it slower
+                (57.5 s vs 32.7 s per episode on an RTX 5060 Ti).
             Other arguments: as in `infer`. ``use_emo_text`` is not supported.
 
         Returns:
@@ -1317,6 +1319,7 @@ class IndexTTS2:
                     emovec_mat = torch.sum(weight_vector.unsqueeze(1) * emo_matrix, 0).unsqueeze(0)
                     emovec = emovec_mat + (1 - torch.sum(weight_vector)) * emovec
 
+        t_ref = time.perf_counter()
         # text front end, per text, as infer does
         seg_tokens = {}      # (text index, segment index) -> token tensor [1, L]
         seg_count = []
@@ -1342,6 +1345,7 @@ class IndexTTS2:
         max_mel_tokens = gen_kwargs["max_generate_length"]
         sampling_rate = 22050
 
+        t_front = time.perf_counter()
         keys = sorted(seg_tokens, key=lambda k: -seg_tokens[k].shape[1])
         budget = self._gpt_batch_budget_bytes(vram_budget_gb)
         groups = self._plan_gpt_batches(keys, [seg_tokens[k].shape[1] for k in keys],
@@ -1448,6 +1452,8 @@ class IndexTTS2:
 
         end_time = time.perf_counter()
         audio_len = sum(lengths)
+        print(f">> reference+emotion: {t_ref - start_time:.2f} s, text front end: {t_front - t_ref:.2f} s, "
+              f"batches (GPT+s2mel+BigVGAN+save): {end_time - t_front:.2f} s")
         print(f">> gpt_gen_time: {gpt_gen_time:.2f} seconds")
         print(f">> s2mel_time: {s2mel_time:.2f} seconds")
         print(f">> bigvgan_time: {bigvgan_time:.2f} seconds")
